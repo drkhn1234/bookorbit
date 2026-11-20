@@ -1,3 +1,4 @@
+import { Permission } from '@bookorbit/types';
 import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 
 import type {
@@ -12,6 +13,7 @@ import type {
 } from '@bookorbit/types';
 
 import { LibraryOperationGate, type LibraryOperationLease, type LibraryOperationRelease } from '../../common/services/library-operation-gate.service';
+import { LibraryScopeService } from '../../common/library-scope/library-scope.service';
 import type { RequestUser } from '../../common/types/request-user';
 import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
 import { ScanGateway } from '../scanner/scan.gateway';
@@ -47,6 +49,7 @@ export class BookMergeService {
     private readonly effects: BookMergeEffectsService,
     private readonly libraryGate: LibraryOperationGate,
     private readonly gateway: ScanGateway,
+    private readonly libraryScope: LibraryScopeService,
   ) {}
 
   async preview(dto: BookMergePreviewDto, user: RequestUser): Promise<BookMergePreviewResponse> {
@@ -167,7 +170,10 @@ export class BookMergeService {
 
   async getJob(jobId: number, user: RequestUser): Promise<BookMergeJob> {
     const job = await this.repository.findJob(jobId);
-    if (!job || (!user.isSuperuser && job.requestedByUserId !== user.id)) throw new NotFoundException('Merge job not found');
+    if (!job || job.requestedByUserId !== user.id) throw new NotFoundException('Merge job not found');
+    const libraryIds = job.libraryIds ?? [job.libraryId];
+    if ((await this.libraryScope.filterVisible(user, libraryIds)).length !== libraryIds.length) throw new NotFoundException('Merge job not found');
+    for (const id of libraryIds) await this.libraryScope.assertPermission(user, id, Permission.LibraryMergeBooks);
     return this.toJob(job);
   }
 
@@ -227,7 +233,7 @@ export class BookMergeService {
 
     const mergedSourceIds = run.merged.map((entry) => entry.sourceBookId);
     if (mergedSourceIds.length > 0) {
-      this.gateway.emitBookMerged({
+      void this.gateway.emitBookMerged({
         libraryId: plan.libraryId,
         targetBookId: plan.targetBookId,
         sourceBookIds: mergedSourceIds,
@@ -260,7 +266,7 @@ export class BookMergeService {
       outcomes: job.outcomes as BookMergeSourceOutcome[],
       ...(bytes?.bytesTotal !== undefined ? { bytesTotal: bytes.bytesTotal, bytesDone: bytes.bytesDone ?? 0 } : {}),
     };
-    this.gateway.emitBookMergeJob(userId, phase, event);
+    void this.gateway.emitBookMergeJob(userId, phase, event, job.libraryIds ?? [job.libraryId]);
   }
 
   private toJob(job: MergeJobRow): BookMergeJob {

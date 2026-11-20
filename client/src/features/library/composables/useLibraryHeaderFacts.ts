@@ -8,7 +8,7 @@ import { useScanProgress } from '@/features/scanner/composables/useScanProgress'
  * was last scanned for the people who can scan it (scan history is an admin route). Both reload
  * when a scan of this library finishes.
  */
-export function useLibraryHeaderFacts(libraryId: Ref<number | null>, canSeeScans: Ref<boolean>) {
+export function useLibraryHeaderFacts(libraryId: Ref<number | null>, canSeeScans: Ref<boolean>, administratorMode?: Ref<boolean>) {
   const sizeBytes = ref<number | null>(null)
   const lastScanAt = ref<string | null>(null)
   const { isScanning } = useScanProgress()
@@ -27,7 +27,7 @@ export function useLibraryHeaderFacts(libraryId: Ref<number | null>, canSeeScans
         .then((res) => (res.ok ? (res.json() as Promise<LibraryStats>) : null))
         .catch(() => null),
       canSeeScans.value
-        ? api(`/api/v1/scanner/libraries/${id}/scan-history?limit=5`)
+        ? api(`/api/v1/scanner/libraries/${id}/scan-history?limit=5${administratorMode?.value ? '&scope=admin' : ''}`)
             .then((res) => (res.ok ? (res.json() as Promise<LibraryScanHistoryEntry[]>) : null))
             .catch(() => null)
         : Promise.resolve(null),
@@ -39,7 +39,7 @@ export function useLibraryHeaderFacts(libraryId: Ref<number | null>, canSeeScans
 
   const scanning = computed(() => libraryId.value !== null && isScanning(libraryId.value))
 
-  watch([libraryId, canSeeScans], () => void load(), { immediate: true })
+  watch([libraryId, canSeeScans, () => administratorMode?.value], () => void load(), { immediate: true })
   watch(scanning, (now, before) => {
     if (before && !now) void load()
   })

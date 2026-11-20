@@ -5,6 +5,7 @@ import { ArrowUpDown, Check, FolderPlus, Keyboard, Loader2, PenLine, RefreshCw, 
 import { Permission, type BookDockSummary } from '@bookorbit/types'
 import { formatBytes } from '@/lib/formatting'
 import { formatNumber } from '@/i18n/formatters'
+import { useLibraryPermissions } from '@/features/library/composables/useLibraryPermissions'
 import { usePermissions } from '@/features/auth/composables/usePermissions'
 import type { SortField } from '../composables/useBookDockFiles'
 
@@ -36,9 +37,10 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
-const { hasPermission, isDemoRestrictedAccount } = usePermissions()
+const { isDemoRestrictedAccount } = usePermissions()
+const { hasPermissionInAnyLibrary } = useLibraryPermissions()
 
-const canFinalize = computed(() => hasPermission(Permission.LibraryUpload))
+const canFinalize = computed(() => hasPermissionInAnyLibrary(Permission.LibraryUpload))
 const canBulkEdit = computed(() => !isDemoRestrictedAccount.value)
 const hasSelection = computed(() => props.selectionCount > 0)
 

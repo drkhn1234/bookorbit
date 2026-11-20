@@ -95,7 +95,9 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
         // Lucide icon files and non-English catalogs are fetched on demand and cached at runtime
         // below; precaching them would download every icon and every language on install.
-        globIgnores: ['**/assets/foliate/**', '**/assets/lucide/**', '**/assets/locale-catalog-*.js'],
+        globIgnores: ['**/assets/foliate/**', '**/assets/lucide/**', '**/assets/locale-catalog-*.js', 'retire-media-caches.js'],
+        // Book covers and thumbnails must go through the authenticated origin on every request.
+        importScripts: ['retire-media-caches.js'],
         // Keep the offline shell at a separate path. Workbox maps '/' and its query variants to
         // precached index.html before the NetworkFirst route can contact the auth proxy.
         manifestTransforms: [
@@ -125,62 +127,6 @@ export default defineConfig({
               // Status 0 here would include an auth proxy's opaqueredirect and cache it as the page.
               cacheableResponse: {
                 statuses: [200],
-              },
-            },
-          },
-          {
-            urlPattern: /^.*\/api\/v1\/books\/\d+\/cover\?(?:[^#]*&)?t=[^#]*$/,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'book-covers',
-              expiration: {
-                maxEntries: 200,
-                maxAgeSeconds: 60 * 60 * 24 * 30,
-              },
-              cacheableResponse: {
-                statuses: [0, 200],
-              },
-            },
-          },
-          {
-            urlPattern: /^.*\/api\/v1\/books\/\d+\/thumbnail\?(?:[^#]*&)?t=[^#]*$/,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'book-thumbnails',
-              expiration: {
-                maxEntries: 200,
-                maxAgeSeconds: 60 * 60 * 24 * 30,
-              },
-              cacheableResponse: {
-                statuses: [0, 200],
-              },
-            },
-          },
-          {
-            urlPattern: /^.*\/api\/v1\/books\/\d+\/cover(\?.*)?$/,
-            handler: 'StaleWhileRevalidate',
-            options: {
-              cacheName: 'book-covers',
-              expiration: {
-                maxEntries: 200,
-                maxAgeSeconds: 60 * 60 * 24 * 30,
-              },
-              cacheableResponse: {
-                statuses: [0, 200],
-              },
-            },
-          },
-          {
-            urlPattern: /^.*\/api\/v1\/books\/\d+\/thumbnail(\?.*)?$/,
-            handler: 'StaleWhileRevalidate',
-            options: {
-              cacheName: 'book-thumbnails',
-              expiration: {
-                maxEntries: 200,
-                maxAgeSeconds: 60 * 60 * 24 * 30,
-              },
-              cacheableResponse: {
-                statuses: [0, 200],
               },
             },
           },

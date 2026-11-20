@@ -190,23 +190,22 @@ export class AchievementRepository {
     });
   }
 
-  async findAccessibleBookIds(userId: number, isSuperuser: boolean, bookIds: number[]): Promise<Set<number>> {
+  async findAccessibleBookIds(userId: number, _isSuperuser: boolean, bookIds: number[], libraryIds?: number[]): Promise<Set<number>> {
     const uniqueBookIds = Array.from(new Set(bookIds.filter((id) => Number.isInteger(id) && id > 0)));
     if (uniqueBookIds.length === 0) return new Set();
-
-    if (isSuperuser) {
-      const rows = await this.db
-        .select({ id: books.id })
-        .from(books)
-        .where(and(inArray(books.id, uniqueBookIds), eq(books.status, 'present')));
-      return new Set(rows.map((row) => row.id));
-    }
 
     const rows = await this.db
       .select({ id: books.id })
       .from(books)
       .innerJoin(userLibraryAccess, eq(books.libraryId, userLibraryAccess.libraryId))
-      .where(and(inArray(books.id, uniqueBookIds), eq(books.status, 'present'), eq(userLibraryAccess.userId, userId)));
+      .where(
+        and(
+          inArray(books.id, uniqueBookIds),
+          eq(books.status, 'present'),
+          eq(userLibraryAccess.userId, userId),
+          libraryIds === undefined ? undefined : libraryIds.length ? inArray(books.libraryId, libraryIds) : sql`false`,
+        ),
+      );
     return new Set(rows.map((row) => row.id));
   }
 
@@ -262,33 +261,34 @@ export class AchievementRepository {
     return value;
   }
 
-  async countAccessibleBooks(userId: number, isSuperuser: boolean): Promise<number> {
-    if (isSuperuser) {
-      const [{ value }] = await this.db.select({ value: count() }).from(books).where(eq(books.status, 'present'));
-      return value;
-    }
+  async countAccessibleBooks(userId: number, _isSuperuser: boolean, libraryIds?: number[]): Promise<number> {
     const [{ value }] = await this.db
       .select({ value: count() })
       .from(books)
       .innerJoin(userLibraryAccess, eq(books.libraryId, userLibraryAccess.libraryId))
-      .where(and(eq(userLibraryAccess.userId, userId), eq(books.status, 'present')));
+      .where(
+        and(
+          eq(userLibraryAccess.userId, userId),
+          libraryIds === undefined ? undefined : libraryIds.length ? inArray(books.libraryId, libraryIds) : sql`false`,
+          eq(books.status, 'present'),
+        ),
+      );
     return value;
   }
 
-  async countDistinctFormats(userId: number, isSuperuser: boolean): Promise<number> {
-    if (isSuperuser) {
-      const [{ value }] = await this.db
-        .select({ value: countDistinct(bookFiles.format) })
-        .from(bookFiles)
-        .where(isNotNull(bookFiles.format));
-      return value;
-    }
+  async countDistinctFormats(userId: number, _isSuperuser: boolean, libraryIds?: number[]): Promise<number> {
     const [{ value }] = await this.db
       .select({ value: countDistinct(bookFiles.format) })
       .from(bookFiles)
       .innerJoin(books, eq(bookFiles.bookId, books.id))
       .innerJoin(userLibraryAccess, eq(books.libraryId, userLibraryAccess.libraryId))
-      .where(and(eq(userLibraryAccess.userId, userId), isNotNull(bookFiles.format)));
+      .where(
+        and(
+          eq(userLibraryAccess.userId, userId),
+          libraryIds === undefined ? undefined : libraryIds.length ? inArray(books.libraryId, libraryIds) : sql`false`,
+          isNotNull(bookFiles.format),
+        ),
+      );
     return value;
   }
 

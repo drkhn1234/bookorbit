@@ -46,6 +46,13 @@ export function useBookMergeSync({ books, deselect, refresh, affectsScope }: Boo
   }
 
   useBookEvents().onBookMerged(applyMerged)
+  useBookEvents().onLibraryChanged(() => {
+    if (refreshTimer) clearTimeout(refreshTimer)
+    refreshTimer = setTimeout(() => {
+      refreshTimer = null
+      refresh()
+    }, REFRESH_DEBOUNCE_MS)
+  })
 
   onScopeDispose(() => {
     if (refreshTimer) clearTimeout(refreshTimer)

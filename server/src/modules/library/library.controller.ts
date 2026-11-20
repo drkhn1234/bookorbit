@@ -1,13 +1,16 @@
+import { ForbidPermission } from '../../common/decorators/forbid-permission.decorator';
+import { CreatePersonalLibraryDto } from './dto/create-personal-library.dto';
 import { RegexMetadataPreviewDto, RegexMetadataValidationDto } from './dto/regex-metadata.dto';
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseIntPipe, Patch, Post, Query, Res } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Header, HttpCode, HttpStatus, Param, ParseIntPipe, Patch, Post, Query, Res } from '@nestjs/common';
 import type { FastifyReply } from 'fastify';
 
 import { Permission, AuditAction, AuditResource } from '@bookorbit/types';
 import type { BookQuery, BulkRenameProgressEvent, JumpBucketsQuery, LibraryBookFacets, LibraryFileSyncProgressEvent } from '@bookorbit/types';
-import { KeyReadSafe } from '../../common/decorators/api-key-policy.decorator';
+import { KeyReadSafe, NoApiKeyUsageTracking } from '../../common/decorators/api-key-policy.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequireLibraryAccess } from '../../common/decorators/require-library-access.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
+import { RequireScopedPermission } from '../../common/decorators/require-scoped-permission.decorator';
 import { Auditable } from '../../common/decorators/auditable.decorator';
 import type { RequestUser } from '../../common/types/request-user';
 import { BookQueryPipe, JumpBucketsQueryPipe } from '../book/pipes/book-query.pipe';
@@ -23,6 +26,7 @@ import { UpdateLibraryDto } from './dto/update-library.dto';
 import { BulkRenameService } from './bulk-rename.service';
 import { LibraryService } from './library.service';
 import { LibraryAddedAtService } from './library-added-at.service';
+import { PathScopeDto } from '../path/dto/path-scope.dto';
 
 @Controller('libraries')
 export class LibraryController {
@@ -36,6 +40,19 @@ export class LibraryController {
   @Get()
   findAll(@CurrentUser() user: RequestUser) {
     return this.libraryService.findAll(user);
+  }
+
+  @Get('capabilities')
+  @Header('Cache-Control', 'private, no-store')
+  @NoApiKeyUsageTracking()
+  capabilities(@CurrentUser() user: RequestUser) {
+    return this.libraryService.capabilities(user);
+  }
+
+  @Get('assignable-users')
+  @Header('Cache-Control', 'private, no-store')
+  creationAssignableUsers(@CurrentUser() user: RequestUser, @Query() query: PathScopeDto) {
+    return this.libraryService.creationAssignableUsers({ user, scope: query.scope });
   }
 
   /**
@@ -63,6 +80,12 @@ export class LibraryController {
   @RequirePermission(Permission.ManageLibraries)
   previewRegexMetadata(@Body() dto: RegexMetadataPreviewDto) {
     return this.libraryService.previewRegexMetadata(dto);
+  }
+
+  @Get('administration')
+  @RequirePermission(Permission.ManageLibraries)
+  administration(@CurrentUser() user: RequestUser) {
+    return this.libraryService.administration(user);
   }
 
   @Get(':id')
@@ -100,6 +123,17 @@ export class LibraryController {
     return this.bookService.queryJumpBucketsForLibrary(user, libraryId, query);
   }
 
+  @Post('personal')
+  @Auditable({
+    action: AuditAction.LibraryCreate,
+    resource: AuditResource.Library,
+    getResourceId: (_, res: unknown) => (res as { id?: number })?.id,
+    description: () => 'Created personal library',
+  })
+  createPersonal(@Body() dto: CreatePersonalLibraryDto, @CurrentUser() user: RequestUser) {
+    return this.libraryService.createPersonal(dto, user);
+  }
+
   @Post()
   @RequirePermission(Permission.ManageLibraries)
   @Auditable({
@@ -108,46 +142,47 @@ export class LibraryController {
     getResourceId: (_, res: unknown) => (res as { id?: number })?.id,
     description: (_, res: unknown) => `Created library '${(res as { name?: string })?.name ?? 'unknown'}'`,
   })
-  create(@Body() dto: CreateLibraryDto) {
-    return this.libraryService.create(dto);
+  create(@Body() dto: CreateLibraryDto, @CurrentUser() user: RequestUser, @Query() query: PathScopeDto) {
+    return this.libraryService.create(dto, { user, scope: query.scope });
   }
 
   @Patch(':id')
-  @RequirePermission(Permission.ManageLibraries)
+  @ForbidPermission(Permission.DemoRestricted)
   @Auditable({
     action: AuditAction.LibraryUpdate,
     resource: AuditResource.Library,
     getResourceId: (req) => parseInt(req.params['id'] as string, 10),
     description: (req) => `Updated library #${req.params['id']}`,
   })
-  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateLibraryDto) {
-    return this.libraryService.update(id, dto);
+  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateLibraryDto, @CurrentUser() user: RequestUser, @Query() query: PathScopeDto) {
+    return this.libraryService.update(id, dto, { user, scope: query.scope });
   }
 
   @Delete(':id')
+  @ForbidPermission(Permission.DemoRestricted)
   @HttpCode(HttpStatus.NO_CONTENT)
-  @RequirePermission(Permission.ManageLibraries)
   @Auditable({
     action: AuditAction.LibraryDelete,
     resource: AuditResource.Library,
     getResourceId: (req) => parseInt(req.params['id'] as string, 10),
     description: (req) => `Deleted library #${req.params['id']}`,
   })
-  remove(@Param('id', ParseIntPipe) id: number) {
+  async remove(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: RequestUser, @Query() query: PathScopeDto) {
+    await this.libraryService.assertManagement(id, { user, scope: query.scope });
     return this.libraryService.remove(id);
   }
 
   @Post('prescan')
-  @RequirePermission(Permission.ManageLibraries)
-  prescan(@Body() dto: PrescanLibraryDto) {
-    return this.libraryService.prescan(dto);
+  @KeyReadSafe()
+  prescan(@Body() dto: PrescanLibraryDto, @CurrentUser() user: RequestUser, @Query() query: PathScopeDto) {
+    return this.libraryService.prescan(dto, { user, scope: query.scope });
   }
 
   @Post('reorder')
   @HttpCode(HttpStatus.NO_CONTENT)
   @RequirePermission(Permission.ManageLibraries)
-  reorder(@Body() dto: ReorderLibrariesDto) {
-    return this.libraryService.reorder(dto);
+  reorder(@Body() dto: ReorderLibrariesDto, @CurrentUser() user: RequestUser) {
+    return this.libraryService.reorder(dto, user);
   }
 
   @Get(':id/stats')
@@ -157,16 +192,14 @@ export class LibraryController {
   }
 
   @Get(':id/recompute-added-at')
-  @RequireLibraryAccess('editor')
-  @RequirePermission(Permission.ManageLibraries)
-  getAddedAtRecompute(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: RequestUser) {
-    return this.addedAtService.get(id, user);
+  @RequireScopedPermission(Permission.ManageLibraries, 'library')
+  getAddedAtRecompute(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: RequestUser, @Query('scope') scope?: string) {
+    return this.addedAtService.get(id, user, scope);
   }
 
   @Post(':id/recompute-added-at')
   @HttpCode(HttpStatus.ACCEPTED)
-  @RequireLibraryAccess('editor')
-  @RequirePermission(Permission.ManageLibraries)
+  @RequireScopedPermission(Permission.ManageLibraries, 'library')
   @Auditable({
     action: AuditAction.LibraryRecomputeAddedAt,
     resource: AuditResource.Library,
@@ -178,8 +211,7 @@ export class LibraryController {
   }
 
   @Post(':id/write-metadata-to-files')
-  @RequireLibraryAccess('editor')
-  @RequirePermission(Permission.LibraryEditMetadata)
+  @RequireScopedPermission(Permission.LibraryEditMetadata, 'library')
   @Auditable({
     action: AuditAction.LibraryWriteMetadataToFiles,
     resource: AuditResource.Library,
@@ -250,74 +282,91 @@ export class LibraryController {
     }
   }
 
+  @Get(':id/assignable-users')
+  assignableUsers(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: RequestUser, @Query() query: PathScopeDto) {
+    return this.libraryService.assignableUsers(id, { user, scope: query.scope });
+  }
+
   // ── Library access management ─────────────────────────────────────────────
 
   @Get(':libraryId/access')
-  @RequirePermission(Permission.ManageLibraries)
-  getAccess(@Param('libraryId', ParseIntPipe) libraryId: number) {
+  async getAccess(@Param('libraryId', ParseIntPipe) libraryId: number, @CurrentUser() user: RequestUser, @Query() query: PathScopeDto) {
+    await this.libraryService.assertManagement(libraryId, { user, scope: query.scope });
     return this.libraryService.getAccess(libraryId);
   }
 
   @Post(':libraryId/access')
-  @RequirePermission(Permission.ManageLibraries)
+  @ForbidPermission(Permission.DemoRestricted)
   @Auditable({
     action: AuditAction.LibraryAccessGrant,
     resource: AuditResource.Library,
     getResourceId: (req) => parseInt(req.params['libraryId'] as string, 10),
     description: (req) => `Granted library #${req.params['libraryId']} access to user #${(req.body as { userId?: number })?.userId}`,
   })
-  grantAccess(@Param('libraryId', ParseIntPipe) libraryId: number, @Body() dto: GrantLibraryAccessDto) {
-    return this.libraryService.grantAccess(libraryId, dto);
+  async grantAccess(
+    @Param('libraryId', ParseIntPipe) libraryId: number,
+    @Body() dto: GrantLibraryAccessDto,
+    @CurrentUser() user: RequestUser,
+    @Query() query: PathScopeDto,
+  ) {
+    const requiredOwnerId = await this.libraryService.assertManagement(libraryId, { user, scope: query.scope });
+    return this.libraryService.grantAccess(libraryId, dto, requiredOwnerId, user);
   }
 
   @Patch(':libraryId/access/:userId')
-  @RequirePermission(Permission.ManageLibraries)
+  @ForbidPermission(Permission.DemoRestricted)
   @Auditable({
     action: AuditAction.LibraryAccessUpdate,
     resource: AuditResource.Library,
     getResourceId: (req) => parseInt(req.params['libraryId'] as string, 10),
     description: (req) => `Updated library #${req.params['libraryId']} access for user #${req.params['userId']}`,
   })
-  updateAccess(
+  async updateAccess(
     @Param('libraryId', ParseIntPipe) libraryId: number,
     @Param('userId', ParseIntPipe) userId: number,
     @Body() dto: UpdateLibraryAccessDto,
+    @CurrentUser() user: RequestUser,
+    @Query() query: PathScopeDto,
   ) {
-    return this.libraryService.updateAccess(libraryId, userId, dto.accessLevel);
+    const requiredOwnerId = await this.libraryService.assertManagement(libraryId, { user, scope: query.scope });
+    return this.libraryService.updateAccess(libraryId, userId, dto.accessLevel, requiredOwnerId, user);
   }
 
   @Delete(':libraryId/access/:userId')
+  @ForbidPermission(Permission.DemoRestricted)
   @HttpCode(HttpStatus.NO_CONTENT)
-  @RequirePermission(Permission.ManageLibraries)
   @Auditable({
     action: AuditAction.LibraryAccessRevoke,
     resource: AuditResource.Library,
     getResourceId: (req) => parseInt(req.params['libraryId'] as string, 10),
     description: (req) => `Revoked library #${req.params['libraryId']} access from user #${req.params['userId']}`,
   })
-  revokeAccess(@Param('libraryId', ParseIntPipe) libraryId: number, @Param('userId', ParseIntPipe) userId: number) {
-    return this.libraryService.revokeAccess(libraryId, userId);
+  async revokeAccess(
+    @Param('libraryId', ParseIntPipe) libraryId: number,
+    @Param('userId', ParseIntPipe) userId: number,
+    @CurrentUser() user: RequestUser,
+    @Query() query: PathScopeDto,
+  ) {
+    const requiredOwnerId = await this.libraryService.assertManagement(libraryId, { user, scope: query.scope });
+    return this.libraryService.revokeAccess(libraryId, userId, requiredOwnerId, user);
   }
 
   // ── Bulk rename ────────────────────────────────────────────────────────────
 
   @Get(':id/bulk-rename/preview')
-  @RequireLibraryAccess('editor')
-  @RequirePermission(Permission.ManageLibraries)
+  @RequireScopedPermission(Permission.ManageLibraries, 'library')
   getBulkRenamePreview(@Param('id', ParseIntPipe) libraryId: number, @Query() query: BulkRenamePreviewQueryDto) {
     return this.bulkRenameService.getPreview(libraryId, query.page, query.pageSize, query.status, query.search);
   }
 
   @Get(':id/bulk-rename/status')
-  @RequireLibraryAccess('editor')
-  @RequirePermission(Permission.ManageLibraries)
+  @RequireScopedPermission(Permission.ManageLibraries, 'library')
   getBulkRenameStatus(@Param('id', ParseIntPipe) libraryId: number) {
     return { running: this.bulkRenameService.isRunning(libraryId) };
   }
 
   @Post(':id/bulk-rename/execute')
-  @RequireLibraryAccess('editor')
-  @RequirePermission(Permission.ManageLibraries)
+  @RequireScopedPermission(Permission.ManageLibraries, 'library')
   @Auditable({
     action: AuditAction.LibraryBulkRename,
     resource: AuditResource.Library,

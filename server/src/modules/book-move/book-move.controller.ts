@@ -2,12 +2,11 @@ import { Body, Controller, Post, Res } from '@nestjs/common';
 import type { FastifyReply } from 'fastify';
 
 import type { BookMoveProgressEvent } from '@bookorbit/types';
-import { AuditAction, AuditResource, Permission } from '@bookorbit/types';
+import { AuditAction, AuditResource } from '@bookorbit/types';
 
 import { KeyReadSafe } from '../../common/decorators/api-key-policy.decorator';
 import { Auditable } from '../../common/decorators/auditable.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import type { RequestUser } from '../../common/types/request-user';
 import { BookMoveService } from './book-move.service';
 import { MoveBooksDto, MovePreviewDto } from './dto/move-books.dto';
@@ -23,7 +22,6 @@ export class BookMoveController {
 
   @Post('preview')
   @KeyReadSafe()
-  @RequirePermission(Permission.LibraryEditMetadata)
   preview(@Body() dto: MovePreviewDto, @CurrentUser() user: RequestUser) {
     return this.bookMoveService.preview(dto, user);
   }
@@ -34,7 +32,6 @@ export class BookMoveController {
    * error instead of a 200 with an empty event stream.
    */
   @Post()
-  @RequirePermission(Permission.LibraryEditMetadata)
   @Auditable({
     action: AuditAction.BookBulkMoveLibrary,
     resource: AuditResource.Book,

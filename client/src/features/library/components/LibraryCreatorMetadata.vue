@@ -29,13 +29,14 @@ const props = withDefaults(
     formatCounts?: Record<string, number> | null
     organizationMode?: OrganizationMode
     /** True once the library exists, so saved rules can be applied to the books already in it. */
+    canConfigureRegex?: boolean
     canReapplyRules?: boolean
     storedRegexMetadata?: RegexMetadataConfig | null
     reapplyingRules?: boolean
     reapplyJob?: RegexMetadataReapplyJob | null
     reapplyErrorKey?: string | null
   }>(),
-  { allowedFormats: () => [], formatCounts: null, storedRegexMetadata: null, reapplyJob: null, reapplyErrorKey: null },
+  { canConfigureRegex: true, allowedFormats: () => [], formatCounts: null, storedRegexMetadata: null, reapplyJob: null, reapplyErrorKey: null },
 )
 
 const emit = defineEmits<{
@@ -318,7 +319,7 @@ function sourceHint(source: string) {
             <span class="block text-sm font-semibold">{{ sourceTitle(source) }}</span>
             <span class="block text-xs text-muted-foreground">{{ sourceHint(source) }}</span>
           </span>
-          <Button v-if="source === 'regex'" variant="outline" size="sm" @click="openRegex">{{
+          <Button v-if="source === 'regex' && canConfigureRegex" variant="outline" size="sm" @click="openRegex">{{
             t('library.creator.metadata.regex.configure')
           }}</Button>
           <div class="flex gap-1">

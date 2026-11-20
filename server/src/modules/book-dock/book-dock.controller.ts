@@ -282,7 +282,7 @@ export class BookDockController {
   }
 
   @Post('finalize/preview')
-  @RequirePermission(Permission.BookDockAccess, Permission.LibraryUpload)
+  @RequirePermission(Permission.BookDockAccess)
   @HttpCode(HttpStatus.OK)
   previewFinalize(@CurrentUser() user: RequestUser, @Body() dto: FinalizeBookDockDto) {
     return this.finalizeService.previewFinalize(
@@ -304,7 +304,7 @@ export class BookDockController {
   }
 
   @Post('finalize/discard-duplicates')
-  @RequirePermission(Permission.BookDockAccess, Permission.LibraryUpload)
+  @RequirePermission(Permission.BookDockAccess)
   @HttpCode(HttpStatus.OK)
   discardFinalizeDuplicates(@CurrentUser() user: RequestUser, @Body() dto: FinalizeBookDockDto) {
     return this.finalizeService.discardDuplicateCandidates(
@@ -326,7 +326,7 @@ export class BookDockController {
   }
 
   @Post('finalize')
-  @RequirePermission(Permission.BookDockAccess, Permission.LibraryUpload)
+  @RequirePermission(Permission.BookDockAccess)
   @Auditable({
     action: AuditAction.BookDockFinalize,
     resource: AuditResource.BookDockFile,

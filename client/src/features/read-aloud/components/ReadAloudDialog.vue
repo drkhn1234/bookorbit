@@ -6,7 +6,6 @@ import { DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRo
 import {
   estimateReadAloudWorkBytes,
   languageSubtagOf,
-  Permission,
   type CreateReadAloudJobRequest,
   type ReadAloudCapability,
   type ReadAloudGranularity,
@@ -15,7 +14,6 @@ import {
 import { formatBytes } from '@/lib/formatting'
 import { formatLanguageName } from '@/i18n/formatters'
 import { Select } from '@/components/ui/select'
-import { usePermissions } from '@/features/auth/composables/usePermissions'
 import { useReadAloudPreferences } from '../composables/useReadAloudPreferences'
 import { deviceLabel, formatReadAloudDuration } from '../lib/read-aloud'
 import ReadAloudTrackList from './ReadAloudTrackList.vue'
@@ -30,6 +28,7 @@ const props = defineProps<{
   /** A previous job's input, for "Start over"; null starts from the book's defaults. */
   initial: ReadAloudJobInput | null
   busy: boolean
+  canDeleteBooks?: boolean
   /** A translation key for the last failed start, owned by the dialog's caller. */
   error: string | null
 }>()
@@ -37,7 +36,6 @@ const props = defineProps<{
 const emit = defineEmits<{ close: []; create: [input: CreateReadAloudJobRequest] }>()
 
 const { t, locale } = useI18n()
-const { hasPermission } = usePermissions()
 const preferences = useReadAloudPreferences()
 const savingDefault = preferences.saving
 const ids = useId()
@@ -56,7 +54,7 @@ const granularity = ref<ReadAloudGranularity>('sentence')
 /** The read-along to overwrite, or "keep" to add the new one beside it. */
 const existingChoice = ref<number | 'keep'>('keep')
 /** Replacing deletes the old file, so the server only accepts it from someone who may delete books. */
-const canReplace = computed(() => hasPermission(Permission.LibraryDeleteBooks))
+const canReplace = computed(() => props.canDeleteBooks)
 
 const bookOrder = computed(() => props.capability.audioFiles.map((file) => file.id))
 const skippedSet = computed(() => new Set(skippedTracks.value))

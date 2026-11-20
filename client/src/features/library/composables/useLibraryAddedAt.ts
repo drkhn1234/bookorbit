@@ -8,9 +8,9 @@ const ERROR_KEYS: Record<string, string> = {
   ADDED_AT_BUSY: 'busy',
 }
 
-export function useLibraryAddedAt(libraryId: Ref<number | null>) {
+export function useLibraryAddedAt(libraryId: Ref<number | null>, administrative?: Ref<boolean>) {
   return useLibraryJob<AddedAtRecomputeJob>(libraryId, {
-    path: (id) => `/api/v1/libraries/${id}/recompute-added-at`,
+    path: (id) => `/api/v1/libraries/${id}/recompute-added-at${administrative?.value ? '?scope=admin' : ''}`,
     errorKeys: ERROR_KEYS,
     errorPrefix: 'library.creator.scanner.addedAt.errors.',
   })

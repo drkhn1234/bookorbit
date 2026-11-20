@@ -12449,7 +12449,7 @@
         "add": "Add",
         "emptyCreate": "Nobody else yet. People you add here get access as soon as the library exists.",
         "superusers": "Superusers always have full access.",
-        "levelsHint": "Viewers can browse and read. Editors and owners can also edit metadata when their account has the Edit metadata permission.",
+        "roleCapabilitiesHint": "Viewers can browse and read. Editors can edit metadata when their account has the Edit metadata permission. Owners can edit metadata in libraries they own.",
         "levelFor": "Access level for {name}",
         "revokeFor": "Remove access for {name}",
         "revokeQuestion": "Remove access?",
@@ -12771,6 +12771,22 @@
         "title": "Drop files here or click to browse",
         "hint": "{formats} - up to {size} MB each"
       }
+    },
+    "personal": {
+      "loading": "Checking library capabilities…",
+      "retry": "Retry",
+      "placement": "Choose folders in your personal storage or leave Folders empty to get a new folder.",
+      "defaultFolder": "New folder by default",
+      "owner": "You will automatically own this library. You can share it from Access.",
+      "needsHint": "Needs a name and an icon.",
+      "explicitAccess": "Library content is visible only to people granted access.",
+      "ownerOnly": "Creator only",
+      "notOwner": "Owner access is required to manage this library.",
+      "usePersonal": "Use personal storage",
+      "useAdministrative": "Use administrative storage (explicit administrator mode)",
+      "enableAdministrator": "Enable Administrator Mode",
+      "disableAdministrator": "Disable Administrator Mode",
+      "administratorActive": "Administrator Mode active"
     }
   },
   "metadataReminders": {

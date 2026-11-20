@@ -1,23 +1,45 @@
 import { retainFinishedReads } from '../../db/reading-attempt-retention';
 import { deleteLibraryFoldersWithHashInvalidation } from '../../db/book-file-hash-history';
 import { writeKoboTombstones } from '../../db/kobo-entitlement-tombstones';
-import { Inject, Injectable } from '@nestjs/common';
-import { and, eq, getTableColumns, gt, inArray, isNotNull, lte, or, sql } from 'drizzle-orm';
+import { ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { and, eq, getTableColumns, gt, inArray, isNotNull, lte, ne, sql } from 'drizzle-orm';
+import type { SQL } from 'drizzle-orm';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { type AccessLevel, type ContentFilterRules, type LibraryStats } from '@bookorbit/types';
+import { Permission, type AccessLevel, type ContentFilterRules, type LibraryStats } from '@bookorbit/types';
 
 import { buildContentFilterClauses } from '../../common/utils/content-filter-sql.utils';
 import { DB } from '../../db';
+import { currentGrantActor, lockGrantAccount, lockGrantLibraries } from '../../db/library-grant-locks';
+import type { RequestUser } from '../../common/types/request-user';
 import { MIN_VALID_FILE_TIME_MS } from '../../common/utils/file-time.utils';
 import * as schema from '../../db/schema';
 import { bookFiles, books, libraries, libraryFolders } from '../../db/schema';
 import { LIBRARY_BOOK_STATUS_PRESENT } from './library.constants';
 
 type Db = NodePgDatabase<typeof schema>;
+type RegisteredFolder = { libraryId: number; path: string; libraryName: string };
+
+function lockFolderRegistry(tx: Pick<Db, 'execute'>) {
+  return tx.execute(sql`select pg_advisory_xact_lock(72104912)`);
+}
 
 @Injectable()
 export class LibraryRepository {
   constructor(@Inject(DB) private readonly db: Db) {}
+
+  administration(libraryIds?: readonly number[]) {
+    if (libraryIds?.length === 0) return Promise.resolve([]);
+    return this.db
+      .select({
+        id: libraries.id,
+        name: libraries.name,
+        icon: libraries.icon,
+        ownerCount: sql<number>`(select count(*)::int from ${schema.userLibraryAccess} a where a.library_id = ${libraries.id} and a.access_level = 'owner')`,
+      })
+      .from(libraries)
+      .where(libraryIds ? inArray(libraries.id, [...libraryIds]) : undefined)
+      .orderBy(libraries.id);
+  }
 
   findAll() {
     return this.db
@@ -107,12 +129,38 @@ export class LibraryRepository {
       .orderBy(libraryFolders.libraryId, libraryFolders.createdAt, libraryFolders.id);
   }
 
-  findAllFolderPaths() {
-    return this.db
+  findAllFolderPaths(db: Pick<Db, 'select'> = this.db) {
+    return db
       .select({ libraryId: libraryFolders.libraryId, path: libraryFolders.path, libraryName: libraries.name })
       .from(libraryFolders)
       .innerJoin(libraries, eq(libraries.id, libraryFolders.libraryId))
       .orderBy(libraries.displayOrder, libraries.name, libraryFolders.createdAt, libraryFolders.id);
+  }
+
+  async createOwned(
+    data: typeof libraries.$inferInsert,
+    paths: string[],
+    creatorId: number,
+    validateFolders: (registered: RegisteredFolder[]) => Promise<void>,
+  ) {
+    return this.db.transaction(async (tx) => {
+      await lockGrantAccount(tx, creatorId);
+      await lockFolderRegistry(tx);
+      await validateFolders(await this.findAllFolderPaths(tx));
+      const duplicate = await tx
+        .select({ id: libraries.id })
+        .from(libraries)
+        .where(eq(sql`lower(${libraries.name})`, data.name.toLowerCase()))
+        .limit(1);
+      if (duplicate.length) throw new ConflictException('A library with this name already exists');
+      const [library] = await tx.insert(libraries).values(data).returning();
+      const folders = await tx
+        .insert(libraryFolders)
+        .values(paths.map((path) => ({ libraryId: library.id, path })))
+        .returning();
+      await tx.insert(schema.userLibraryAccess).values({ libraryId: library.id, userId: creatorId, accessLevel: 'owner' });
+      return { library, folders };
+    });
   }
 
   insert(data: typeof libraries.$inferInsert) {
@@ -127,8 +175,43 @@ export class LibraryRepository {
       .returning();
   }
 
-  insertFolders(data: (typeof libraryFolders.$inferInsert)[]) {
-    return this.db.insert(libraryFolders).values(data).returning();
+  async updateWithFolders(
+    id: number,
+    data: Partial<typeof libraries.$inferInsert>,
+    resolvePaths: (current: string[], registered: RegisteredFolder[]) => Promise<string[]>,
+  ) {
+    return this.db.transaction(async (tx) => {
+      await lockFolderRegistry(tx);
+      const [existing] = await tx.select({ id: libraries.id }).from(libraries).where(eq(libraries.id, id)).for('update');
+      if (!existing) throw new NotFoundException('Library not found');
+      const folders = await tx
+        .select()
+        .from(libraryFolders)
+        .where(eq(libraryFolders.libraryId, id))
+        .orderBy(libraryFolders.createdAt, libraryFolders.id);
+      const existingPaths = new Set(folders.map((folder) => folder.path));
+      const nextPaths = new Set(await resolvePaths([...existingPaths], await this.findAllFolderPaths(tx)));
+      const removedIds = folders.filter((folder) => !nextPaths.has(folder.path)).map((folder) => folder.id);
+      const addedPaths = [...nextPaths].filter((path) => !existingPaths.has(path));
+
+      if (removedIds.length) await deleteLibraryFoldersWithHashInvalidation(tx, inArray(libraryFolders.id, removedIds));
+      const addedFolders = addedPaths.length
+        ? await tx
+            .insert(libraryFolders)
+            .values(addedPaths.map((path) => ({ libraryId: id, path })))
+            .returning()
+        : [];
+      const [library] = await tx
+        .update(libraries)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(libraries.id, id))
+        .returning();
+      return {
+        library,
+        folders: [...folders.filter((folder) => nextPaths.has(folder.path)), ...addedFolders],
+        pathsChanged: removedIds.length > 0 || addedPaths.length > 0,
+      };
+    });
   }
 
   findBookIdsByLibrary(libraryId: number) {
@@ -260,19 +343,17 @@ export class LibraryRepository {
   /**
    * Which of these users can open this library, answered in one query rather than one per user.
    *
-   * A superuser holds no row in the access table and reaches every library anyway, so the flag is
-   * read alongside the grants: filtering on grants alone would report an administrator as having
-   * access to nothing.
+   * Administrative authority does not imply content access; include only explicit grants.
    */
   findUserIdsWithAccess(libraryId: number, userIds: number[]) {
     return this.db
       .select({ id: schema.users.id })
       .from(schema.users)
-      .leftJoin(
+      .innerJoin(
         schema.userLibraryAccess,
         and(eq(schema.userLibraryAccess.userId, schema.users.id), eq(schema.userLibraryAccess.libraryId, libraryId)),
       )
-      .where(and(inArray(schema.users.id, userIds), or(eq(schema.users.isSuperuser, true), isNotNull(schema.userLibraryAccess.userId))));
+      .where(inArray(schema.users.id, userIds));
   }
 
   async getAddedAtRecomputeBounds(libraryId: number) {
@@ -349,27 +430,56 @@ export class LibraryRepository {
     });
   }
 
-  async grantAccess(libraryId: number, userId: number, accessLevel: AccessLevel) {
-    await this.db
-      .insert(schema.userLibraryAccess)
-      .values({ libraryId, userId, accessLevel })
-      .onConflictDoUpdate({
-        target: [schema.userLibraryAccess.libraryId, schema.userLibraryAccess.userId],
-        set: { accessLevel },
-      });
+  private async changeAccess(
+    libraryId: number,
+    userId: number,
+    accessLevel: AccessLevel | null,
+    requiredOwnerId: number | null,
+    actor: RequestUser,
+    upsert = false,
+  ) {
+    return this.db.transaction(async (tx) => {
+      await lockGrantAccount(tx, userId);
+      const locked = await lockGrantLibraries(tx, [libraryId]);
+      if (!locked.has(libraryId)) throw new NotFoundException('Library not found');
+      const principal = await currentGrantActor(tx, actor);
+      if (principal.permissions.includes(Permission.DemoRestricted)) {
+        throw new ForbiddenException(`Forbidden permission: ${Permission.DemoRestricted}`);
+      }
+      if (requiredOwnerId === null && !principal.isSuperuser && !principal.permissions.includes(Permission.ManageLibraries)) {
+        throw new ForbiddenException(`Missing permission: ${Permission.ManageLibraries}`);
+      }
+      const grants = await tx.select().from(schema.userLibraryAccess).where(eq(schema.userLibraryAccess.libraryId, libraryId));
+      if (requiredOwnerId !== null && !grants.some((grant) => grant.userId === requiredOwnerId && grant.accessLevel === 'owner')) {
+        throw new ForbiddenException('Owner access is required to change library grants');
+      }
+      if (
+        accessLevel !== 'owner' &&
+        grants.some((grant) => grant.userId === userId && grant.accessLevel === 'owner') &&
+        !grants.some((grant) => grant.userId !== userId && grant.accessLevel === 'owner')
+      )
+        throw new ConflictException('The last library owner cannot be removed or demoted');
+      const target = and(eq(schema.userLibraryAccess.libraryId, libraryId), eq(schema.userLibraryAccess.userId, userId));
+      if (accessLevel === null) await tx.delete(schema.userLibraryAccess).where(target);
+      else if (upsert) {
+        const [recipient] = await tx.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.id, userId)).limit(1);
+        if (!recipient) throw new NotFoundException('User not found');
+        await tx
+          .insert(schema.userLibraryAccess)
+          .values({ libraryId, userId, accessLevel })
+          .onConflictDoUpdate({ target: [schema.userLibraryAccess.libraryId, schema.userLibraryAccess.userId], set: { accessLevel } });
+      } else await tx.update(schema.userLibraryAccess).set({ accessLevel }).where(target);
+    });
   }
 
-  async updateAccess(libraryId: number, userId: number, accessLevel: AccessLevel) {
-    await this.db
-      .update(schema.userLibraryAccess)
-      .set({ accessLevel })
-      .where(and(eq(schema.userLibraryAccess.libraryId, libraryId), eq(schema.userLibraryAccess.userId, userId)));
+  grantAccess(libraryId: number, userId: number, accessLevel: AccessLevel, requiredOwnerId: number | null, actor: RequestUser) {
+    return this.changeAccess(libraryId, userId, accessLevel, requiredOwnerId, actor, true);
   }
-
-  async revokeAccess(libraryId: number, userId: number) {
-    await this.db
-      .delete(schema.userLibraryAccess)
-      .where(and(eq(schema.userLibraryAccess.libraryId, libraryId), eq(schema.userLibraryAccess.userId, userId)));
+  updateAccess(libraryId: number, userId: number, accessLevel: AccessLevel, requiredOwnerId: number | null, actor: RequestUser) {
+    return this.changeAccess(libraryId, userId, accessLevel, requiredOwnerId, actor);
+  }
+  revokeAccess(libraryId: number, userId: number, requiredOwnerId: number | null, actor: RequestUser) {
+    return this.changeAccess(libraryId, userId, null, requiredOwnerId, actor);
   }
 
   getUsersNotInLibrary(libraryId: number) {
@@ -378,10 +488,18 @@ export class LibraryRepository {
       .from(schema.userLibraryAccess)
       .where(eq(schema.userLibraryAccess.libraryId, libraryId));
 
+    return this.getAssignableUsers(sql`${schema.users.id} not in (${subquery})`);
+  }
+
+  getAssignableUsersForCreator(creatorId: number) {
+    return this.getAssignableUsers(ne(schema.users.id, creatorId));
+  }
+
+  private getAssignableUsers(filter: SQL) {
     return this.db
       .select({ id: schema.users.id, username: schema.users.username, name: schema.users.name })
       .from(schema.users)
-      .where(and(eq(schema.users.active, true), sql`${schema.users.id} not in (${subquery})`));
+      .where(and(eq(schema.users.active, true), filter));
   }
 
   getAccessWithUsers(libraryId: number) {

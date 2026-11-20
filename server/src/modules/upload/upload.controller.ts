@@ -2,7 +2,7 @@ import { Permission } from '@bookorbit/types';
 import { BadRequestException, Controller, HttpCode, HttpStatus, Param, ParseIntPipe, Post, Query, Req } from '@nestjs/common';
 
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { RequirePermission } from '../../common/decorators/require-permission.decorator';
+import { RequireScopedPermission } from '../../common/decorators/require-scoped-permission.decorator';
 import type { MultipartRequest } from '../../common/types/multipart-request';
 import type { RequestUser } from '../../common/types/request-user';
 import { AppSettingsService } from '../app-settings/app-settings.service';
@@ -17,12 +17,13 @@ export class UploadController {
 
   @Post(':id/upload')
   @HttpCode(HttpStatus.CREATED)
-  @RequirePermission(Permission.LibraryUpload)
+  @RequireScopedPermission(Permission.LibraryUpload, 'library')
   async uploadBook(
     @Param('id', ParseIntPipe) libraryId: number,
     @Query('folderId') rawFolderId: string | undefined,
     @CurrentUser() user: RequestUser,
     @Req() req: MultipartRequest,
+    @Query('scope') scope?: string,
   ) {
     // Override the global multipart fileSize limit for book uploads.
     // Per-request options are deep-merged with plugin defaults (busboy config),
@@ -33,7 +34,9 @@ export class UploadController {
 
     const folderId = this.parseFolderId(rawFolderId);
 
-    return this.uploadService.upload(libraryId, folderId, data.filename, data.file, user);
+    return scope === 'admin'
+      ? this.uploadService.upload(libraryId, folderId, data.filename, data.file, user, scope)
+      : this.uploadService.upload(libraryId, folderId, data.filename, data.file, user);
   }
 
   private parseFolderId(rawFolderId: string | undefined): number | undefined {

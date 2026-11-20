@@ -347,6 +347,9 @@ export class UserService {
     if (result === 'target_not_found') throw new NotFoundException('User not found');
     if (result === 'requester_not_superuser') throw new ForbiddenException('Only administrators can delete administrator accounts');
     if (result === 'last_superuser') throw new ConflictException('Cannot delete the last administrator');
+    if (result === 'last_library_owner') {
+      throw new ConflictException('Assign another owner to each library where this account is the sole owner before deleting the account');
+    }
   }
 
   /**
@@ -429,15 +432,7 @@ export class UserService {
   }
 
   async setLibraries(targetUserId: number, libraryIds: number[], requestingUser: RequestUser): Promise<void> {
-    const target = await this.userRepo.findByIdWithPermissions(targetUserId);
-    if (!target) throw new NotFoundException('User not found');
-    if (target.isSuperuser && !requestingUser.isSuperuser) {
-      throw new ForbiddenException('Only administrators can edit administrator accounts');
-    }
-
-    const normalizedLibraryIds = this.uniqueIds(libraryIds);
-    await this.assertKnownLibraryIds(normalizedLibraryIds);
-    await this.userRepo.replaceLibraries(targetUserId, normalizedLibraryIds);
+    await this.userRepo.replaceLibraries(targetUserId, this.uniqueIds(libraryIds), requestingUser);
   }
 
   async adminResetPassword(targetUserId: number, requestingUser: RequestUser) {

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { ReadAloudErrorCode, ReadAloudJob, ReadAloudStageUnit } from '@bookorbit/types';
-import { isReadAloudErrorCode, Permission, READ_ALOUD_ACTIVE_JOB_STATUSES } from '@bookorbit/types';
+import { isReadAloudErrorCode, READ_ALOUD_ACTIVE_JOB_STATUSES } from '@bookorbit/types';
 
 import type { ReadAloudJobRow } from '../../db/schema';
 import { ReadAloudJobRepository, type ReadAloudJobPayload } from './read-aloud-job.repository';
@@ -10,12 +10,7 @@ export type ReadAloudViewer = { id: number; isSuperuser: boolean };
 const ACTIVE_STATUSES = new Set<string>(READ_ALOUD_ACTIVE_JOB_STATUSES);
 
 export function canManageReadAloudJob(row: Pick<ReadAloudJobRow, 'requestedByUserId'>, viewer: ReadAloudViewer): boolean {
-  return viewer.isSuperuser || (row.requestedByUserId != null && row.requestedByUserId === viewer.id);
-}
-
-/** Replacing overwrites a file's content for good, which `DELETE /books/files/:fileId` gates the same way. */
-export function canReplaceReadAlong(user: { isSuperuser: boolean; permissions: readonly string[] }): boolean {
-  return user.isSuperuser || user.permissions.includes(Permission.LibraryDeleteBooks);
+  return row.requestedByUserId != null && row.requestedByUserId === viewer.id;
 }
 
 @Injectable()

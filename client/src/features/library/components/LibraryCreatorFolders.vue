@@ -22,6 +22,7 @@ const props = withDefaults(
     libraryId?: number | null
     organizationMode?: OrganizationMode
     organizationModeLocked?: boolean
+    personalCreation?: boolean
   }>(),
   {
     checks: () => ({}),
@@ -215,7 +216,7 @@ function handleOrganizationMode(value: OrganizationMode) {
       </div>
 
       <form class="flex flex-wrap items-start gap-2 border-t border-border bg-background/50 px-3 py-2.5" @submit.prevent="addManualFolder">
-        <div class="min-w-0 flex-[1_1_14rem]">
+        <div v-if="!personalCreation" class="min-w-0 flex-[1_1_14rem]">
           <label for="manual-folder-path" class="sr-only">{{ t('library.creator.folders.absolutePath') }}</label>
           <div class="relative">
             <FolderPlus :size="15" class="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
@@ -234,6 +235,7 @@ function handleOrganizationMode(value: OrganizationMode) {
           <p v-if="manualError" id="manual-folder-error" class="mt-1.5 text-xs text-destructive" role="alert">{{ manualError }}</p>
         </div>
         <button
+          v-if="!personalCreation"
           type="submit"
           class="inline-flex h-9 items-center gap-1.5 rounded-md border border-border px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted"
         >

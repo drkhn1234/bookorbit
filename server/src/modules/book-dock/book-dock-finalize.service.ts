@@ -670,7 +670,8 @@ export class BookDockFinalizeService implements OnModuleInit, OnApplicationBoots
       }
 
       const library = await this.findLibraryOrFail(libraryId);
-      await this.libraryService.verifyAccess(requester ?? { id: userId, isSuperuser }, libraryId);
+      if (requester) await this.libraryService.verifyPermission(requester, libraryId, Permission.LibraryUpload);
+      else await this.libraryService.verifyAccess({ id: userId, isSuperuser }, libraryId);
       if (requestedJoin && requestedJoin.libraryId !== libraryId) {
         throw joinError('BOOK_DOCK_JOIN_OTHER_LIBRARY', 'The book this file was meant to join is in a different library');
       }

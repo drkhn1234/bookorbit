@@ -82,6 +82,7 @@ async function uploadSingle(item: FileUploadItem, url: string): Promise<void> {
 
 export function useBookUpload() {
   const files = ref<FileUploadItem[]>([])
+  let uploadGeneration = 0
 
   const pendingCount = computed(() => files.value.filter((f) => f.status === 'pending').length)
   const isUploading = computed(() => files.value.some((f) => f.status === 'uploading'))
@@ -119,19 +120,25 @@ export function useBookUpload() {
   }
 
   function reset() {
+    uploadGeneration++
     files.value = []
   }
 
-  async function startUpload(libraryId: number, folderId?: number) {
+  async function startUpload(libraryId: number, folderId?: number, administrative = false) {
     const pending = files.value.filter((f) => f.status === 'pending')
     if (pending.length === 0) return
 
     const baseUrl = `/api/v1/libraries/${libraryId}/upload`
-    const url = folderId !== undefined ? `${baseUrl}?folderId=${folderId}` : baseUrl
+    const params = new URLSearchParams()
+    if (folderId !== undefined) params.set('folderId', String(folderId))
+    if (administrative) params.set('scope', 'admin')
+    const url = params.size > 0 ? `${baseUrl}?${params}` : baseUrl
 
     // Process pending items with a concurrency limit of UPLOAD_CONCURRENCY
+    const generation = ++uploadGeneration
     let index = 0
     async function runNext(): Promise<void> {
+      if (generation !== uploadGeneration) return
       const item = pending[index++]
       if (!item) return
       await uploadSingle(item, url)

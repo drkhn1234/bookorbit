@@ -115,6 +115,8 @@ export interface LibraryOverviewEntry extends LibraryStats {
 }
 
 export interface PrescanPathResult {
+  /** Counts are a lower bound when the bounded directory inspection was truncated. */
+  truncated?: boolean;
   path: string;
   accessible: boolean;
   fileCount: number;
@@ -141,4 +143,13 @@ export interface UserLibraryGrant {
 
 export interface DefaultLibraryAccessConfig {
   libraryIds: number[];
+}
+
+/** Advisory current-policy decisions. Mutations revalidate; this response grants no content access. */
+export interface LibraryCapabilities {
+  canCreatePersonalLibrary: boolean;
+  personalLibraryDenialReason: string | null;
+  /** Write-capable administrator filesystem mode, still bounded by current library grants. */
+  canUseAdministrativeStorage: boolean;
+  administrativeStorageDenialReason: string | null;
 }

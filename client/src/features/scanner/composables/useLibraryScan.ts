@@ -12,13 +12,13 @@ export function useLibraryScan() {
   const { t } = useI18n()
   const { subscribeLibrary } = useScanProgress()
 
-  function request(library: Pick<Library, 'id'>): Promise<Response> {
-    return api(`/api/v1/scanner/libraries/${library.id}/scan`, { method: 'POST' })
+  function request(library: Pick<Library, 'id'>, administrative = false): Promise<Response> {
+    return api(`/api/v1/scanner/libraries/${library.id}/scan${administrative ? '?scope=admin' : ''}`, { method: 'POST' })
   }
 
-  async function scanLibrary(library: Pick<Library, 'id' | 'name'>): Promise<boolean> {
+  async function scanLibrary(library: Pick<Library, 'id' | 'name'>, administrative = false): Promise<boolean> {
     try {
-      const res = await request(library)
+      const res = await request(library, administrative)
       if (res.ok) {
         toast.success(t('settings.admin.libraries.scanStarted', { name: library.name }))
         subscribeLibrary(library.id)

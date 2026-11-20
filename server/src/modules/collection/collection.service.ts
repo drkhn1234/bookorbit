@@ -44,13 +44,13 @@ export class CollectionService {
   ) {}
 
   private assertReadAccess(collection: CollectionRow, user: RequestUser): void {
-    if (!collection.isPublic && collection.userId !== user.id && !user.isSuperuser) {
+    if (!collection.isPublic && collection.userId !== user.id) {
       throw new ForbiddenException(COLLECTION_ACCESS_DENIED_MESSAGE);
     }
   }
 
   private assertWriteAccess(collection: CollectionRow, user: RequestUser): void {
-    if (collection.userId !== user.id && !user.isSuperuser) {
+    if (collection.userId !== user.id) {
       throw new ForbiddenException('Cannot modify this collection');
     }
   }
@@ -90,7 +90,7 @@ export class CollectionService {
 
   private async hydrateForViewer(collection: CollectionRow, user: RequestUser) {
     const visibleBooksWhere = await this.buildViewerBookWhere(user);
-    const [hydrated] = await this.collectionRepo.findByIdForViewer(collection.id, user.id, user.isSuperuser, visibleBooksWhere);
+    const [hydrated] = await this.collectionRepo.findByIdForViewer(collection.id, user.id, visibleBooksWhere);
     if (!hydrated) throw new NotFoundException(COLLECTION_NOT_FOUND_MESSAGE);
     return this.toResponse(hydrated, user);
   }
@@ -321,6 +321,6 @@ export class CollectionService {
       timeZone,
       contentFilters: user.isSuperuser ? undefined : user.contentFilters,
     });
-    return and(filterWhere, this.collectionRepo.buildReadableMembershipWhere(id, user.id, user.isSuperuser));
+    return and(filterWhere, this.collectionRepo.buildReadableMembershipWhere(id, user.id));
   }
 }

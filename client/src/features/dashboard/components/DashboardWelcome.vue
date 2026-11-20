@@ -6,14 +6,14 @@ import type { Library } from '@bookorbit/types'
 import LibraryCreatorModal from '@/features/library/components/LibraryCreatorModal.vue'
 import { useLibraryCreationRedirect } from '@/features/library/composables/useLibraryCreationRedirect'
 
-defineProps<{ canCreate: boolean }>()
+const props = defineProps<{ canCreate: boolean }>()
 
 const { t } = useI18n()
 const { handleLibraryCreated } = useLibraryCreationRedirect()
 const createOpen = ref(false)
 
 function handleOpenCreate() {
-  createOpen.value = true
+  if (props.canCreate) createOpen.value = true
 }
 
 function handleClose() {
@@ -61,7 +61,7 @@ async function handleSaved(library: Library) {
 
         <!-- CTA -->
         <button
-          v-if="canCreate"
+          v-show="canCreate"
           class="inline-flex items-center gap-2 rounded-md bg-primary px-5 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
           @click="handleOpenCreate"
         >

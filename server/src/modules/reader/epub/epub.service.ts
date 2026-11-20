@@ -6,7 +6,7 @@ import { XMLParser } from 'fast-xml-parser';
 
 import type { EpubBookInfo, EpubManifestItem, EpubMediaOverlayPlaylist, EpubSpineItem, EpubTocItem } from '@bookorbit/types';
 import { BookReadService } from '../../book/book-read.service';
-import { LibraryService } from '../../library/library.service';
+import { BookService } from '../../book/book.service';
 import type { RequestUser } from '../../../common/types/request-user';
 import { buildEpubMediaOverlayPlaylist, cleanEpubZipPath, findEpubZipEntry } from './epub-media-overlay';
 import { parseEpubPackage } from './epub-package';
@@ -342,7 +342,7 @@ export class EpubService {
 
   constructor(
     private readonly bookReadService: BookReadService,
-    private readonly libraryService: LibraryService,
+    private readonly bookService: BookService,
   ) {}
 
   async getBookInfo(bookId: number, fileId: number | undefined, user: RequestUser): Promise<EpubBookInfo> {
@@ -468,9 +468,7 @@ export class EpubService {
   }
 
   private async resolveEpubFile(bookId: number, fileId: number | undefined, user: RequestUser): Promise<EpubFileResolution> {
-    const libraryId = await this.bookReadService.findLibraryIdByBookId(bookId);
-    if (libraryId === null) throw new NotFoundException(`Book ${bookId} not found`);
-    await this.libraryService.verifyAccess(user, libraryId);
+    await this.bookService.verifyBookAccess(bookId, user);
 
     if (fileId != null) {
       const file = await this.bookReadService.findFileById(fileId);

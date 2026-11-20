@@ -184,7 +184,7 @@ function itemCountText(item: EntityIndexItem): string {
         </button>
 
         <button
-          v-if="canAdd"
+          v-show="canAdd"
           class="flex h-8 items-center gap-1.5 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
           @click="handleAdd"
         >

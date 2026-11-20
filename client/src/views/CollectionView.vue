@@ -256,6 +256,8 @@ const {
   selectedIds,
   selectedCount,
   canEditSelectionMetadata,
+  canDownloadSelection,
+  canDeleteSelection,
   mergeSelection,
   mergeOpen,
   mergeBookIds,
@@ -554,6 +556,8 @@ defineOptions({ name: 'CollectionView' })
 
     <SelectionActionBar
       :metadata-editable="canEditSelectionMetadata"
+      :downloadable="canDownloadSelection"
+      :deletable="canDeleteSelection"
       :visible="selectionMode"
       :count="selectedCount"
       :in-collection="isCollectionOwner"

@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { constants as fsConstants } from 'fs';
 import { access, readdir, stat, statfs } from 'fs/promises';
@@ -175,7 +175,7 @@ function coverMediaOf(files: MergeFileRow[]): CoverMedium[] {
 }
 
 function canSeeOthers(user: RequestUser): boolean {
-  return user.isSuperuser || user.permissions.includes(Permission.ManageUsers);
+  return user.permissions.includes(Permission.ManageUsers);
 }
 
 function stableJson(value: unknown): string {
@@ -209,7 +209,7 @@ export class BookMergePlanner {
     if (new Set(allIds).size !== allIds.length) blockers.push({ code: 'SAME_BOOK' });
 
     // Access: 404 for anything the user cannot see (coded for a merged-away id), 403 for a viewer.
-    for (const id of [...new Set(allIds)]) await this.bookService.verifyBookAccess(id, user, 'editor');
+    for (const id of [...new Set(allIds)]) await this.bookService.verifyBookPermission(id, user, Permission.LibraryMergeBooks);
 
     this.validateOverrides(request, allIds);
     if (!canSeeOthers(user) && ((request.includeTagIds?.length ?? 0) > 0 || (request.includeGenreIds?.length ?? 0) > 0)) {
@@ -365,7 +365,19 @@ export class BookMergePlanner {
     const previewToken = eligible
       ? await this.previewToken(books, destination?.id ?? null, libraryId, loss, { warnings, librarySettingChanges })
       : null;
-    const canDelete = user.isSuperuser || user.permissions.includes(Permission.LibraryDeleteBooks);
+    const canDelete = (
+      await Promise.all(
+        books.map(async (book) => {
+          try {
+            await this.bookService.verifyBookPermission(book.id, user, Permission.LibraryDeleteBooks);
+            return true;
+          } catch (error) {
+            if (error instanceof ForbiddenException || error instanceof NotFoundException) return false;
+            throw error;
+          }
+        }),
+      )
+    ).every(Boolean);
 
     const preview: BookMergePreviewResponse = {
       eligible,

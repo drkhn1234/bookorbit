@@ -15,6 +15,7 @@ interface SelectionOptions {
   own: () => string[]
   others: () => PickerLibrary[]
   appDataPath: () => string | null
+  allowAppData?: () => boolean
   mode: Ref<OrganizationMode>
   onModeChange: (mode: OrganizationMode) => void
 }
@@ -40,7 +41,7 @@ export function useFolderPickerSelection(options: SelectionOptions) {
   function status(path: string): FolderStatus | null {
     return folderStatus(path, {
       denied: isDenied(path),
-      appData: isAppData(path),
+      appData: !options.allowAppData?.() && isAppData(path),
       own: options.own(),
       selected: selected.value,
       others: options.others(),
@@ -121,7 +122,9 @@ export function useFolderPickerSelection(options: SelectionOptions) {
       const keep: string[] = []
       const walk = async (folder: string) => {
         const listing = await options.data.ensureListing(folder)
-        const children = (listing?.entries ?? []).filter((entry) => !entry.system && !entry.appData).map((entry) => normalizeFolderPath(entry.path))
+        const children = (listing?.entries ?? [])
+          .filter((entry) => !entry.system && (!entry.appData || options.allowAppData?.()))
+          .map((entry) => normalizeFolderPath(entry.path))
         const counts = await options.data.summariesFor(children)
         for (const child of children) {
           if (readByOther(child) || isDenied(child)) continue
