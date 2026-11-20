@@ -9,6 +9,7 @@ import {
   closeReaderStateIsolationE2EContext,
   createLibraryWithFolder,
   createReaderStateIsolationE2EContext,
+  grantLibraryAccess,
   locateBookByAbsolutePath,
   triggerAndWaitForLibraryScan,
   type CreatedLibrary,
@@ -79,6 +80,9 @@ describe('KOReader annotation exchange (e2e)', { timeout: 120_000 }, () => {
   beforeAll(async () => {
     ctx = await createReaderStateIsolationE2EContext();
     library = await createLibraryWithFolder(ctx, { name: `koreader-exchange-${randomUUID()}` });
+    const owner = await ctx.app.inject({ method: 'GET', url: '/api/v1/auth/me', headers: authHeader(ctx.adminToken) });
+    expect(owner.statusCode).toBe(200);
+    await grantLibraryAccess(ctx, (owner.json() as { id: number }).id, library.libraryId, 'owner');
     const epubPath = await createEpubFixture(library.folderPath, 'exchange-book.epub', {
       title: `Exchange Book ${randomUUID()}`,
       uid: `urn:uuid:${randomUUID()}`,

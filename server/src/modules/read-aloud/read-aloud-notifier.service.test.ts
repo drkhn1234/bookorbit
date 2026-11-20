@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { NotificationType } from '@bookorbit/types';
 
 import { ReadAloudNotifier, type ReadAloudOutcome } from './read-aloud-notifier.service';
@@ -8,7 +8,7 @@ function makeNotifier(options: { bookTitle?: string | null; user?: unknown } = {
   const jobs = { findBookTitle: vi.fn().mockResolvedValue(options.bookTitle === undefined ? 'The Hobbit' : options.bookTitle) };
   const notifications = { notify: vi.fn().mockResolvedValue(undefined) };
   const users = { findByIdWithPermissions: vi.fn().mockResolvedValue(options.user === undefined ? OWNER : options.user) };
-  const books = { verifyBookAccess: vi.fn().mockResolvedValue(undefined) };
+  const books = { verifyBookPermission: vi.fn().mockResolvedValue(undefined) };
   const presenter = { present: vi.fn((row: { id: string }) => Promise.resolve({ id: row.id })) };
   const gateway = { emitJobUpdated: vi.fn() };
   const notifier = new ReadAloudNotifier(jobs as never, presenter as never, gateway as never, notifications as never, users as never, books as never);
@@ -61,7 +61,6 @@ describe('ReadAloudNotifier.notify', () => {
 
   it.each([
     ['an inactive requester', { ...OWNER, active: false }],
-    ['a requester who lost the permission', { ...OWNER, permissions: [] }],
     ['a deleted requester', null],
   ])('says nothing to %s', async (_label, user) => {
     const { notifier, notifications } = makeNotifier({ user });
@@ -71,7 +70,7 @@ describe('ReadAloudNotifier.notify', () => {
 
   it('says nothing to a requester who can no longer reach the book', async () => {
     const { notifier, notifications, books } = makeNotifier();
-    books.verifyBookAccess.mockRejectedValue(new NotFoundException());
+    books.verifyBookPermission.mockRejectedValue(new NotFoundException());
     await notifier.notify(jobRow(), 'ready');
     expect(notifications.notify).not.toHaveBeenCalled();
   });
@@ -93,7 +92,7 @@ describe('ReadAloudNotifier.pushUpdate', () => {
       expect(gateway.emitJobUpdated).toHaveBeenCalledTimes(2);
       expect(users.findByIdWithPermissions).toHaveBeenCalledTimes(1);
 
-      books.verifyBookAccess.mockRejectedValue(new NotFoundException());
+      books.verifyBookPermission.mockRejectedValue(new NotFoundException());
       vi.advanceTimersByTime(61_000);
       await notifier.pushUpdate(jobRow());
       expect(gateway.emitJobUpdated).toHaveBeenCalledTimes(2);
@@ -103,7 +102,8 @@ describe('ReadAloudNotifier.pushUpdate', () => {
   });
 
   it('stops pushing to a requester whose permission was revoked', async () => {
-    const { notifier, gateway } = makeNotifier({ user: { ...OWNER, permissions: [] } });
+    const { notifier, gateway, books } = makeNotifier();
+    books.verifyBookPermission.mockRejectedValue(new ForbiddenException());
     await notifier.pushUpdate(jobRow());
     expect(gateway.emitJobUpdated).not.toHaveBeenCalled();
   });

@@ -10,8 +10,8 @@ import { BookMoveService } from './book-move.service';
 import type { MoveBookData, MoveTargetLibrary } from './book-move.repository';
 import type { MoveBooksDto } from './dto/move-books.dto';
 
-const USER: RequestUser = { id: 7, username: 'reader', isSuperuser: false } as RequestUser;
-const SUPERUSER: RequestUser = { id: 1, username: 'admin', isSuperuser: true } as RequestUser;
+const USER: RequestUser = { id: 7, username: 'reader', isSuperuser: false, permissions: ['library_edit_metadata'] } as RequestUser;
+const SUPERUSER: RequestUser = { id: 1, username: 'admin', isSuperuser: true, permissions: [] } as RequestUser;
 
 function makeTarget(overrides: Partial<MoveTargetLibrary> = {}): MoveTargetLibrary {
   return {
@@ -84,6 +84,8 @@ function scopeFromGrants(): LibraryScopeService {
   const grants = async () => (await moveRepo.findLibraryAccess([])) as GrantRow[];
   return new LibraryScopeService({
     findAllIds: () => Promise.resolve([1, 2, 3]),
+    findGrantedLevel: async (userId: number, libraryId: number) =>
+      (await grants()).find((row) => row.userId === userId && row.libraryId === libraryId)?.accessLevel ?? null,
     findGrantedLevels: async (userId: number, levels?: readonly AccessLevel[]) =>
       (await grants())
         .filter((row) => row.userId === userId && (!levels || levels.includes(row.accessLevel)))
@@ -181,10 +183,10 @@ describe('access control', () => {
     await expect(service.preview(makeDto(), USER)).resolves.toBeDefined();
   });
 
-  it('lets a superuser bypass per-library access', async () => {
+  it('denies a superuser without per-library grants', async () => {
     moveRepo.findLibraryAccess.mockResolvedValue([]);
 
-    await expect(service.preview(makeDto(), SUPERUSER)).resolves.toBeDefined();
+    await expect(service.preview(makeDto(), SUPERUSER)).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('rejects an unknown target folder', async () => {
@@ -235,7 +237,7 @@ describe('preview', () => {
     expect(result).toMatchObject({ alreadyInTargetCount: 1, readyCount: 0 });
   });
 
-  it('names the users who lose visibility, ignoring superusers', async () => {
+  it('names all users who lose visibility, including superusers', async () => {
     moveRepo.findLibraryAccess.mockResolvedValue([
       { libraryId: 1, userId: 7, accessLevel: 'editor' },
       { libraryId: 2, userId: 7, accessLevel: 'editor' },
@@ -249,7 +251,10 @@ describe('preview', () => {
 
     const result = await service.preview(makeDto(), USER);
 
-    expect(result.warnings.accessLosers).toEqual([{ userId: 8, username: 'sarah', bookCount: 1 }]);
+    expect(result.warnings.accessLosers).toEqual([
+      { userId: 8, username: 'sarah', bookCount: 1 },
+      { userId: 9, username: 'root', bookCount: 1 },
+    ]);
     expect(result.requiresReview).toBe(true);
   });
 

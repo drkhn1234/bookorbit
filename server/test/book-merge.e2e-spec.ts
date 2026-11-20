@@ -7,8 +7,8 @@
  */
 
 import { createHash, randomUUID } from 'crypto';
-import { createReadStream } from 'fs';
-import { access, mkdir, open, readFile, rename, rm, stat, writeFile } from 'fs/promises';
+import { createReadStream, existsSync, statSync } from 'fs';
+import { access, mkdir, open, readdir, readFile, rename, rm, stat, writeFile } from 'fs/promises';
 import { dirname, join } from 'path';
 import { pipeline } from 'stream/promises';
 
@@ -67,9 +67,15 @@ describe('Book merge (e2e)', () => {
     return row.id;
   }
 
+  async function createAdminLibrary(options: Parameters<typeof createLibraryWithFolder>[1]) {
+    const library = await createLibraryWithFolder(ctx, options);
+    await grantLibraryAccess(ctx, await adminUserId(), library.libraryId, 'editor');
+    return library;
+  }
+
   /** A library with one folder book per entry, scanned. Returns each book's id in order. */
   async function libraryWithBooks(entries: Array<{ folder: string; file: string; kind: 'epub' | 'pdf'; title: string }>) {
-    const library = await createLibraryWithFolder(ctx, { name: `merge-${randomUUID()}`, mode: 'book_per_folder' });
+    const library = await createAdminLibrary({ name: `merge-${randomUUID()}`, mode: 'book_per_folder' });
     for (const entry of entries) {
       const rel = join(entry.folder, entry.file);
       if (entry.kind === 'epub') await createEpubFixture(library.folderPath, rel, { title: entry.title });
@@ -307,7 +313,7 @@ describe('Book merge (e2e)', () => {
       const opf = (title: string) =>
         `<?xml version="1.0" encoding="utf-8"?>\n<package xmlns="http://www.idpf.org/2007/opf" version="2.0" unique-identifier="id">` +
         `<metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>${title}</dc:title></metadata></package>\n`;
-      const library = await createLibraryWithFolder(ctx, { name: `merge-opf-${randomUUID()}`, mode: 'book_per_folder' });
+      const library = await createAdminLibrary({ name: `merge-opf-${randomUUID()}`, mode: 'book_per_folder' });
       await createEpubFixture(library.folderPath, join('Sanditon', 'Sanditon.epub'), { title: 'Sanditon' });
       await writeFixtureFile(library.folderPath, join('Sanditon', 'metadata.opf'), opf('Sanditon (kept)'));
       await createPdfFixture(library.folderPath, join('Sanditon Scan', 'Sanditon.pdf'), 'Sanditon');
@@ -565,7 +571,7 @@ describe('Book merge (e2e)', () => {
   it(
     'blocks a library that keeps one book per file',
     async () => {
-      const library: CreatedLibrary = await createLibraryWithFolder(ctx, { name: `merge-files-${randomUUID()}`, mode: 'book_per_file' });
+      const library: CreatedLibrary = await createAdminLibrary({ name: `merge-files-${randomUUID()}`, mode: 'book_per_file' });
       await createEpubFixture(library.folderPath, 'Walden.epub', { title: 'Walden' });
       await createPdfFixture(library.folderPath, 'Walden.pdf', 'Walden');
       await triggerAndWaitForLibraryScan(ctx, library.libraryId);
@@ -729,20 +735,76 @@ describe('Book merge (e2e)', () => {
     SCENARIO_TIMEOUT_MS,
   );
 
+  async function crossDeviceFixture(title: string) {
+    const keptRelPath = join(title, `${title}.epub`);
+    const sourceRelPath = join(`${title} Scan`, `${title}.pdf`);
+    const here = await libraryWithBooks([{ folder: dirname(sourceRelPath), file: `${title}.pdf`, kind: 'pdf', title }]);
+    const there = await createAdminLibrary({ name: `merge-xdev-${randomUUID()}`, mode: 'book_per_folder', basePath: SECOND_DEVICE_PATH });
+    onTestFinished(() => rm(there.folderPath, { recursive: true, force: true }));
+    await createEpubFixture(there.folderPath, keptRelPath, { title });
+    await triggerAndWaitForLibraryScan(ctx, there.libraryId);
+    const kept = await locateBookFileByRelPath(ctx, there.libraryId, keptRelPath);
+    const source = await locateBookFileByRelPath(ctx, here.library.libraryId, sourceRelPath);
+    const request = { targetBookId: kept.bookId, sourceBookIds: [source.bookId], destinationBookId: kept.bookId };
+    const to = join(there.folderPath, title, `${title}.pdf`);
+    expect((await stat(source.absolutePath)).dev).not.toBe((await stat(there.folderPath)).dev);
+    return { kept, source, there, request, to };
+  }
+
+  async function sha256(path: string) {
+    const hash = createHash('sha256');
+    await pipeline(createReadStream(path), hash);
+    return hash.digest('hex');
+  }
+
+  function captureMergeEvents(onFinished?: (event: BookMergeJobEvent) => void) {
+    const events: { phase: 'progress' | 'finished'; event: BookMergeJobEvent }[] = [];
+    const gateway = ctx.app.get(ScanGateway);
+    const publish = gateway.emitBookMergeJob.bind(gateway);
+    const spy = vi.spyOn(gateway, 'emitBookMergeJob').mockImplementation((userId, phase, event, libraryIds) => {
+      events.push({ phase, event: structuredClone(event) });
+      if (phase === 'finished') onFinished?.(event);
+      return publish(userId, phase, event, libraryIds);
+    });
+    onTestFinished(() => {
+      spy.mockRestore();
+    });
+    return events;
+  }
+
+  async function catalogState(bookIds: number[]) {
+    const books = await ctx.db.select().from(schema.books).where(inArray(schema.books.id, bookIds)).orderBy(schema.books.id);
+    const files = await ctx.db.select().from(schema.bookFiles).where(inArray(schema.bookFiles.bookId, bookIds)).orderBy(schema.bookFiles.id);
+    const aliases = await ctx.db.select().from(schema.bookMerges).where(inArray(schema.bookMerges.sourceBookId, bookIds));
+    return { books, files, aliases };
+  }
+
+  async function assertReadablePdf(fileId: number, bytes: number) {
+    const response = await ctx.app.inject({
+      method: 'GET',
+      url: `/api/v1/books/files/${fileId}/serve`,
+      headers: { ...authHeader(ctx.adminToken), range: 'bytes=0-4' },
+    });
+    expect(response.statusCode).toBe(206);
+    expect(response.headers['content-range']).toBe(`bytes 0-4/${bytes}`);
+    expect(response.rawPayload.toString()).toBe('%PDF-');
+  }
+
   it.skipIf(!SECOND_DEVICE_PATH)(
     'copies a large file onto another filesystem with verified bytes and progress, and refuses one that does not fit (X2, X4)',
     async () => {
-      const here = await libraryWithBooks([{ folder: 'Middlemarch Audio', file: 'Middlemarch.pdf', kind: 'pdf', title: 'Middlemarch' }]);
-      const there = await createLibraryWithFolder(ctx, { name: `merge-xdev-${randomUUID()}`, mode: 'book_per_folder', basePath: SECOND_DEVICE_PATH });
-      // The fixture cleans up only its own folder; this one is on the other filesystem.
-      onTestFinished(() => rm(there.folderPath, { recursive: true, force: true }));
-      await createEpubFixture(there.folderPath, join('Middlemarch', 'Middlemarch.epub'), { title: 'Middlemarch' });
-      await triggerAndWaitForLibraryScan(ctx, there.libraryId);
-      const keptId = (await locateBookFileByRelPath(ctx, there.libraryId, join('Middlemarch', 'Middlemarch.epub'))).bookId;
-      const sourceId = here.ids[0];
-      const from = join(here.library.folderPath, 'Middlemarch Audio', 'Middlemarch.pdf');
-      const request = { targetBookId: keptId, sourceBookIds: [sourceId], destinationBookId: keptId };
-
+      const { kept, source, there, request, to } = await crossDeviceFixture('Middlemarch');
+      const from = source.absolutePath;
+      const ids = [kept.bookId, source.bookId];
+      let completion: { sourceAbsent: boolean; destinationBytes: number | null; catalog: ReturnType<typeof catalogState> } | undefined;
+      const events = captureMergeEvents((event) => {
+        if (event.status !== 'done') return;
+        completion = {
+          sourceAbsent: !existsSync(from),
+          destinationBytes: existsSync(to) ? statSync(to).size : null,
+          catalog: catalogState(ids),
+        };
+      });
       // The scanned file grown in place (sparse, so it costs no disk here), its row kept in step.
       const resize = async (bytes: number) => {
         const handle = await open(from, 'r+');
@@ -750,43 +812,168 @@ describe('Book merge (e2e)', () => {
         await handle.write(Buffer.from(`end of a ${bytes} byte file`), 0, undefined, bytes - 64);
         await handle.close();
         const info = await stat(from);
-        await ctx.db.update(schema.bookFiles).set({ sizeBytes: info.size, mtime: info.mtime }).where(eq(schema.bookFiles.bookId, sourceId));
+        await ctx.db.update(schema.bookFiles).set({ sizeBytes: info.size, mtime: info.mtime }).where(eq(schema.bookFiles.id, source.bookFileId));
       };
-      const sha256 = async (path: string) => {
-        const hash = createHash('sha256');
-        await pipeline(createReadStream(path), hash);
-        return hash.digest('hex');
-      };
+      const admissible = await preview(ctx.adminToken, request);
+      expect(admissible.body.blockers).toEqual([]);
 
       await resize(3 * GIB);
+      const before = await catalogState(ids);
+      const beforeHash = await sha256(from);
+      const destinationEntries = (await readdir(there.folderPath, { recursive: true })).sort();
       const tooBig = await preview(ctx.adminToken, request);
+      expect(tooBig.status).toBe(200);
       expect(tooBig.body.blockers).toEqual([{ code: 'INSUFFICIENT_SPACE', bytes: 3 * GIB }]);
+      const refused = await merge(ctx.adminToken, { ...request, previewToken: admissible.body.previewToken });
+      expect(refused).toMatchObject({
+        status: 409,
+        body: { errorCode: 'MERGE_BLOCKED' },
+      });
+      expect(await catalogState(ids)).toEqual(before);
+      expect(await ctx.db.select().from(schema.bookMergeJobs).where(eq(schema.bookMergeJobs.targetBookId, kept.bookId))).toEqual([]);
+      expect(events).toEqual([]);
+      expect((await readdir(there.folderPath, { recursive: true })).sort()).toEqual(destinationEntries);
+      expect(await sha256(from)).toBe(beforeHash);
+      await assertReadablePdf(source.bookFileId, 3 * GIB);
+      console.log('[xdev-evidence] refused', JSON.stringify({ bytes: 3 * GIB, sha256: beforeHash, status: refused.status, jobCreated: false }));
 
       await resize(GIB);
       const expectedHash = await sha256(from);
-      const events: BookMergeJobEvent[] = [];
-      const gateway = ctx.app.get(ScanGateway);
-      const emit = vi.spyOn(gateway, 'emitBookMergeJob').mockImplementation((_userId, _phase, event) => void events.push(event));
-      try {
-        const { preview: reviewed, job } = await previewAndMerge(ctx.adminToken, request);
-        expect(reviewed.warnings).toContainEqual({ code: 'CROSS_DEVICE_COPY', bytes: GIB });
-        expect(job.status).toBe('done');
-        expect(job.result).toMatchObject({ crossDevice: true, movedFileCount: 1 });
-      } finally {
-        emit.mockRestore();
-      }
+      const { preview: reviewed, job } = await previewAndMerge(ctx.adminToken, request);
+      expect(reviewed.warnings).toContainEqual({ code: 'CROSS_DEVICE_COPY', bytes: GIB });
+      expect(job.status).toBe('done');
+      expect(job.result).toMatchObject({ crossDevice: true, movedFileCount: 1 });
+      await vi.waitFor(() => expect(events.at(-1)).toMatchObject({ phase: 'finished', event: { jobId: job.id, status: 'done' } }), {
+        timeout: 10_000,
+      });
 
-      const to = join(there.folderPath, 'Middlemarch', 'Middlemarch.pdf');
       expect((await stat(to)).size).toBe(GIB);
-      expect(await sha256(to)).toBe(expectedHash);
+      const destinationHash = await sha256(to);
+      expect(destinationHash).toBe(expectedHash);
       expect(await exists(from)).toBe(false);
       expect(await exists(dirname(from))).toBe(false);
+      const final = await catalogState(ids);
+      expect(final.books.map(({ id, libraryId }) => ({ id, libraryId }))).toEqual([{ id: kept.bookId, libraryId: there.libraryId }]);
+      expect(final.files.map(({ id, bookId }) => ({ id, bookId }))).toEqual(
+        [kept.bookFileId, source.bookFileId].sort((a, b) => a - b).map((id) => ({ id, bookId: kept.bookId })),
+      );
+      expect(final.files.find(({ id }) => id === source.bookFileId)).toMatchObject({
+        libraryFolderId: there.libraryFolderId,
+        absolutePath: to,
+        relPath: join('Middlemarch', 'Middlemarch.pdf'),
+        sizeBytes: GIB,
+      });
+      expect(final.aliases).toEqual([expect.objectContaining({ sourceBookId: source.bookId, targetBookId: kept.bookId })]);
+      expect(completion).toMatchObject({ sourceAbsent: true, destinationBytes: GIB });
+      expect((await completion?.catalog)?.aliases).toEqual(final.aliases);
+      expect((await readdir(there.folderPath, { recursive: true })).sort()).toEqual(
+        [...destinationEntries, join('Middlemarch', 'Middlemarch.pdf')].sort(),
+      );
+      await assertReadablePdf(source.bookFileId, GIB);
 
-      const bytes = events.filter((event) => event.bytesTotal !== undefined);
+      const bytes = events.map(({ event }) => event).filter((event) => event.bytesTotal !== undefined);
       expect(bytes[0]).toMatchObject({ bytesDone: 0, bytesTotal: GIB });
       expect(bytes.at(-1)).toMatchObject({ bytesDone: GIB, bytesTotal: GIB });
       const done = bytes.map((event) => event.bytesDone ?? 0);
       expect(done).toEqual([...done].sort((a, b) => a - b));
+      expect(bytes.every((event) => event.bytesTotal === GIB && event.bytesDone! >= 0 && event.bytesDone! <= GIB)).toBe(true);
+      expect(done.some((value) => value > 0 && value < GIB)).toBe(true);
+      expect(events.filter(({ phase }) => phase === 'finished')).toHaveLength(1);
+      expect(events.slice(0, -1).every(({ event }) => event.status !== 'done')).toBe(true);
+      expect(events.at(-2)).toMatchObject({ phase: 'progress', event: { status: 'committed', processed: 1 } });
+      console.log(
+        '[xdev-evidence] copied',
+        JSON.stringify({
+          bytes: GIB,
+          sourceSha256: expectedHash,
+          destinationSha256: destinationHash,
+          progress: events.map(({ phase, event }) => ({ phase, status: event.status, bytesDone: event.bytesDone, bytesTotal: event.bytesTotal })),
+        }),
+      );
+    },
+    SCENARIO_TIMEOUT_MS,
+  );
+
+  it.skipIf(!SECOND_DEVICE_PATH)(
+    'rolls back a cross-device copy after failed consolidation and accepts a fresh retry',
+    async () => {
+      const { kept, source, there, request, to } = await crossDeviceFixture('Fixture Rollback');
+      const ids = [kept.bookId, source.bookId];
+      const before = await catalogState(ids);
+      const expectedHash = await sha256(source.absolutePath);
+      const expectedBytes = (await stat(source.absolutePath)).size;
+      const sourceInodeBefore = (await stat(source.absolutePath)).ino;
+      const destinationEntries = (await readdir(there.folderPath, { recursive: true })).sort();
+      const events = captureMergeEvents();
+      const consolidation = ctx.app.get(BookConsolidationService);
+      const consolidate = consolidation.consolidate.bind(consolidation);
+      let observedCopy: { sha256: string; bytes: number; sourceAbsent: boolean; movedFileBookId: number } | undefined;
+      const fault = vi.spyOn(consolidation, 'consolidate').mockImplementationOnce(async (tx, input) => {
+        await consolidate(tx, input);
+        const [moved] = await tx.select().from(schema.bookFiles).where(eq(schema.bookFiles.id, source.bookFileId));
+        observedCopy = {
+          sha256: await sha256(to),
+          bytes: (await stat(to)).size,
+          sourceAbsent: !(await exists(source.absolutePath)),
+          movedFileBookId: moved.bookId,
+        };
+        throw new Error('Synthetic cross-device failure before commit');
+      });
+      onTestFinished(() => {
+        fault.mockRestore();
+      });
+
+      const { job: failed } = await previewAndMerge(ctx.adminToken, request);
+      await vi.waitFor(() => expect(events.at(-1)).toMatchObject({ phase: 'finished', event: { jobId: failed.id, status: 'rolled_back' } }), {
+        timeout: 10_000,
+      });
+      fault.mockRestore();
+      expect(observedCopy).toEqual({ sha256: expectedHash, bytes: expectedBytes, sourceAbsent: true, movedFileBookId: kept.bookId });
+      const [journal] = await ctx.db.select().from(schema.bookMergeJobs).where(eq(schema.bookMergeJobs.id, failed.id));
+      expect(journal).toMatchObject({
+        status: 'rolled_back',
+        error: 'Synthetic cross-device failure before commit',
+        moves: [],
+        outcomes: [{ sourceBookId: source.bookId, status: 'rolled_back', errorCode: 'MERGE_FAILED' }],
+      });
+      expect(journal.finishedAt).not.toBeNull();
+      expect(events.some(({ event }) => event.status === 'done' || event.status === 'committed')).toBe(false);
+      expect(await catalogState(ids)).toEqual(before);
+      expect((await readdir(there.folderPath, { recursive: true })).sort()).toEqual(destinationEntries);
+      const restoredHash = await sha256(source.absolutePath);
+      expect(restoredHash).toBe(expectedHash);
+      const restoredInode = (await stat(source.absolutePath)).ino;
+      await assertReadablePdf(source.bookFileId, expectedBytes);
+
+      const { job: retried } = await previewAndMerge(ctx.adminToken, request);
+      expect(retried.id).not.toBe(failed.id);
+      expect(retried.status).toBe('done');
+      expect(retried.result).toMatchObject({ crossDevice: true, movedFileCount: 1 });
+      await vi.waitFor(() => expect(events.at(-1)).toMatchObject({ phase: 'finished', event: { jobId: retried.id, status: 'done' } }), {
+        timeout: 10_000,
+      });
+      expect(await exists(source.absolutePath)).toBe(false);
+      expect(await sha256(to)).toBe(expectedHash);
+      const final = await catalogState(ids);
+      expect(final.files.find(({ id }) => id === source.bookFileId)).toMatchObject({
+        bookId: kept.bookId,
+        absolutePath: to,
+        ino: BigInt((await stat(to)).ino),
+      });
+      await assertReadablePdf(source.bookFileId, expectedBytes);
+      console.log(
+        '[xdev-evidence] rollback',
+        JSON.stringify({
+          bytes: expectedBytes,
+          sourceSha256: expectedHash,
+          restoredSha256: restoredHash,
+          sourceInodeBefore,
+          restoredInode,
+          firstStatus: journal.status,
+          retryStatus: retried.status,
+          terminalEvents: events.filter(({ phase }) => phase === 'finished').map(({ event }) => event.status),
+        }),
+      );
     },
     SCENARIO_TIMEOUT_MS,
   );

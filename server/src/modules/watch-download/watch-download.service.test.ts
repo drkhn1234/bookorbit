@@ -2,7 +2,6 @@ import { BadRequestException, NotFoundException, UnauthorizedException } from '@
 import { EMPTY_CONTENT_FILTER_RULES, Permission } from '@bookorbit/types';
 
 import type { RequestUser } from '../../common/types/request-user';
-import { PermissionService } from '../../common/services/permission.service';
 import { WatchDownloadService } from './watch-download.service';
 
 function makeUser(): RequestUser {
@@ -39,6 +38,7 @@ function makeService() {
   };
   const auth = { validateUser: vi.fn().mockResolvedValue(user) };
   const book = {
+    verifyBookPermission: vi.fn().mockResolvedValue(undefined),
     getFileInfo: vi.fn((fileId: number) =>
       Promise.resolve({
         path: `/books/${fileId}.m4b`,
@@ -63,7 +63,7 @@ function makeService() {
       ],
     }),
   };
-  const service = new WatchDownloadService(jwt as never, auth as never, book as never, new PermissionService(), epub as never);
+  const service = new WatchDownloadService(jwt as never, auth as never, book as never, epub as never);
   return { service, jwt, auth, book, epub, user };
 }
 
@@ -126,7 +126,7 @@ describe('WatchDownloadService', () => {
   it('lets a ticket minted before its book was merged fetch the cover of the book it was merged into', async () => {
     const { jwt, auth, book, epub, user } = makeService();
     const bookAlias = { resolveOne: vi.fn((id: number) => Promise.resolve(id === 10 ? 40 : null)) };
-    const service = new WatchDownloadService(jwt as never, auth as never, book as never, new PermissionService(), epub as never, bookAlias as never);
+    const service = new WatchDownloadService(jwt as never, auth as never, book as never, epub as never, bookAlias as never);
 
     await expect(service.authorize('Bearer ticket', 10)).resolves.toEqual(user);
     expect(bookAlias.resolveOne).not.toHaveBeenCalled();

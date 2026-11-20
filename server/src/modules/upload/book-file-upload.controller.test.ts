@@ -1,6 +1,6 @@
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Permission } from '@bookorbit/types';
-import { PERMISSION_KEY } from '../../common/decorators/require-permission.decorator';
+import { SCOPED_PERMISSION_KEY } from '../../common/decorators/require-scoped-permission.decorator';
 
 import { BookFileUploadController } from './book-file-upload.controller';
 
@@ -25,8 +25,8 @@ describe('BookFileUploadController', () => {
 
   describe('addFileToBook', () => {
     it('requires LibraryUpload permission', () => {
-      const permission = Reflect.getMetadata(PERMISSION_KEY, BookFileUploadController.prototype.addFileToBook);
-      expect(permission).toBe(Permission.LibraryUpload);
+      const permission = Reflect.getMetadata(SCOPED_PERMISSION_KEY, BookFileUploadController.prototype.addFileToBook);
+      expect(permission).toEqual({ permission: Permission.LibraryUpload, resource: 'book', param: 'id' });
     });
 
     it('throws BadRequestException when no multipart file is present', async () => {
@@ -86,8 +86,8 @@ describe('BookFileUploadController', () => {
 
   describe('renameBookFiles', () => {
     it('requires LibraryEditMetadata permission', () => {
-      const permission = Reflect.getMetadata(PERMISSION_KEY, BookFileUploadController.prototype.renameBookFiles);
-      expect(permission).toBe(Permission.LibraryEditMetadata);
+      const permission = Reflect.getMetadata(SCOPED_PERMISSION_KEY, BookFileUploadController.prototype.renameBookFiles);
+      expect(permission).toEqual({ permission: Permission.LibraryEditMetadata, resource: 'book', param: 'id' });
     });
 
     it('delegates to uploadService.renameBookFiles', async () => {

@@ -47,6 +47,7 @@ function makeService() {
   };
   const libraryService = {
     verifyAccess: vi.fn().mockResolvedValue(undefined),
+    verifyPermission: vi.fn().mockResolvedValue(undefined),
   };
   const appSettings = {
     getAutoFinalizeSettings: vi.fn(),

@@ -50,12 +50,10 @@ describe('Read-aloud jobs (e2e)', { timeout: 240_000 }, () => {
     ctx = await createReaderStateIsolationE2EContext();
     worker.libraryRoots = [ctx.fixture.booksPath];
     library = await createLibraryWithFolder(ctx, { mode: 'book_per_folder' });
-    // Replacing a read-along overwrites a file for good, so it takes the delete permission too.
-    owner = await createUserAndLogin(ctx, {
-      permissions: [Permission.LibraryUpload, Permission.LibraryGenerateReadAloud, Permission.LibraryDeleteBooks],
-    });
+    // Generation and replacement both use the session owner's library-scoped capabilities.
+    owner = await createUserAndLogin(ctx);
     other = await createUserAndLogin(ctx, { permissions: [Permission.LibraryUpload, Permission.LibraryGenerateReadAloud] });
-    await grantLibraryAccess(ctx, owner.userId, library.libraryId, 'editor');
+    await grantLibraryAccess(ctx, owner.userId, library.libraryId, 'owner');
     await grantLibraryAccess(ctx, other.userId, library.libraryId, 'editor');
   });
 

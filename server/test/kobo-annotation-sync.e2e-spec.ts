@@ -17,6 +17,7 @@ import {
   closeReaderStateIsolationE2EContext,
   createLibraryWithFolder,
   createReaderStateIsolationE2EContext,
+  grantLibraryAccess,
   locateBookByAbsolutePath,
   triggerAndWaitForLibraryScan,
   type CreatedLibrary,
@@ -155,6 +156,7 @@ describe.each(['epub', 'kepub'])('Kobo annotation sync with %s (e2e)', { timeout
 
     const [admin] = await ctx.db.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.username, 'reader-state-e2e-admin'));
     adminUserId = admin!.id;
+    await grantLibraryAccess(ctx, adminUserId, library.libraryId, 'owner');
 
     const [fileRow] = await ctx.db
       .select({ fileHash: schema.bookFiles.fileHash })

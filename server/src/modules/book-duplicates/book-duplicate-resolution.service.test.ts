@@ -157,7 +157,12 @@ describe('BookDuplicateResolutionService', () => {
     const progress = gateway.emitDuplicateResolution.mock.calls.filter(([, phase]) => phase === 'progress');
     expect(progress).toHaveLength(2);
     expect(progress[0]![2]).toEqual(expect.objectContaining({ jobId: 70, processed: 1, total: 2, currentGroupId: 5 }));
-    expect(gateway.emitDuplicateResolution).toHaveBeenLastCalledWith(7, 'finished', expect.objectContaining({ status: 'completed', processed: 2 }));
+    expect(gateway.emitDuplicateResolution).toHaveBeenLastCalledWith(
+      7,
+      'finished',
+      expect.objectContaining({ status: 'completed', processed: 2 }),
+      expect.any(Array),
+    );
   });
 
   it('refuses to start while another operation holds a library it would touch (H12)', async () => {

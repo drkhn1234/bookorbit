@@ -52,7 +52,7 @@ describe('NotificationController', () => {
 
       const result = controller.list(mockUser, {});
 
-      expect(service.list).toHaveBeenCalledWith(42, 20, 0);
+      expect(service.list).toHaveBeenCalledWith(mockUser, 20, 0);
       expect(result).toBe(expected);
     });
 
@@ -62,7 +62,7 @@ describe('NotificationController', () => {
 
       await controller.list(mockUser, { limit: 50, offset: 10 });
 
-      expect(service.list).toHaveBeenCalledWith(42, 50, 10);
+      expect(service.list).toHaveBeenCalledWith(mockUser, 50, 10);
     });
   });
 
@@ -73,7 +73,7 @@ describe('NotificationController', () => {
       const result = await controller.getUnreadCount(mockUser);
 
       expect(result).toEqual({ count: 7 });
-      expect(service.getUnreadCount).toHaveBeenCalledWith(42);
+      expect(service.getUnreadCount).toHaveBeenCalledWith(mockUser);
     });
   });
 
@@ -83,7 +83,7 @@ describe('NotificationController', () => {
 
       await controller.markAllAsRead(mockUser);
 
-      expect(service.markAllAsRead).toHaveBeenCalledWith(42);
+      expect(service.markAllAsRead).toHaveBeenCalledWith(mockUser);
     });
   });
 
@@ -93,7 +93,7 @@ describe('NotificationController', () => {
 
       await controller.markAsRead(mockUser, 7);
 
-      expect(service.markAsRead).toHaveBeenCalledWith(42, 7);
+      expect(service.markAsRead).toHaveBeenCalledWith(mockUser, 7);
     });
 
     it('throws NotFoundException when service returns false', async () => {
@@ -109,7 +109,7 @@ describe('NotificationController', () => {
 
       await controller.dismiss(mockUser, 7);
 
-      expect(service.dismiss).toHaveBeenCalledWith(42, 7);
+      expect(service.dismiss).toHaveBeenCalledWith(mockUser, 7);
     });
 
     it('throws NotFoundException when service returns false', async () => {
@@ -125,7 +125,7 @@ describe('NotificationController', () => {
 
       await controller.clearAll(mockUser);
 
-      expect(service.clearAll).toHaveBeenCalledWith(42);
+      expect(service.clearAll).toHaveBeenCalledWith(mockUser);
     });
   });
 

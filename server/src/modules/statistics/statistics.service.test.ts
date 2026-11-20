@@ -58,6 +58,27 @@ describe('StatisticsService', () => {
     vi.clearAllMocks();
   });
 
+  it('cannot cache a newly granted library under an earlier authorization snapshot and expose it after revocation', async () => {
+    const { repo } = makeService();
+    let granted = [1];
+    const scope = {
+      visibleIdsOrAll: vi.fn(() => {
+        const snapshot = [...granted];
+        // A grant commits after the cache key's read but before the loader can run.
+        granted = [1, 2];
+        return Promise.resolve(snapshot);
+      }),
+    };
+    repo.getSummary.mockImplementation((ids: number[]) => Promise.resolve({ totalBooks: ids.length }));
+    const service = new StatisticsService(repo as never, scope as never);
+    const beforeRevoke = await service.getSummary(makeUser(), {});
+    granted = [1];
+    const afterRevoke = await service.getSummary(makeUser(), {});
+    expect([beforeRevoke.totalBooks, afterRevoke.totalBooks]).toEqual([1, 1]);
+    expect(repo.getSummary).toHaveBeenCalledOnce();
+    expect(scope.visibleIdsOrAll).toHaveBeenCalledTimes(2);
+  });
+
   it('clips format distribution to top N and aggregates the remaining counts as Other', async () => {
     const { service, repo } = makeService();
     repo.formatDistribution.mockResolvedValue(

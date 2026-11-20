@@ -61,7 +61,7 @@ describe('EpubController', () => {
     expect(epubService.streamFile).toHaveBeenCalledWith(9, 'OPS/text/Chapter 1.xhtml', 13, user);
     expect(reply.header).toHaveBeenNthCalledWith(1, 'Content-Type', 'application/xhtml+xml');
     expect(reply.header).toHaveBeenNthCalledWith(2, 'Content-Length', 321);
-    expect(reply.header).toHaveBeenNthCalledWith(3, 'Cache-Control', 'public, max-age=3600');
+    expect(reply.header).toHaveBeenNthCalledWith(3, 'Cache-Control', 'private, no-store');
     expect(reply.send).toHaveBeenCalledWith(stream);
   });
 
@@ -99,7 +99,7 @@ describe('EpubController', () => {
     expect(reply.header).toHaveBeenCalledWith('Accept-Ranges', 'bytes');
     expect(reply.header).toHaveBeenCalledWith('Content-Length', 4);
     expect(reply.header).toHaveBeenCalledWith('Content-Range', 'bytes 2-5/10');
-    expect(reply.header).toHaveBeenCalledWith('Cache-Control', 'private, max-age=3600');
+    expect(reply.header).toHaveBeenCalledWith('Cache-Control', 'private, no-store');
     expect(reply.header).not.toHaveBeenCalledWith('X-Content-Length-Full', expect.anything());
     expect(reply.send).toHaveBeenCalledWith(body);
   });
@@ -184,7 +184,7 @@ describe('EpubController', () => {
 
     expect(reply.header).toHaveBeenCalledWith('Content-Type', 'application/xml');
     expect(reply.header).not.toHaveBeenCalledWith('Content-Length', expect.anything());
-    expect(reply.header).toHaveBeenCalledWith('Cache-Control', 'public, max-age=3600');
+    expect(reply.header).toHaveBeenCalledWith('Cache-Control', 'private, no-store');
   });
 
   it('rejects malformed encoded file paths', async () => {

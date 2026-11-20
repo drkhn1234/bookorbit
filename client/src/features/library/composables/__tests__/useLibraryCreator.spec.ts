@@ -17,6 +17,7 @@ describe('useLibraryCreator', () => {
   it('requires an icon before saving a library', async () => {
     const { useLibraryCreator } = await import('../useLibraryCreator')
     const creator = useLibraryCreator()
+    creator.personal.value = false
 
     creator.form.name = 'Main Library'
     creator.form.folders = ['/books']
@@ -29,6 +30,7 @@ describe('useLibraryCreator', () => {
   it('requires a name before saving a library', async () => {
     const { useLibraryCreator } = await import('../useLibraryCreator')
     const creator = useLibraryCreator()
+    creator.personal.value = false
 
     creator.form.icon = 'BookOpen'
     creator.form.folders = ['/books']
@@ -41,6 +43,7 @@ describe('useLibraryCreator', () => {
   it('does not check folders when there are none', async () => {
     const { useLibraryCreator } = await import('../useLibraryCreator')
     const creator = useLibraryCreator()
+    creator.personal.value = false
 
     await creator.checkFolders()
 
@@ -51,6 +54,7 @@ describe('useLibraryCreator', () => {
   it('checks only the folders asked about and keys results by the requested path', async () => {
     const { useLibraryCreator } = await import('../useLibraryCreator')
     const creator = useLibraryCreator()
+    creator.personal.value = false
     const result: PrescanResult = {
       paths: [{ path: '/mnt/resolved/new', accessible: true, fileCount: 2, overlapLibrary: 'Comics' }],
       totalFiles: 2,
@@ -72,6 +76,7 @@ describe('useLibraryCreator', () => {
   it('includes the current library ID when checking folders during an edit', async () => {
     const { useLibraryCreator } = await import('../useLibraryCreator')
     const creator = useLibraryCreator()
+    creator.personal.value = false
     const result: PrescanResult = { paths: [{ path: '/books', accessible: true, fileCount: 2 }], totalFiles: 2 }
     apiMock.mockResolvedValue(jsonResponse(result))
     creator.initEdit(makeLibrary({ id: 12 }))
@@ -87,6 +92,7 @@ describe('useLibraryCreator', () => {
   it('marks folders as failed when the check cannot reach the server', async () => {
     const { useLibraryCreator } = await import('../useLibraryCreator')
     const creator = useLibraryCreator()
+    creator.personal.value = false
     apiMock.mockRejectedValue(new TypeError('network error'))
     creator.form.folders = ['/books']
 
@@ -99,6 +105,7 @@ describe('useLibraryCreator', () => {
   it('ignores a slower, older check of the same folder', async () => {
     const { useLibraryCreator } = await import('../useLibraryCreator')
     const creator = useLibraryCreator()
+    creator.personal.value = false
     let resolveFirst: (value: Response) => void = () => undefined
     apiMock
       .mockImplementationOnce(() => new Promise<Response>((resolve) => (resolveFirst = resolve)))
@@ -115,6 +122,7 @@ describe('useLibraryCreator', () => {
   it('loads counts for a book library being edited', async () => {
     const { useLibraryCreator } = await import('../useLibraryCreator')
     const creator = useLibraryCreator()
+    creator.personal.value = false
     apiMock.mockResolvedValue(jsonResponse({ totalBooks: 455, totalSizeBytes: 10, formatCounts: { epub: 400, pdf: 55 } }))
     creator.initEdit(makeLibrary({ id: 12 }))
 
@@ -127,6 +135,7 @@ describe('useLibraryCreator', () => {
   it('validates cron expressions and file size limits before saving', async () => {
     const { useLibraryCreator } = await import('../useLibraryCreator')
     const creator = useLibraryCreator()
+    creator.personal.value = false
     creator.form.name = 'Main Library'
     creator.form.icon = 'BookOpen'
     creator.form.folders = ['/books']
@@ -144,6 +153,7 @@ describe('useLibraryCreator', () => {
   it('uses audio write-back defaults for blank library forms', async () => {
     const { useLibraryCreator } = await import('../useLibraryCreator')
     const creator = useLibraryCreator()
+    creator.personal.value = false
 
     expect(creator.form.fileWriteAudioEnabled).toBe(true)
     expect(creator.form.fileWriteAudioMaxFileSizeMb).toBe(500)
@@ -152,6 +162,7 @@ describe('useLibraryCreator', () => {
   it('accepts and sends a fractional finished threshold', async () => {
     const { useLibraryCreator } = await import('../useLibraryCreator')
     const creator = useLibraryCreator()
+    creator.personal.value = false
     apiMock.mockResolvedValue(jsonResponse(makeLibrary({ markAsFinishedPercentComplete: 99.95 }), 201))
     creator.form.name = 'Main Library'
     creator.form.icon = 'BookOpen'
@@ -169,6 +180,7 @@ describe('useLibraryCreator', () => {
   it('hydrates file rename and audio write settings when editing a library', async () => {
     const { useLibraryCreator } = await import('../useLibraryCreator')
     const creator = useLibraryCreator()
+    creator.personal.value = false
 
     creator.initEdit({
       id: 1,
@@ -219,6 +231,7 @@ describe('useLibraryCreator', () => {
   it('starts new libraries writing only the primary file, with read-along EPUBs off', async () => {
     const { useLibraryCreator } = await import('../useLibraryCreator')
     const creator = useLibraryCreator()
+    creator.personal.value = false
 
     expect([creator.form.fileWriteAllFiles, creator.form.fileWriteReadAlongEnabled, creator.form.fileWriteReadAlongMaxFileSizeMb]).toEqual([
       false,
@@ -230,6 +243,7 @@ describe('useLibraryCreator', () => {
   it('hydrates and validates the read-along settings', async () => {
     const { useLibraryCreator } = await import('../useLibraryCreator')
     const creator = useLibraryCreator()
+    creator.personal.value = false
     creator.initEdit(makeLibrary({ fileWriteReadAlongEnabled: true, fileWriteReadAlongMaxFileSizeMb: 2500 }))
 
     expect([creator.form.fileWriteReadAlongEnabled, creator.form.fileWriteReadAlongMaxFileSizeMb]).toEqual([true, 2500])
@@ -240,6 +254,7 @@ describe('useLibraryCreator', () => {
   it('sends the all-files write scope and keeps it through unrelated edits', async () => {
     const { useLibraryCreator } = await import('../useLibraryCreator')
     const creator = useLibraryCreator()
+    creator.personal.value = false
     creator.initEdit(makeLibrary({ id: 4, fileWriteAllFiles: true }))
     apiMock.mockResolvedValue(jsonResponse(makeLibrary({ id: 4, fileWriteAllFiles: true })))
 
@@ -254,6 +269,7 @@ describe('useLibraryCreator', () => {
   it('creates a library with audio write-back settings in the payload', async () => {
     const { useLibraryCreator } = await import('../useLibraryCreator')
     const creator = useLibraryCreator()
+    creator.personal.value = false
     const saved = makeLibrary({ id: 9, name: 'Audio' })
     apiMock.mockResolvedValue(jsonResponse(saved, 201))
 
@@ -287,6 +303,7 @@ describe('useLibraryCreator', () => {
   it('trims user-entered values and surfaces save connection failures', async () => {
     const { useLibraryCreator } = await import('../useLibraryCreator')
     const creator = useLibraryCreator()
+    creator.personal.value = false
     const saved = makeLibrary({ name: 'Main Library' })
     apiMock.mockResolvedValueOnce(jsonResponse(saved, 201))
     creator.form.name = '  Main Library  '
@@ -307,6 +324,7 @@ describe('useLibraryCreator', () => {
   it('updates an existing library and surfaces backend errors', async () => {
     const { useLibraryCreator } = await import('../useLibraryCreator')
     const creator = useLibraryCreator()
+    creator.personal.value = false
     creator.initEdit(makeLibrary({ id: 12, name: 'Original' }))
     apiMock.mockResolvedValue(jsonResponse({ message: 'Name already exists' }, 409))
 
@@ -326,6 +344,7 @@ describe('useLibraryCreator', () => {
     it('will not save a new folder another library reads', async () => {
       const { useLibraryCreator } = await import('../useLibraryCreator')
       const creator = useLibraryCreator()
+      creator.personal.value = false
       creator.form.name = 'Comics'
       creator.form.icon = 'BookOpen'
       creator.form.folders = ['/books/comics']
@@ -341,6 +360,7 @@ describe('useLibraryCreator', () => {
     it('will not save two new folders of one library where one holds the other', async () => {
       const { useLibraryCreator } = await import('../useLibraryCreator')
       const creator = useLibraryCreator()
+      creator.personal.value = false
       creator.form.folders = ['/srv/comics', '/srv/comics/manga']
 
       expect(creator.validationErrors.value.folders).toBe(
@@ -351,6 +371,7 @@ describe('useLibraryCreator', () => {
     it('still saves a library whose folders overlapped before, as long as no new folder does', async () => {
       const { useLibraryCreator } = await import('../useLibraryCreator')
       const creator = useLibraryCreator()
+      creator.personal.value = false
       creator.initEdit(
         makeLibrary({
           id: 12,
@@ -377,6 +398,7 @@ describe('useLibraryCreator', () => {
     it('explains a refusal the server makes from its own check', async () => {
       const { useLibraryCreator } = await import('../useLibraryCreator')
       const creator = useLibraryCreator()
+      creator.personal.value = false
       creator.initEdit(makeLibrary({ id: 12 }))
       apiMock.mockResolvedValue(
         jsonResponse(
@@ -398,6 +420,7 @@ describe('useLibraryCreator', () => {
   it('shows the read-along entry above EPUB and saves it only once it is moved', async () => {
     const { useLibraryCreator } = await import('../useLibraryCreator')
     const creator = useLibraryCreator()
+    creator.personal.value = false
     creator.initEdit(makeLibrary({ id: 12, formatPriority: ['m4b', 'epub', 'pdf'] }))
     apiMock.mockResolvedValue(jsonResponse(makeLibrary({ id: 12 })))
 

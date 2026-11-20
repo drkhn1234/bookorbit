@@ -1,3 +1,6 @@
+vi.mock('@/features/library/composables/useLibraryCapabilities', () => ({
+  useLibraryCapabilities: () => ({ canCreate: ref(true), canUseAdministrativeStorage: ref(true) }),
+}))
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, shallowMount, type VueWrapper } from '@vue/test-utils'
 import { ref, type Ref } from 'vue'

@@ -4,103 +4,92 @@ import type { AccessLevel } from '@bookorbit/types';
 import type { ApiKeyCredential } from '../types/request-user';
 import { LibraryScopeService, type LibraryScopeSubject } from './library-scope.service';
 
-const ALL_LIBRARIES = [1, 2, 3];
-const GRANTS: { id: number; accessLevel: AccessLevel }[] = [
-  { id: 1, accessLevel: 'viewer' },
-  { id: 2, accessLevel: 'editor' },
-];
-
 function makeService() {
+  const grants = new Map<number, AccessLevel>([
+    [1, 'viewer'],
+    [2, 'editor'],
+  ]);
   const repo = {
-    findAllIds: vi.fn(() => Promise.resolve([...ALL_LIBRARIES])),
-    findExistingIds: vi.fn((ids: readonly number[]) => Promise.resolve(ALL_LIBRARIES.filter((id) => ids.includes(id)))),
+    findAllIds: vi.fn(),
     findGrantedLevels: vi.fn((_userId: number, levels?: readonly AccessLevel[]) =>
-      Promise.resolve(GRANTS.filter((grant) => !levels || levels.includes(grant.accessLevel))),
+      Promise.resolve([...grants].filter(([, level]) => !levels || levels.includes(level)).map(([id, accessLevel]) => ({ id, accessLevel }))),
     ),
-    findGrantedLevel: vi.fn((_userId: number, libraryId: number) =>
-      Promise.resolve(GRANTS.find((grant) => grant.id === libraryId)?.accessLevel ?? null),
-    ),
-    findIsSuperuser: vi.fn(() => Promise.resolve(false)),
+    findGrantedLevel: vi.fn((_userId: number, libraryId: number) => Promise.resolve(grants.get(libraryId) ?? null)),
   };
-  return { service: new LibraryScopeService(repo as never), repo };
+  return { service: new LibraryScopeService(repo as never), repo, grants };
 }
 
 function key(overrides: Partial<ApiKeyCredential> = {}): ApiKeyCredential {
-  return { kind: 'api_key', keyId: 9, keyName: 'script', audience: 'api', access: 'write', libraryIds: null, ownerIsSuperuser: false, ...overrides };
+  return { kind: 'api_key', keyId: 9, keyName: 'script', audience: 'api', access: 'write', libraryIds: null, ownerIsSuperuser: true, ...overrides };
 }
 
-const regular: LibraryScopeSubject = { id: 5, isSuperuser: false };
-const superuser: LibraryScopeSubject = { id: 1, isSuperuser: true };
+const principals: LibraryScopeSubject[] = [
+  { id: 5, isSuperuser: false },
+  { id: 1, isSuperuser: true },
+  { id: 5, isSuperuser: false, credential: key({ ownerIsSuperuser: false }) },
+  { id: 1, isSuperuser: false, credential: key() },
+  { id: 1, isSuperuser: true, credential: key() },
+];
 
 describe('LibraryScopeService', () => {
-  it('lets a superuser see every library without reading grants', async () => {
+  it.each(principals)('requires explicit grants for principal %j', async (user) => {
     const { service, repo } = makeService();
-    expect(service.seesAllLibraries(superuser)).toBe(true);
-    expect(await service.visibleIdsOrAll(superuser)).toBeNull();
-    expect(await service.visibleIds(superuser)).toEqual(ALL_LIBRARIES);
-    expect(await service.levelFor(superuser, 3)).toBe('owner');
-    expect(repo.findGrantedLevel).not.toHaveBeenCalled();
+    expect(await service.visibleIds(user)).toEqual([1, 2]);
+    expect(await service.visibleIdsOrAll(user)).toEqual([1, 2]);
+    expect(await service.editableIds(user)).toEqual([2]);
+    expect(await service.levelFor(user, 3)).toBeNull();
+    await expect(service.assertVisible(user, 3)).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(service.assertLevel(user, 1, 'editor')).rejects.toThrow('Insufficient library access level');
+    await expect(service.assertLevel(user, 2, 'editor')).resolves.toBeUndefined();
+    expect(repo.findAllIds).not.toHaveBeenCalled();
   });
 
-  it('limits a regular user to their grants', async () => {
-    const { service } = makeService();
-    expect(await service.visibleIds(regular)).toEqual([1, 2]);
-    expect(await service.editableIds(regular)).toEqual([2]);
-    expect(await service.levelFor(regular, 3)).toBeNull();
-    await expect(service.assertVisible(regular, 3)).rejects.toBeInstanceOf(ForbiddenException);
-    await expect(service.assertLevel(regular, 1, 'editor')).rejects.toThrow('Insufficient library access level');
-    await expect(service.assertLevel(regular, 2, 'editor')).resolves.toBeUndefined();
-  });
-
-  it('keeps every library for a superuser key without administrator access', async () => {
-    const { service } = makeService();
-    const user = { id: 1, isSuperuser: false, credential: key({ ownerIsSuperuser: true }) };
-    expect(service.seesAllLibraries(user)).toBe(true);
-    expect(await service.visibleIds(user)).toEqual(ALL_LIBRARIES);
+  it.each(principals)('respects new grants and revocation without refreshing the principal %j', async (user) => {
+    const { service, grants } = makeService();
+    grants.set(3, 'owner');
     expect(await service.levelFor(user, 3)).toBe('owner');
+    expect(await service.visibleLevels(user)).toContainEqual({ id: 3, accessLevel: 'owner' });
+    grants.delete(3);
+    expect(await service.levelFor(user, 3)).toBeNull();
+    expect(await service.visibleIds(user)).not.toContain(3);
+    expect(await service.filterVisible(user, [3, 2, 1])).toEqual([2, 1]);
   });
 
-  it('narrows a library-limited key to its libraries', async () => {
-    const { service } = makeService();
-    const user = { ...regular, credential: key({ libraryIds: [2, 3] }) };
-    expect(service.seesAllLibraries(user)).toBe(false);
+  it('intersects a key whitelist with current owner grants instead of treating the whitelist as grants', async () => {
+    const { service, grants } = makeService();
+    const user = { id: 1, isSuperuser: true, credential: key({ libraryIds: [2, 3] }) };
     expect(await service.visibleIds(user)).toEqual([2]);
     expect(await service.levelFor(user, 1)).toBeNull();
     expect(await service.levelFor(user, 3)).toBeNull();
-    expect(await service.levelFor(user, 2)).toBe('editor');
-    expect(await service.filterVisible(user, [3, 2, 1])).toEqual([2]);
+    grants.delete(2);
+    expect(await service.visibleIds(user)).toEqual([]);
+    expect(await service.visibleLevels(user)).toEqual([]);
   });
 
-  it('narrows a superuser owner to the key libraries that still exist', async () => {
+  it('sees nothing for an empty key scope', async () => {
     const { service } = makeService();
-    const user = { id: 1, isSuperuser: false, credential: key({ ownerIsSuperuser: true, libraryIds: [3, 99] }) };
-    expect(await service.visibleIdsOrAll(user)).toEqual([3]);
-    expect(await service.visibleLevels(user)).toEqual([{ id: 3, accessLevel: 'owner' }]);
-  });
-
-  it('sees nothing once every library a key was limited to is gone', async () => {
-    const { service } = makeService();
-    const user = { ...regular, credential: key({ libraryIds: [] }) };
+    const user = { id: 1, isSuperuser: true, credential: key({ libraryIds: [] }) };
     expect(await service.visibleIdsOrAll(user)).toEqual([]);
     expect(await service.canSee(user, 1)).toBe(false);
   });
 
-  it('caps a read-only key at viewer', async () => {
-    const { service } = makeService();
-    const user = { ...regular, credential: key({ access: 'read' }) };
-    expect(await service.levelFor(user, 2)).toBe('viewer');
+  it('caps read-only keys at viewer even for an explicitly granted superuser owner', async () => {
+    const { service, grants } = makeService();
+    grants.set(3, 'owner');
+    const user = { id: 1, isSuperuser: true, credential: key({ access: 'read' }) };
+    expect(await service.levelFor(user, 3)).toBe('viewer');
     expect(await service.editableIds(user)).toEqual([]);
-    await expect(service.assertLevel(user, 2, 'editor')).rejects.toThrow('Insufficient library access level');
-    expect(await service.visibleLevels(user)).toEqual([
-      { id: 1, accessLevel: 'viewer' },
-      { id: 2, accessLevel: 'viewer' },
-    ]);
+    await expect(service.assertLevel(user, 3, 'editor')).rejects.toThrow('Insufficient library access level');
+    expect(await service.visibleLevels(user)).toEqual([1, 2, 3].map((id) => ({ id, accessLevel: 'viewer' })));
   });
 
-  it('looks up the owner when only a user id is known', async () => {
-    const { service, repo } = makeService();
-    repo.findIsSuperuser.mockResolvedValueOnce(true);
-    expect(await service.visibleIdsOrAllForUserId(1)).toBeNull();
-    expect(await service.visibleIdsOrAllForUserId(5)).toEqual([1, 2]);
+  it('uses explicit grants in user-id-only device protocol calls, including system libraries', async () => {
+    const { service, repo, grants } = makeService();
+    expect(await service.visibleIdsOrAllForUserId(1)).toEqual([1, 2]);
+    grants.clear();
+    expect(await service.visibleIdsOrAllForUserId(1)).toEqual([]);
+    grants.set(9, 'viewer');
+    expect(await service.visibleIdsOrAllForUserId(1)).toEqual([9]);
+    expect(repo.findAllIds).not.toHaveBeenCalled();
   });
 });

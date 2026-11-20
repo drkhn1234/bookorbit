@@ -13,6 +13,7 @@ interface Row {
 
 const mocks = vi.hoisted(() => ({
   permissions: new Set<string>(),
+  canCreate: false,
   activityFor: () => null,
   reorderLibraries: undefined as unknown as Mock<Reorder>,
   reorderSmartScopes: undefined as unknown as Mock<Reorder>,
@@ -24,6 +25,15 @@ const libraries = ref<Row[]>([])
 const scopes = ref<Row[]>([])
 const collections = ref<Row[]>([])
 
+vi.mock('@/features/library/composables/useLibraryCapabilities', () => ({
+  useLibraryCapabilities: () => ({
+    canCreate: {
+      get value() {
+        return mocks.canCreate
+      },
+    },
+  }),
+}))
 vi.mock('vue-i18n', () => ({
   useI18n: () => ({ t: (key: string, params?: Record<string, unknown>) => (params ? `${key} ${JSON.stringify(params)}` : key) }),
 }))
@@ -68,6 +78,7 @@ function section(id: string) {
 describe('useSidebarSections', () => {
   beforeEach(() => {
     mocks.permissions.clear()
+    mocks.canCreate = false
     mocks.reorderLibraries = vi.fn<Reorder>().mockResolvedValue(undefined)
     mocks.reorderSmartScopes = vi.fn<Reorder>().mockResolvedValue(undefined)
     mocks.reorderCollections = vi.fn<Reorder>().mockResolvedValue(undefined)
@@ -100,11 +111,13 @@ describe('useSidebarSections', () => {
     expect(section('libraries').props.seeAllLabel).toBe('components.sidebar.seeAllLibraries {"count":"2"}')
   })
 
-  it('gates adding and reordering libraries on manage_libraries, but not scopes or collections', () => {
+  it('uses creation capabilities separately from administrative reorder permissions', () => {
     const scopesSection = section('smartScopes')
     expect([section('libraries').props.canAdd, section('libraries').canReorder]).toEqual([false, false])
     expect([scopesSection.props.canAdd, scopesSection.canReorder]).toEqual([true, true])
 
+    mocks.canCreate = true
+    expect([section('libraries').props.canAdd, section('libraries').canReorder]).toEqual([true, false])
     mocks.permissions.add('manage_libraries')
 
     expect([section('libraries').props.canAdd, section('libraries').canReorder]).toEqual([true, true])

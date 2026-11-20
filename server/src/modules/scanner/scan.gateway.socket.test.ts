@@ -50,6 +50,10 @@ describe('scan gateway over socket.io behind the global guards', () => {
   let token: string;
   const authService = { validateSessionUser: vi.fn<(...args: unknown[]) => Promise<RequestUser | null>>() };
   const scopeRepo = {
+    findGrantedLevels: vi.fn(async (userId: number) => {
+      const level = await scopeRepo.findGrantedLevel(userId, READABLE_LIBRARY);
+      return level ? [{ id: READABLE_LIBRARY, accessLevel: level }] : [];
+    }),
     findGrantedLevel: vi.fn((_userId: number, libraryId: number) => Promise.resolve(libraryId === READABLE_LIBRARY ? 'viewer' : null)),
   };
   const clients: ClientSocket[] = [];
@@ -89,8 +93,10 @@ describe('scan gateway over socket.io behind the global guards', () => {
   });
 
   beforeEach(() => {
-    authService.validateSessionUser.mockReset();
-    scopeRepo.findGrantedLevel.mockClear();
+    authService.validateSessionUser.mockReset().mockResolvedValue(reader);
+    scopeRepo.findGrantedLevel
+      .mockReset()
+      .mockImplementation((_userId: number, libraryId: number) => Promise.resolve(libraryId === READABLE_LIBRARY ? 'viewer' : null));
   });
 
   afterEach(() => {
@@ -163,8 +169,8 @@ describe('scan gateway over socket.io behind the global guards', () => {
 
     // One connection delivers in order, so the readable event arriving first proves the other was never sent.
     const received = nextEvent<ScanProgressEvent>(client, 'scan:progress');
-    gateway.emitProgress(progress(UNREADABLE_LIBRARY));
-    gateway.emitProgress(progress(READABLE_LIBRARY));
+    await gateway.emitProgress(progress(UNREADABLE_LIBRARY));
+    await gateway.emitProgress(progress(READABLE_LIBRARY));
 
     await expect(received).resolves.toMatchObject({ libraryId: READABLE_LIBRARY });
     expect(exceptions).toEqual([]);
@@ -180,5 +186,56 @@ describe('scan gateway over socket.io behind the global guards', () => {
 
     expect(unauthorized).toEqual([{ reason: 'invalid_token' }]);
     expect(scopeRepo.findGrantedLevel).not.toHaveBeenCalled();
+  });
+
+  it('evicts an established subscription after access revocation and denies a reconnect', async () => {
+    const client = connect();
+    const events = collect(client, 'scan:progress');
+    await nextEvent(client, 'connect');
+    client.emit('subscribe:library', READABLE_LIBRARY);
+    await vi.waitFor(() => expect(gateway.server.adapter.rooms.get(`library:${READABLE_LIBRARY}`)?.has(client.id!)).toBe(true));
+
+    scopeRepo.findGrantedLevel.mockResolvedValue(null);
+    await gateway.emitProgress(progress(READABLE_LIBRARY));
+    expect(gateway.server.adapter.rooms.get(`library:${READABLE_LIBRARY}`)?.has(client.id!) ?? false).toBe(false);
+
+    const reconnected = connect();
+    await nextEvent(reconnected, 'connect');
+    const previousChecks = scopeRepo.findGrantedLevel.mock.calls.length;
+    reconnected.emit('subscribe:library', READABLE_LIBRARY);
+    await vi.waitFor(() => expect(scopeRepo.findGrantedLevel.mock.calls.length).toBeGreaterThan(previousChecks));
+    expect(gateway.server.adapter.rooms.get(`library:${READABLE_LIBRARY}`)?.has(reconnected.id!) ?? false).toBe(false);
+    expect(events).toEqual([]);
+  });
+
+  it('disconnects an established subscriber whose session has been revoked before sending data', async () => {
+    const client = connect();
+    const events = collect(client, 'scan:progress');
+    await nextEvent(client, 'connect');
+    client.emit('subscribe:library', READABLE_LIBRARY);
+    await vi.waitFor(() => expect(gateway.server.adapter.rooms.get(`library:${READABLE_LIBRARY}`)?.has(client.id!)).toBe(true));
+
+    authService.validateSessionUser.mockResolvedValue(null);
+    const disconnected = nextEvent(client, 'disconnect');
+    await gateway.emitProgress(progress(READABLE_LIBRARY));
+    await expect(disconnected).resolves.toBe('io server disconnect');
+    expect(events).toEqual([]);
+  });
+
+  it('redacts the inaccessible side of a cross-library transfer for an existing subscriber', async () => {
+    const client = connect();
+    const transfers = collect(client, 'book:transferred');
+    await nextEvent(client, 'connect');
+    client.emit('subscribe:library', READABLE_LIBRARY);
+    await vi.waitFor(() => expect(gateway.server.adapter.rooms.get(`library:${READABLE_LIBRARY}`)?.has(client.id!)).toBe(true));
+
+    const changed = nextEvent(client, 'library:changed');
+    await gateway.emitBookTransferred({
+      fromLibraryId: READABLE_LIBRARY,
+      toLibraryId: UNREADABLE_LIBRARY,
+      bookIds: [123],
+    });
+    await expect(changed).resolves.toEqual({ libraryIds: [READABLE_LIBRARY] });
+    expect(transfers).toEqual([]);
   });
 });

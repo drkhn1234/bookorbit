@@ -45,7 +45,7 @@ describe('PermissionGuard', () => {
       getAllAndOverride: vi.fn((key: string) => (key === IS_PUBLIC_KEY ? true : undefined)),
     };
     const permissionService = { userHas: vi.fn(), userHasExplicit: vi.fn() };
-    const guard = new PermissionGuard(reflector as never, permissionService as never);
+    const guard = new PermissionGuard(reflector as never, permissionService as never, {} as never);
 
     expect(guard.canActivate(makeContext(makeUser()))).toBe(true);
     expect(permissionService.userHas).not.toHaveBeenCalled();
@@ -57,7 +57,7 @@ describe('PermissionGuard', () => {
       getAllAndOverride: vi.fn((key: string) => (key === IS_PUBLIC_KEY ? false : undefined)),
     };
     const permissionService = { userHas: vi.fn(), userHasExplicit: vi.fn() };
-    const guard = new PermissionGuard(reflector as never, permissionService as never);
+    const guard = new PermissionGuard(reflector as never, permissionService as never, {} as never);
 
     expect(guard.canActivate(makeContext(makeUser()))).toBe(true);
     expect(permissionService.userHas).not.toHaveBeenCalled();
@@ -81,7 +81,7 @@ describe('PermissionGuard', () => {
       userHas: vi.fn(),
       userHasExplicit: vi.fn().mockReturnValue(true),
     };
-    const guard = new PermissionGuard(reflector as never, permissionService as never);
+    const guard = new PermissionGuard(reflector as never, permissionService as never, {} as never);
 
     expect(() => guard.canActivate(makeContext(makeUser()))).toThrow('Demo-restricted account cannot perform bulk edits');
     expect(permissionService.userHas).not.toHaveBeenCalled();
@@ -104,7 +104,7 @@ describe('PermissionGuard', () => {
       userHas: vi.fn().mockReturnValue(true),
       userHasExplicit: vi.fn().mockReturnValue(false),
     };
-    const guard = new PermissionGuard(reflector as never, permissionService as never);
+    const guard = new PermissionGuard(reflector as never, permissionService as never, {} as never);
 
     expect(guard.canActivate(makeContext(makeUser()))).toBe(true);
     expect(permissionService.userHasExplicit).toHaveBeenCalledWith(expect.any(Object), Permission.DemoRestricted);
@@ -123,7 +123,7 @@ describe('PermissionGuard', () => {
       userHas: vi.fn(),
       userHasExplicit: vi.fn().mockReturnValue(true),
     };
-    const guard = new PermissionGuard(reflector as never, permissionService as never);
+    const guard = new PermissionGuard(reflector as never, permissionService as never, {} as never);
 
     expect(() => guard.canActivate(makeContext(makeUser()))).toThrow(`Forbidden permission: ${Permission.DemoRestricted}`);
   });
@@ -137,7 +137,7 @@ describe('PermissionGuard', () => {
       }),
     };
     const permissionService = { userHas: vi.fn().mockReturnValue(false), userHasExplicit: vi.fn().mockReturnValue(false) };
-    const guard = new PermissionGuard(reflector as never, permissionService as never);
+    const guard = new PermissionGuard(reflector as never, permissionService as never, {} as never);
 
     expect(() => guard.canActivate(makeContext(makeUser()))).toThrow(ForbiddenException);
   });
@@ -151,7 +151,7 @@ describe('PermissionGuard', () => {
       }),
     };
     const permissionService = { userHas: vi.fn().mockReturnValue(true), userHasExplicit: vi.fn().mockReturnValue(false) };
-    const guard = new PermissionGuard(reflector as never, permissionService as never);
+    const guard = new PermissionGuard(reflector as never, permissionService as never, {} as never);
 
     expect(guard.canActivate(makeContext(makeUser()))).toBe(true);
   });
@@ -168,7 +168,7 @@ describe('PermissionGuard', () => {
       userHas: vi.fn((_user: RequestUser, permission: Permission) => permission === Permission.ManageAppSettings),
       userHasExplicit: vi.fn().mockReturnValue(false),
     };
-    const guard = new PermissionGuard(reflector as never, permissionService as never);
+    const guard = new PermissionGuard(reflector as never, permissionService as never, {} as never);
 
     expect(guard.canActivate(makeContext(makeUser()))).toBe(true);
   });
@@ -182,7 +182,7 @@ describe('PermissionGuard', () => {
       }),
     };
     const permissionService = { userHas: vi.fn().mockReturnValue(false), userHasExplicit: vi.fn().mockReturnValue(false) };
-    const guard = new PermissionGuard(reflector as never, permissionService as never);
+    const guard = new PermissionGuard(reflector as never, permissionService as never, {} as never);
 
     expect(() => guard.canActivate(makeContext(makeUser()))).toThrow(
       `Missing permission: ${Permission.BookRequestAccess} or ${Permission.ManageAppSettings}`,
@@ -203,7 +203,7 @@ describe('PermissionGuard', () => {
       userHas: vi.fn((_user: RequestUser, permission: Permission) => permission === Permission.ManageAppSettings),
       userHasExplicit: vi.fn().mockReturnValue(false),
     };
-    const guard = new PermissionGuard(reflector as never, permissionService as never);
+    const guard = new PermissionGuard(reflector as never, permissionService as never, {} as never);
 
     expect(guard.canActivate(makeContext(makeUser()))).toBe(true);
     expect(permissionService.userHas).not.toHaveBeenCalledWith(expect.any(Object), Permission.ManageUsers);
@@ -221,7 +221,7 @@ describe('PermissionGuard', () => {
       userHas: vi.fn((_user: RequestUser, permission: Permission) => permission === Permission.BookDockAccess),
       userHasExplicit: vi.fn().mockReturnValue(false),
     };
-    const guard = new PermissionGuard(reflector as never, permissionService as never);
+    const guard = new PermissionGuard(reflector as never, permissionService as never, {} as never);
 
     expect(() => guard.canActivate(makeContext(makeUser()))).toThrow(`Missing permission: ${Permission.LibraryUpload}`);
     expect(permissionService.userHas).toHaveBeenCalledWith(expect.any(Object), Permission.BookDockAccess);

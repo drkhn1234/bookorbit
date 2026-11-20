@@ -228,6 +228,24 @@ describe('onBookTransferred', () => {
   })
 })
 
+describe('onLibraryChanged', () => {
+  it('delivers the visible-library invalidation and deregisters it on unmount', () => {
+    const callback = vi.fn<(event: { libraryIds: number[] }) => void>()
+    const component = defineComponent({
+      setup() {
+        useBookEvents().onLibraryChanged(callback)
+        return () => null
+      },
+    })
+    const wrapper = mount(component)
+    mockSocket.emit('library:changed', { libraryIds: [7] })
+    expect(callback).toHaveBeenCalledExactlyOnceWith({ libraryIds: [7] })
+    wrapper.unmount()
+    mockSocket.emit('library:changed', { libraryIds: [7] })
+    expect(callback).toHaveBeenCalledOnce()
+  })
+})
+
 describe('onBookProgressChanged', () => {
   it('fires the callback with the progress event and supports cleanup', () => {
     const { onBookProgressChanged } = useBookEvents()
