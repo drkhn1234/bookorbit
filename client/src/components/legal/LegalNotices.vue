@@ -8,7 +8,11 @@ const { t } = useI18n()
 const { open, closeLegalNotices, handleOpenChange } = useLegalNotices()
 
 const PROJECT_URL = 'https://github.com/bookorbit/bookorbit'
-const FORK_SOURCE_URL = 'https://github.com/drkhn1234/bookorbit/tree/feature/personal-library-sharing-scoped-admin'
+const FORK_URL = 'https://github.com/no39utopia/bookorbit'
+const sourceRevision = import.meta.env.VITE_BUILD_SOURCE_REVISION
+const sourceUrl = /^[a-f0-9]{40}$/.test(sourceRevision ?? '')
+  ? `${FORK_URL}/tree/${sourceRevision}`
+  : `${FORK_URL}/tree/feature/upstream-personal-libraries-scoped-settings`
 const LICENSE_URL = `${PROJECT_URL}/blob/main/LICENSE`
 const ADDITIONAL_TERMS_URL = `${PROJECT_URL}/blob/main/ADDITIONAL_TERMS.md`
 </script>
@@ -63,7 +67,7 @@ const ADDITIONAL_TERMS_URL = `${PROJECT_URL}/blob/main/ADDITIONAL_TERMS.md`
 
           <div class="grid gap-2 sm:grid-cols-3">
             <a
-              :href="FORK_SOURCE_URL"
+              :href="sourceUrl"
               target="_blank"
               rel="noopener noreferrer"
               class="inline-flex items-center justify-center gap-1.5 rounded-md border border-border px-3 py-2 font-medium text-foreground outline-hidden hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
