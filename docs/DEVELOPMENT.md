@@ -74,6 +74,8 @@ bookorbit/
 
 > **Shared types** live in `packages/types/` and are imported as `@bookorbit/types`. Never duplicate types between client and server.
 
+For the library ownership transaction, storage boundaries, and authorization model, see [Personal Libraries](PERSONAL_LIBRARIES.md).
+
 ---
 
 ## Prerequisites
@@ -237,7 +239,8 @@ These are the variables you are most likely to need during development. See `ser
 | `NODE_ENV`            | Runtime mode                         | `development`                                             |
 | `JWT_SECRET`          | Signing key for auth tokens          | `change-me-in-production`                                 |
 | `APP_DATA_PATH`       | Storage for covers, avatars, cache   | `../local/data`                                           |
-| `LIBRARY_BROWSE_ROOT` | Library folder picker root           | `/`                                                       |
+| `LIBRARY_BROWSE_ROOT`   | Outer boundary for storage browsing and registration | `/`                                                       |
+| `PERSONAL_LIBRARY_ROOT` | Parent of the per-user storage directories           | `/books`                                                  |
 | `APP_URL`             | Base URL for email links             | `http://localhost:6263`                                   |
 | `SWAGGER_ENABLED`     | Serve Swagger UI and OpenAPI JSON    | `false`                                                   |
 | `DISABLE_LOCAL_AUTH`  | Disable password authentication      | `false`                                                   |
