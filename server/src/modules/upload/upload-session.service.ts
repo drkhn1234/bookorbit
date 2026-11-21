@@ -71,10 +71,12 @@ export class UploadSessionService implements OnApplicationBootstrap {
 
   async capabilities(user: RequestUser): Promise<UploadCapabilitiesResponse> {
     const maxMb = await this.appSettings.getMaxUploadSizeMb();
-    const libraryIds = await this.libraryService.findAccessibleLibraryIds(user);
+    const visibleIds = await this.libraryService.findAccessibleLibraryIds(user);
+    const canUpload = await Promise.all(visibleIds.map((id) => this.libraryService.hasLibraryPermission(user, id, Permission.LibraryUpload)));
+    const libraryIds = visibleIds.filter((_, index) => canUpload[index]);
     const [libraryRows, folderRows] = await Promise.all([this.repo.findCapabilityLibraries(libraryIds), this.repo.findCapabilityFolders(libraryIds)]);
 
-    const canUploadToLibrary = this.hasPermission(user, Permission.LibraryUpload);
+    const canUploadToLibrary = libraryIds.length > 0;
     return {
       maxFileSizeBytes: Math.min(HARD_MAX_UPLOAD_BYTES, maxMb * 1_024 * 1_024),
       chunkSizeBytes: UPLOAD_CHUNK_SIZE_BYTES,
@@ -309,11 +311,10 @@ export class UploadSessionService implements OnApplicationBootstrap {
       else this.validator.validateFormat(filename, []);
       return;
     }
-    if (!this.hasPermission(user, Permission.LibraryUpload)) throw new ForbiddenException('Library upload permission is required');
     if (target.kind === 'library') {
       const library = await this.repo.findLibrary(target.libraryId);
       if (!library) throw uploadError.invalidTarget('Library not found');
-      await this.libraryService.verifyAccess(user, library.id);
+      await this.libraryService.verifyPermission(user, library.id, Permission.LibraryUpload);
       if (target.folderId) {
         if (!(await this.repo.folderBelongsToLibrary(target.folderId, target.libraryId))) {
           throw uploadError.invalidTarget('Folder does not belong to this library');
@@ -324,7 +325,7 @@ export class UploadSessionService implements OnApplicationBootstrap {
     }
     const book = await this.repo.findBookTarget(target.bookId);
     if (!book) throw uploadError.invalidTarget('Book not found');
-    await this.libraryService.verifyAccess(user, book.libraryId);
+    await this.libraryService.verifyPermission(user, book.libraryId, Permission.LibraryUpload);
     if (book.organizationMode === 'book_per_file') throw uploadError.invalidTarget('This library does not allow multiple files per book');
     await this.assertBookFolderIsADirectory(book.folderPath);
     this.validator.validateFormat(filename, book.allowedFormats);

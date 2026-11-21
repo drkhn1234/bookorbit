@@ -1,6 +1,6 @@
 import { computed, onScopeDispose, ref } from 'vue'
 import type { MetadataScoreRecalculationStatus } from '@bookorbit/types'
-import { api } from '@/lib/api'
+import { useLibrarySettingsApi } from '@/features/settings/composables/useLibrarySettingsMode'
 
 const POLL_INTERVAL_MS = 1500
 
@@ -9,6 +9,7 @@ const POLL_INTERVAL_MS = 1500
  * client has ever read it, so saving a weight change looked like nothing happened for minutes.
  */
 export function useRescoreStatus() {
+  const api = useLibrarySettingsApi()
   const status = ref<MetadataScoreRecalculationStatus | null>(null)
   const starting = ref(false)
   let timer: ReturnType<typeof setTimeout> | null = null

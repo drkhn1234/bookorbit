@@ -87,7 +87,7 @@ describe('PathPolicyService', () => {
     const root = await makeTempRoot();
     await mkdir(join(root, 'real-data'));
     await symlink(join(root, 'real-data'), join(root, 'data'));
-    const service = new PathPolicyService({ libraryBrowseRoot: root, appDataPath: join(root, 'data') } as never);
+    const service = new PathPolicyService({ libraryBrowseRoot: root, appDataPath: join(root, 'data') } as never, {} as never, {} as never);
 
     expect(service.getAppDataPath()).toBe(join(root, 'data'));
     await expect(service.getCanonicalAppDataPath()).resolves.toBe(await realpath(join(root, 'real-data')));
@@ -106,6 +106,6 @@ describe('PathPolicyService', () => {
   }
 
   function makeService(root: string): PathPolicyService {
-    return new PathPolicyService({ libraryBrowseRoot: root } as never);
+    return new PathPolicyService({ libraryBrowseRoot: root } as never, {} as never, {} as never);
   }
 });

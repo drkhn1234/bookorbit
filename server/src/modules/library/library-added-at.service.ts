@@ -1,4 +1,4 @@
-import { LibraryScopeService } from '../../common/library-scope/library-scope.service';
+import { hasLibraryAdministratorIntent, LibraryScopeService } from '../../common/library-scope/library-scope.service';
 import {
   BadRequestException,
   ConflictException,
@@ -84,11 +84,11 @@ export class LibraryAddedAtService implements OnModuleDestroy {
     return this.snapshot(job);
   }
 
-  async get(libraryId: number, user: RequestUser): Promise<AddedAtRecomputeJob | null> {
+  async get(libraryId: number, user: RequestUser, scope?: string): Promise<AddedAtRecomputeJob | null> {
     await this.assertAccess(libraryId, user);
     this.prune();
     const entry = this.jobs.get(libraryId);
-    if (!entry || (entry.userId !== user.id && !user.isSuperuser)) return null;
+    if (!entry || (entry.userId !== user.id && !hasLibraryAdministratorIntent(user, scope))) return null;
     return this.snapshot(entry.job);
   }
 

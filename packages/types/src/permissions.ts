@@ -41,6 +41,15 @@ export enum Permission {
   NotificationAccess = "notification_access",
 }
 
+export const LIBRARY_OWNER_PERMISSIONS: ReadonlySet<string> = new Set([
+  Permission.LibraryDownload,
+  Permission.LibraryUpload,
+  Permission.LibraryEditMetadata,
+  Permission.LibraryDeleteBooks,
+  Permission.LibraryMergeBooks,
+  Permission.LibraryGenerateReadAloud,
+]);
+
 export const PERMISSION_LABELS: Record<Permission, string> = {
   [Permission.LibraryDownload]: "Download books",
   [Permission.LibraryUpload]: "Upload books",

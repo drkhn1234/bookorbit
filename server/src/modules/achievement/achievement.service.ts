@@ -1,3 +1,4 @@
+import { LibraryScopeService } from '../../common/library-scope/library-scope.service';
 import { randomUUID } from 'node:crypto';
 import { Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { DEFAULT_LOCALE, NotificationType, ACHIEVEMENT_CATEGORY_LABELS, type Locale } from '@bookorbit/types';
@@ -45,6 +46,7 @@ export class AchievementService implements OnModuleInit, OnModuleDestroy {
     private readonly registry: EvaluatorRegistry,
     private readonly notificationService: NotificationService,
     private readonly userService: UserService,
+    private readonly libraryScope: LibraryScopeService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -72,7 +74,8 @@ export class AchievementService implements OnModuleInit, OnModuleDestroy {
     }
 
     const timeZone = resolveTimeZone((user.settings as { timezone?: unknown } | undefined)?.timezone, 'UTC');
-    const progressMap = await this.computeProgress(userId, user.isSuperuser, timeZone, allAchievements, earnedMap);
+    const libraryIds = await this.libraryScope.visibleIds(user);
+    const progressMap = await this.computeProgress(userId, user.isSuperuser, timeZone, allAchievements, earnedMap, libraryIds);
     const accessibleBookIds = await this.getAccessibleContextBookIds(user, userAchievements);
 
     const categoryOrder: AchievementCategory[] = ['reading', 'library', 'exploration', 'dedication', 'devices'];
@@ -195,7 +198,7 @@ export class AchievementService implements OnModuleInit, OnModuleDestroy {
 
   private async getAccessibleContextBookIds(user: RequestUser, awards: UserAchievementRow[]): Promise<Set<number>> {
     const ids = awards.map((award) => this.contextBookId(award.contextJson)).filter((id): id is number => id !== null);
-    return this.repo.findAccessibleBookIds(user.id, user.isSuperuser, ids);
+    return this.repo.findAccessibleBookIds(user.id, user.isSuperuser, ids, await this.libraryScope.visibleIds(user));
   }
 
   private toItem(
@@ -342,6 +345,7 @@ export class AchievementService implements OnModuleInit, OnModuleDestroy {
     timeZone: string,
     allAchievements: AchievementRow[],
     earnedMap: Map<string, UserAchievementRow>,
+    libraryIds: number[],
   ): Promise<Map<string, number>> {
     const progressMap = new Map<string, number>();
 
@@ -359,7 +363,7 @@ export class AchievementService implements OnModuleInit, OnModuleDestroy {
       .map(([groupKey]) => groupKey);
 
     const progressEntries = await Promise.all(
-      groupsToFetch.map(async (groupKey) => [groupKey, await this.getProgressForGroup(userId, isSuperuser, timeZone, groupKey)] as const),
+      groupsToFetch.map(async (groupKey) => [groupKey, await this.getProgressForGroup(userId, isSuperuser, timeZone, groupKey, libraryIds)] as const),
     );
 
     for (const [groupKey, progress] of progressEntries) {
@@ -376,7 +380,7 @@ export class AchievementService implements OnModuleInit, OnModuleDestroy {
 
     await Promise.all(
       singleBadgesToFetch.map(async (a) => {
-        const progress = await this.computeSingleBadgeProgress(userId, isSuperuser, timeZone, a.key);
+        const progress = await this.computeSingleBadgeProgress(userId, isSuperuser, timeZone, a.key, libraryIds);
         if (progress !== null) {
           progressMap.set(a.key, progress);
         }
@@ -386,7 +390,13 @@ export class AchievementService implements OnModuleInit, OnModuleDestroy {
     return progressMap;
   }
 
-  private async computeSingleBadgeProgress(userId: number, isSuperuser: boolean, timeZone: string, key: string): Promise<number | null> {
+  private async computeSingleBadgeProgress(
+    userId: number,
+    isSuperuser: boolean,
+    timeZone: string,
+    key: string,
+    libraryIds: number[],
+  ): Promise<number | null> {
     switch (key) {
       case 'marathoner':
         return this.repo.getMaxSessionMinutes(userId);
@@ -400,7 +410,7 @@ export class AchievementService implements OnModuleInit, OnModuleDestroy {
       case 'author_deep_dive':
         return this.repo.maxBooksPerAuthor(userId);
       case 'multi_format':
-        return this.repo.countDistinctFormats(userId, isSuperuser);
+        return this.repo.countDistinctFormats(userId, isSuperuser, libraryIds);
       case 'century_span':
         return this.repo.countDistinctCenturiesRead(userId);
       case 'decade_sampler':
@@ -449,7 +459,13 @@ export class AchievementService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private async getProgressForGroup(userId: number, isSuperuser: boolean, timeZone: string, groupKey: string): Promise<number | null> {
+  private async getProgressForGroup(
+    userId: number,
+    isSuperuser: boolean,
+    timeZone: string,
+    groupKey: string,
+    libraryIds: number[],
+  ): Promise<number | null> {
     switch (groupKey) {
       case 'books_finished':
         return this.repo.countFinishedBooks(userId);
@@ -458,7 +474,7 @@ export class AchievementService implements OnModuleInit, OnModuleDestroy {
       case 'hours_read':
         return this.repo.sumReadingHours(userId);
       case 'library_builder':
-        return this.repo.countAccessibleBooks(userId, isSuperuser);
+        return this.repo.countAccessibleBooks(userId, isSuperuser, libraryIds);
       case 'annotator':
         return this.repo.countAnnotations(userId);
       case 'genre_explorer':

@@ -397,6 +397,7 @@ export class BookService {
     bookIds: number[],
     user: RequestUser,
     required: AccessLevel = 'viewer',
+    permission?: Permission,
   ): Promise<{ id: number; libraryId: number }[]> {
     const uniqueBookIds = [...new Set(bookIds)];
     const rows: { id: number; libraryId: number }[] = [];
@@ -404,18 +405,27 @@ export class BookService {
     if (rows.length !== uniqueBookIds.length) {
       throw new NotFoundException('One or more books were not found');
     }
+    if (permission) {
+      await mapWithConcurrency(rows, 8, async ({ id, libraryId }) => {
+        if (!(await this.canSeeBook(id, libraryId, user))) throw new NotFoundException('One or more books were not found');
+      });
+    }
     await this.verifyLibraryAccessLevels(
       rows.map((row) => row.libraryId),
       user,
       required,
+      permission,
     );
     return rows;
   }
 
-  private async verifyLibraryAccessLevels(libraryIds: number[], user: RequestUser, required: AccessLevel): Promise<void> {
-    await mapWithConcurrency([...new Set(libraryIds)], 8, (libraryId) =>
-      required === 'viewer' ? this.libraryService.verifyAccess(user, libraryId) : this.libraryService.verifyAccessLevel(user, libraryId, required),
-    );
+  private async verifyLibraryAccessLevels(libraryIds: number[], user: RequestUser, required: AccessLevel, permission?: Permission): Promise<void> {
+    await mapWithConcurrency([...new Set(libraryIds)], 8, (libraryId) => {
+      if (permission) return this.libraryService.verifyPermission(user, libraryId, permission);
+      return required === 'viewer'
+        ? this.libraryService.verifyAccess(user, libraryId)
+        : this.libraryService.verifyAccessLevel(user, libraryId, required);
+    });
   }
 
   private collectExistingProviderIds(meta: {
@@ -634,6 +644,13 @@ export class BookService {
     if (required !== 'viewer') await this.libraryService.verifyAccessLevel(user, libraryId, required);
   }
 
+  async verifyBookPermission(bookId: number, user: RequestUser, permission: Permission): Promise<void> {
+    const libraryId = await this.bookRepo.findLibraryIdByBookId(bookId);
+    if (libraryId === null) throw await this.missingBookError(bookId, user);
+    if (!(await this.canSeeBook(bookId, libraryId, user))) throw new NotFoundException(`Book ${bookId} not found`);
+    await this.libraryService.verifyPermission(user, libraryId, permission);
+  }
+
   /**
    * Not found, rather than forbidden. A 403 tells the caller the book exists, and book ids are
    * sequential integers, so the id space can be walked to learn which books a server holds. The
@@ -690,12 +707,18 @@ export class BookService {
     return file;
   }
 
-  async resolveSelectionToIds(dto: BulkSelectionDto, user: RequestUser, required: AccessLevel = 'viewer'): Promise<number[]> {
+  async resolveSelectionToIds(
+    dto: BulkSelectionDto,
+    user: RequestUser,
+    required: AccessLevel = 'viewer',
+    permission?: Permission,
+  ): Promise<number[]> {
     if (dto.bookIds && dto.query) {
       throw new BadRequestException('bookIds and query are mutually exclusive');
     }
     if (dto.bookIds) {
-      await this.verifyLibraryAccessForBookIds(dto.bookIds, user, required);
+      if (permission) await this.verifyLibraryAccessForBookIds(dto.bookIds, user, required, permission);
+      else await this.verifyLibraryAccessForBookIds(dto.bookIds, user, required);
       return dto.bookIds;
     }
     if (dto.query) {
@@ -716,8 +739,8 @@ export class BookService {
         timeZone,
         contentFilters: this.isSuperuser(user) ? undefined : user.contentFilters,
       });
-      if (required !== 'viewer' && !this.isSuperuser(user)) {
-        await this.verifyLibraryAccessLevels(await this.bookRepo.findDistinctLibraryIdsByWhere(where), user, required);
+      if (required !== 'viewer' || permission) {
+        await this.verifyLibraryAccessLevels(await this.bookRepo.findDistinctLibraryIdsByWhere(where), user, required, permission);
       }
       return this.bookRepo.findIdsByWhere(where);
     }
@@ -822,7 +845,9 @@ export class BookService {
         userId: user.id,
         q: dto.query.q,
         timeZone,
+        contentFilters: this.isSuperuser(user) ? undefined : user.contentFilters,
       });
+      await this.verifyLibraryAccessLevels(await this.bookRepo.findDistinctLibraryIdsByWhere(where), user, 'viewer', Permission.LibraryDownload);
       const rowCount = await this.bookRepo.countWhere(where);
       if (rowCount === 0) throw new BadRequestException('No books matched export selection');
       if (rowCount > METADATA_EXPORT_LIMITS.MAX_ROWS) {
@@ -853,7 +878,7 @@ export class BookService {
     if (uniqueIds.length > METADATA_EXPORT_LIMITS.MAX_ROWS) {
       throw new BadRequestException(`Too many rows selected for metadata export. Limit is ${METADATA_EXPORT_LIMITS.MAX_ROWS}.`);
     }
-    const rows = await this.verifyLibraryAccessForBookIds(uniqueIds, user);
+    const rows = await this.verifyLibraryAccessForBookIds(uniqueIds, user, 'viewer', Permission.LibraryDownload);
     const foundIds = new Set(rows.map((row) => row.id));
     const missingIds = uniqueIds.filter((id) => !foundIds.has(id));
     if (missingIds.length > 0) {
@@ -896,7 +921,9 @@ export class BookService {
         userId: user.id,
         q: dto.query.q,
         timeZone,
+        contentFilters: this.isSuperuser(user) ? undefined : user.contentFilters,
       });
+      await this.verifyLibraryAccessLevels(await this.bookRepo.findDistinctLibraryIdsByWhere(where), user, 'viewer', Permission.LibraryDownload);
       const rowCount = await this.bookRepo.countWhere(where);
       if (rowCount === 0) throw new BadRequestException('No books matched export selection');
       return { rowCount, scope: 'all-matching' };
@@ -904,7 +931,7 @@ export class BookService {
 
     const uniqueIds = [...new Set(dto.bookIds ?? [])];
     if (uniqueIds.length === 0) throw new BadRequestException('No books selected for metadata export');
-    await this.verifyLibraryAccessForBookIds(uniqueIds, user);
+    await this.verifyLibraryAccessForBookIds(uniqueIds, user, 'viewer', Permission.LibraryDownload);
     const rows = await this.bookRepo.findLibraryIdsByBookIds(uniqueIds);
     const foundIds = new Set(rows.map((row) => row.id));
     const missingIds = uniqueIds.filter((id) => !foundIds.has(id));
@@ -1674,6 +1701,7 @@ export class BookService {
 
   private async resolveDownloadFilenameForFile(file: {
     bookId: number;
+    libraryId?: number;
     absolutePath: string;
     format: string | null;
     mediaOverlayAvailable: boolean;
@@ -1681,7 +1709,7 @@ export class BookService {
     const originalFilename = basename(file.absolutePath);
     try {
       const [pattern, metaRows] = await Promise.all([
-        this.appSettings.getDownloadPattern(),
+        this.appSettings.getDownloadPattern(file.libraryId ?? (await this.bookRepo.findLibraryIdByBookId(file.bookId)) ?? undefined),
         this.bookRepo.findPatternMetadataByBookIds([file.bookId]),
       ]);
       const tokens = this.buildDownloadPatternTokens(file.absolutePath, file.format, file.mediaOverlayAvailable, metaRows[0]);
@@ -1736,6 +1764,7 @@ export class BookService {
 
   async resolveDownloadFilename(file: {
     bookId: number;
+    libraryId?: number;
     absolutePath: string;
     format: string | null;
     mediaOverlayAvailable: boolean;
@@ -1915,7 +1944,7 @@ export class BookService {
         this.logger.log(`[${event}] [end] count=0 durationMs=${Date.now() - startedAt} deletedBooks=0 deletedFiles=0 - delete books completed`);
         return { total: 0, books: [], omitted: 0 };
       }
-      const rows = await this.verifyLibraryAccessForBookIds(bookIds, user);
+      const rows = await this.verifyLibraryAccessForBookIds(bookIds, user, 'editor', Permission.LibraryDeleteBooks);
       const rowIds = new Set(rows.map((row) => row.id));
       const deletedBookIds = [...new Set(bookIds)].filter((bookId) => rowIds.has(bookId));
       const auditedBookIds = deletedBookIds.slice(0, MAX_DELETION_AUDIT_BOOKS);
@@ -3425,10 +3454,8 @@ export class BookService {
    * over instead of failing the whole selection.
    */
   async bulkItemAccess(bookId: number, user: RequestUser): Promise<'ok' | BulkBookSkipCode> {
-    const libraryId = await this.bookRepo.findLibraryIdByBookId(bookId);
-    if (libraryId === null) return 'not-found';
     try {
-      await this.libraryService.verifyAccessLevel(user, libraryId, 'editor');
+      await this.verifyBookPermission(bookId, user, Permission.LibraryEditMetadata);
       return 'ok';
     } catch (error) {
       if (error instanceof ForbiddenException) return 'no-access';
@@ -3599,8 +3626,11 @@ export class BookService {
         throw new BadRequestException(`Some selected books were not found: ${missingBookIds.join(', ')}`);
       }
 
+      await mapWithConcurrency(rows, 8, async ({ id, libraryId }) => {
+        if (!(await this.canSeeBook(id, libraryId, user))) throw new NotFoundException('One or more books were not found');
+      });
       const uniqueLibraryIds = [...new Set(rows.map((row) => row.libraryId))];
-      await Promise.all(uniqueLibraryIds.map((libraryId) => this.libraryService.verifyAccess(user, libraryId)));
+      await Promise.all(uniqueLibraryIds.map((libraryId) => this.libraryService.verifyPermission(user, libraryId, Permission.LibraryDownload)));
 
       const bookOrder = new Map(uniqueBookIds.map((id, index) => [id, index]));
       const fetchedFiles: ExportCandidateFile[] =
@@ -3625,12 +3655,19 @@ export class BookService {
         if (aSortOrder !== bSortOrder) return aSortOrder - bSortOrder;
         return a.absolutePath.localeCompare(b.absolutePath);
       });
-      const [pattern, metadataRows] = await Promise.all([
-        this.appSettings.getDownloadPattern(),
+      const [patterns, metadataRows] = await Promise.all([
+        Promise.all(uniqueLibraryIds.map(async (id) => [id, await this.appSettings.getDownloadPattern(id)] as const)),
         this.bookRepo.findPatternMetadataByBookIds([...new Set(orderedFiles.map((f) => f.bookId))]),
       ]);
       const metadataByBookId = new Map(metadataRows.map((row) => [row.bookId, row]));
-      const archiveFilename = this.resolveExportArchiveFilename(uniqueBookIds.length, orderedFiles, metadataByBookId, pattern);
+      const patternsByLibrary = new Map(patterns);
+      const libraryByBook = new Map(rows.map((row) => [row.id, row.libraryId]));
+      const archiveFilename = this.resolveExportArchiveFilename(
+        uniqueBookIds.length,
+        orderedFiles,
+        metadataByBookId,
+        patterns[0]?.[1] ?? DEFAULT_DOWNLOAD_PATTERN,
+      );
       const usedPaths = new Set<string>();
       let projectedBytes = 0;
 
@@ -3643,7 +3680,11 @@ export class BookService {
         }
 
         const tokens = this.buildDownloadPatternTokens(file.absolutePath, file.format, file.mediaOverlayAvailable, metadataByBookId.get(file.bookId));
-        const resolvedPath = resolveUploadPath(pattern || DEFAULT_DOWNLOAD_PATTERN, tokens, tokens.extension);
+        const resolvedPath = resolveUploadPath(
+          patternsByLibrary.get(libraryByBook.get(file.bookId)!) || DEFAULT_DOWNLOAD_PATTERN,
+          tokens,
+          tokens.extension,
+        );
         const fallbackFilename = basename(file.absolutePath);
         const rawZipPath = resolvedPath ?? fallbackFilename;
         const safeZipPath = this.sanitizeZipPath(rawZipPath, fallbackFilename);

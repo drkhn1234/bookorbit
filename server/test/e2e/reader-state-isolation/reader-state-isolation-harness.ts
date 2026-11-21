@@ -16,7 +16,7 @@ import { DB } from '../../../src/db';
 import * as schema from '../../../src/db/schema';
 import { MetadataService } from '../../../src/modules/metadata/metadata.service';
 import { BookDockWatcherService } from '../../../src/modules/book-dock/book-dock-watcher.service';
-import { makeMetadataNoopMock, seedLibrary, waitForScanCompletion } from '../app-harness';
+import { triggerLibraryScan, makeMetadataNoopMock, seedLibrary, waitForScanCompletion } from '../app-harness';
 import { allowAppAttest } from '../allow-app-attest';
 import { createReaderStateIsolationFixtureRoot, type ReaderStateIsolationFixtureRoot } from './reader-state-isolation-fixture-builder';
 
@@ -163,22 +163,8 @@ export async function triggerAndWaitForLibraryScan(
   libraryId: number,
   timeoutMs = 45_000,
 ): Promise<typeof schema.scanJobs.$inferSelect> {
-  const response = await ctx.app.inject({
-    method: 'POST',
-    url: `/api/v1/scanner/libraries/${libraryId}/scan`,
-    headers: authHeader(ctx.adminToken),
-  });
-
-  if (response.statusCode !== 202) {
-    throw new Error(`Scan endpoint failed: ${response.statusCode} ${response.body}`);
-  }
-
-  const body = response.json() as { jobId?: number };
-  if (!body.jobId) {
-    throw new Error(`Scan endpoint returned no jobId: ${response.body}`);
-  }
-
-  return waitForScanCompletion(ctx.db, body.jobId, timeoutMs);
+  const jobId = await triggerLibraryScan(ctx, libraryId);
+  return waitForScanCompletion(ctx.db, jobId, timeoutMs);
 }
 
 export async function locateBookByAbsolutePath(ctx: ReaderStateIsolationE2EContext, absolutePath: string): Promise<LocatedBookFile> {

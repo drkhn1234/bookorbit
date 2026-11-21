@@ -73,3 +73,8 @@ export interface ScanBooksAddedEvent {
   libraryId: number;
   books: import("./book").BookCard[];
 }
+
+/** A cross-library operation changed visible content without exposing the inaccessible side. */
+export interface LibraryChangedEvent {
+  libraryIds: number[];
+}

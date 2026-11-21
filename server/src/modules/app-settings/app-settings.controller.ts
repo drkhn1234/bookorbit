@@ -1,10 +1,32 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseIntPipe, Patch, Post, Put, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  ParseIntPipe,
+  Patch,
+  Post,
+  Put,
+  Query,
+  SetMetadata,
+  NotFoundException,
+  Header,
+} from '@nestjs/common';
 
 import { Permission, AuditAction, AuditResource } from '@bookorbit/types';
+import { RequireLibraryAccess } from '../../common/decorators/require-library-access.decorator';
 import { Public } from '../../common/decorators/public.decorator';
-import { RequirePermission } from '../../common/decorators/require-permission.decorator';
+import { PERMISSION_KEY, RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { Auditable } from '../../common/decorators/auditable.decorator';
-import { AppSettingsService } from './app-settings.service';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { InteractiveOnly } from '../../common/decorators/api-key-policy.decorator';
+import { librarySettingsAccount, requireLibraryAdministrator } from '../../common/library-scope/library-settings-scope';
+import type { RequestUser } from '../../common/types/request-user';
+import { APP_SETTING_KEYS } from '../../common/constants/app-settings.constants';
+import { AppSettingsService, type NamingSetting } from './app-settings.service';
 import { OidcProviderService } from './oidc-provider.service';
 import { UpdateAppSettingDto } from './dto/update-app-setting.dto';
 import { UpdateFilePatternDto } from './dto/update-file-pattern.dto';
@@ -29,6 +51,55 @@ export class AppSettingsController {
     return this.appSettingsService.listSettings();
   }
 
+  @Get('library-naming/:kind')
+  @SetMetadata(PERMISSION_KEY, [])
+  @InteractiveOnly()
+  @Header('Cache-Control', 'private, no-store')
+  async getNamingDefault(@Param('kind') kind: string, @CurrentUser() user: RequestUser, @Query('scope') scope?: string) {
+    return { pattern: await this.appSettingsService.getNamingDefault(this.namingKind(kind), librarySettingsAccount(user, scope)) };
+  }
+
+  @Get('library-naming/libraries/:id/:kind')
+  @SetMetadata(PERMISSION_KEY, [])
+  @RequireLibraryAccess('owner')
+  @InteractiveOnly()
+  @Header('Cache-Control', 'private, no-store')
+  getInheritedNamingDefault(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('kind') kind: string,
+    @CurrentUser() user: RequestUser,
+    @Query('scope') scope?: string,
+  ) {
+    return this.appSettingsService.getLibraryNamingDefault(id, this.namingKind(kind), librarySettingsAccount(user, scope));
+  }
+
+  @Put('library-naming/:kind')
+  @SetMetadata(PERMISSION_KEY, [])
+  @InteractiveOnly()
+  async setNamingDefault(
+    @Param('kind') kind: string,
+    @Body() dto: UpdateFilePatternDto,
+    @CurrentUser() user: RequestUser,
+    @Query('scope') scope?: string,
+  ) {
+    await this.appSettingsService.setNamingDefault(this.namingKind(kind), librarySettingsAccount(user, scope), dto.pattern);
+    return { pattern: dto.pattern };
+  }
+
+  @Delete('library-naming/:kind')
+  @SetMetadata(PERMISSION_KEY, [])
+  @InteractiveOnly()
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async resetNamingDefault(@Param('kind') kind: string, @CurrentUser() user: RequestUser) {
+    const accountId = librarySettingsAccount(user);
+    await this.appSettingsService.resetPersonalNamingDefault(this.namingKind(kind), accountId!);
+  }
+
+  private namingKind(kind: string): NamingSetting {
+    if (kind === 'upload-pattern' || kind === 'upload-pattern-folder' || kind === 'download-pattern') return kind;
+    throw new NotFoundException('Unknown file naming setting');
+  }
+
   @Patch(':key')
   @HttpCode(HttpStatus.OK)
   @Auditable({
@@ -36,7 +107,13 @@ export class AppSettingsController {
     resource: AuditResource.AppSettings,
     description: (req) => `Updated app setting '${req.params['key']}'`,
   })
-  update(@Param('key') key: string, @Body() dto: UpdateAppSettingDto) {
+  update(@Param('key') key: string, @Body() dto: UpdateAppSettingDto, @CurrentUser() user: RequestUser, @Query('scope') scope?: string) {
+    if (
+      key === APP_SETTING_KEYS.MAX_UPLOAD_SIZE_MB ||
+      key === APP_SETTING_KEYS.UPDATE_CHECK_ENABLED ||
+      key === APP_SETTING_KEYS.CROSS_PLATFORM_PATH_SANITIZATION_ENABLED
+    )
+      requireLibraryAdministrator(user, scope);
     return this.appSettingsService.update(key, dto.value);
   }
 
@@ -48,7 +125,8 @@ export class AppSettingsController {
   @Put('upload-pattern')
   @HttpCode(HttpStatus.OK)
   @Auditable({ action: AuditAction.AppSettingsUpdate, resource: AuditResource.AppSettings, description: 'Updated upload file pattern' })
-  async setUploadPattern(@Body() dto: UpdateFilePatternDto) {
+  async setUploadPattern(@Body() dto: UpdateFilePatternDto, @CurrentUser() user: RequestUser, @Query('scope') scope?: string) {
+    requireLibraryAdministrator(user, scope);
     await this.appSettingsService.setUploadPattern(dto.pattern);
     return { pattern: dto.pattern };
   }
@@ -65,7 +143,8 @@ export class AppSettingsController {
     resource: AuditResource.AppSettings,
     description: 'Updated upload file pattern for folder-as-book libraries',
   })
-  async setUploadPatternBookPerFolder(@Body() dto: UpdateFilePatternDto) {
+  async setUploadPatternBookPerFolder(@Body() dto: UpdateFilePatternDto, @CurrentUser() user: RequestUser, @Query('scope') scope?: string) {
+    requireLibraryAdministrator(user, scope);
     await this.appSettingsService.setUploadPatternBookPerFolder(dto.pattern);
     return { pattern: dto.pattern };
   }
@@ -78,9 +157,17 @@ export class AppSettingsController {
   @Put('download-pattern')
   @HttpCode(HttpStatus.OK)
   @Auditable({ action: AuditAction.AppSettingsUpdate, resource: AuditResource.AppSettings, description: 'Updated download file pattern' })
-  async setDownloadPattern(@Body() dto: UpdateFilePatternDto) {
+  async setDownloadPattern(@Body() dto: UpdateFilePatternDto, @CurrentUser() user: RequestUser, @Query('scope') scope?: string) {
+    requireLibraryAdministrator(user, scope);
     await this.appSettingsService.setDownloadPattern(dto.pattern);
     return { pattern: dto.pattern };
+  }
+
+  @Get('library-naming-sanitization')
+  @SetMetadata(PERMISSION_KEY, [])
+  @InteractiveOnly()
+  async getLibraryNamingSanitization() {
+    return { enabled: await this.appSettingsService.isCrossPlatformPathSanitizationEnabled() };
   }
 
   @Get('cross-platform-path-sanitization')
@@ -95,7 +182,8 @@ export class AppSettingsController {
     resource: AuditResource.AppSettings,
     description: 'Updated cross-platform path sanitization setting',
   })
-  async setCrossPlatformPathSanitization(@Body() dto: UpdateBooleanSettingDto) {
+  async setCrossPlatformPathSanitization(@Body() dto: UpdateBooleanSettingDto, @CurrentUser() user: RequestUser, @Query('scope') scope?: string) {
+    requireLibraryAdministrator(user, scope);
     await this.appSettingsService.setCrossPlatformPathSanitizationEnabled(dto.enabled);
     return { enabled: dto.enabled };
   }

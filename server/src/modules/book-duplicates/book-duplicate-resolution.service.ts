@@ -179,7 +179,8 @@ export class BookDuplicateResolutionService implements OnApplicationBootstrap {
 
   async getJob(jobId: number, user: RequestUser): Promise<BookDuplicateResolutionJob> {
     const row = await this.repo.find(jobId);
-    if (!row || row.userId !== user.id) throw new NotFoundException('Duplicate resolution not found');
+    if (!row || row.userId !== user.id || row.scanId === null) throw new NotFoundException('Duplicate resolution not found');
+    await this.duplicates.findResolvableScan(row.scanId, user);
     return this.toJob(row);
   }
 
@@ -505,7 +506,7 @@ export class BookDuplicateResolutionService implements OnApplicationBootstrap {
   }
 
   private emit(context: RunContext, phase: 'progress' | 'finished', event: Omit<BookDuplicateResolutionEvent, 'jobId'>): void {
-    this.gateway.emitDuplicateResolution(context.user.id, phase, { jobId: context.jobId, ...event });
+    void this.gateway.emitDuplicateResolution(context.user.id, phase, { jobId: context.jobId, ...event }, context.libraryIds);
   }
 
   private inProgress(jobId: number | null): ConflictException {

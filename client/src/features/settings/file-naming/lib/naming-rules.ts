@@ -27,9 +27,9 @@ export interface NamingRule {
 }
 
 export const GLOBAL_RULE_ENDPOINTS: Record<GlobalRuleKey, string> = {
-  fileAsBook: '/api/v1/app-settings/upload-pattern',
-  folderAsBook: '/api/v1/app-settings/upload-pattern-folder',
-  download: '/api/v1/app-settings/download-pattern',
+  fileAsBook: '/api/v1/app-settings/library-naming/upload-pattern',
+  folderAsBook: '/api/v1/app-settings/library-naming/upload-pattern-folder',
+  download: '/api/v1/app-settings/library-naming/download-pattern',
 }
 
 export const GLOBAL_RULE_DEFAULTS: Record<GlobalRuleKey, string> = {

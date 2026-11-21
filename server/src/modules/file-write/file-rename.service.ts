@@ -110,8 +110,8 @@ export class FileRenameService implements OnModuleDestroy {
     const pattern =
       data.fileNamingPattern ??
       (data.organizationMode === 'book_per_folder'
-        ? await this.appSettings.getUploadPatternBookPerFolder()
-        : await this.appSettings.getUploadPattern());
+        ? await this.appSettings.getUploadPatternBookPerFolder(data.libraryId)
+        : await this.appSettings.getUploadPattern(data.libraryId));
 
     if (!pattern) {
       return this.logAndReturn(bookId, startedAt, { status: 'skipped', reason: 'no pattern' });

@@ -392,6 +392,7 @@ export class ScannerService implements OnApplicationBootstrap {
   private readonly targetedBookScanQueue: TargetedScanJob[] = [];
   private readonly pendingFileRepairs = new Set<number>();
   private activeTargetedBookScans = 0;
+  private targetedScansWaitingForRegistry = false;
   private readonly scanGateReleases = new Map<number, LibraryOperationRelease>();
   /** Targeted scans held back while another operation rewrites the library, keyed by library then path. */
   private readonly deferredTargetedScans = new Map<number, Map<string, TargetedScanJob>>();
@@ -551,7 +552,7 @@ export class ScannerService implements OnApplicationBootstrap {
     const cards = assembleBookCards(rows, authorRows, fileRows, genreRows, []);
     await this.coverStore.enrichCardFaces(cards);
     if (cards.length > 0) {
-      this.scanGateway.emitBooksAdded({ libraryId, books: cards } satisfies ScanBooksAddedEvent);
+      void this.scanGateway.emitBooksAdded({ libraryId, books: cards } satisfies ScanBooksAddedEvent);
     }
   }
 
@@ -645,7 +646,7 @@ export class ScannerService implements OnApplicationBootstrap {
     const stillMissingIds = rows.filter((book) => book.libraryId === libraryId && book.status === 'missing').map((book) => book.id);
     if (stillMissingIds.length === 0) return;
 
-    this.scanGateway.emitBookMissing({ libraryId, bookIds: stillMissingIds } satisfies BookMissingEvent);
+    void this.scanGateway.emitBookMissing({ libraryId, bookIds: stillMissingIds } satisfies BookMissingEvent);
   }
 
   private flushBooksUnavailableNotification(libraryId: number): void {
@@ -861,7 +862,7 @@ export class ScannerService implements OnApplicationBootstrap {
       const formatPriority = (await this.scannerRepo.findLibrarySettings(libraryId))?.formatPriority ?? DEFAULT_FORMAT_PRIORITY;
       const backgroundStartedAt = Date.now();
 
-      this.scanGateway.emitCoverRefreshProgress({ libraryId, processed: 0, total, status: 'running' });
+      void this.scanGateway.emitCoverRefreshProgress({ libraryId, processed: 0, total, status: 'running' });
 
       (async () => {
         let processed = 0;
@@ -885,7 +886,7 @@ export class ScannerService implements OnApplicationBootstrap {
               refreshedCount++;
             }
           }
-          this.scanGateway.emitCoverRefreshProgress({
+          void this.scanGateway.emitCoverRefreshProgress({
             libraryId,
             processed,
             total,
@@ -969,10 +970,10 @@ export class ScannerService implements OnApplicationBootstrap {
       this.scanJobStore.markPendingRescan(libraryId);
       return;
     }
-    if (this.libraryGate.isHeld(libraryId)) {
+    if (this.libraryGate.isHeld(libraryId) || this.libraryGate.isRegistryRebinding) {
       if (this.deferredFullScans.has(libraryId)) return;
       this.deferredFullScans.add(libraryId);
-      void this.libraryGate.whenReleased(libraryId).then(() => {
+      void Promise.all([this.libraryGate.whenReleased(libraryId), this.libraryGate.whenRegistryStable()]).then(() => {
         this.deferredFullScans.delete(libraryId);
         this.startScanAsync(libraryId);
       });
@@ -1071,10 +1072,21 @@ export class ScannerService implements OnApplicationBootstrap {
   }
 
   private drainTargetedBookScanQueue(): void {
+    if (this.targetedScansWaitingForRegistry) return;
     while (this.activeTargetedBookScans < TARGETED_BOOK_SCAN_MAX_CONCURRENCY && this.targetedBookScanQueue.length > 0) {
+      const releaseRegistry = this.libraryGate.tryReadRegistry();
+      if (!releaseRegistry) {
+        this.targetedScansWaitingForRegistry = true;
+        void this.libraryGate.whenRegistryStable().then(() => {
+          this.targetedScansWaitingForRegistry = false;
+          this.drainTargetedBookScanQueue();
+        });
+        return;
+      }
       const job = this.targetedBookScanQueue.shift()!;
       const holder = this.libraryGate.current(job.libraryId);
       if (holder && (holder !== 'scan' || job.type === 'registered')) {
+        releaseRegistry();
         this.deferTargetedScan(job);
         continue;
       }
@@ -1093,6 +1105,7 @@ export class ScannerService implements OnApplicationBootstrap {
         )
         .finally(() => {
           if (job.type === 'registered') this.pendingFileRepairs.delete(job.fileId);
+          releaseRegistry();
           this.activeTargetedBookScans -= 1;
           this.drainTargetedBookScanQueue();
         });
@@ -1405,7 +1418,7 @@ export class ScannerService implements OnApplicationBootstrap {
       }
       for (const [fromLibraryId, bookIds] of transferredFrom) {
         this.cancelBooksUnavailableNotification(fromLibraryId, bookIds);
-        this.scanGateway.emitBookTransferred({ fromLibraryId, toLibraryId: libraryId, bookIds } satisfies BookTransferredEvent);
+        void this.scanGateway.emitBookTransferred({ fromLibraryId, toLibraryId: libraryId, bookIds } satisfies BookTransferredEvent);
       }
       this.logger.log(
         `[${event}] [end] libraryId=${libraryId} libraryFolderId=${folder.id} durationMs=${Date.now() - startedAt} claimedCount=${claimedCount} heldBackCount=${heldBack.size} - books filed by an enclosing library folder moved into the folder that owns them`,
@@ -1790,7 +1803,7 @@ export class ScannerService implements OnApplicationBootstrap {
         let candidates: BookCandidate[] = [];
         let skippedDirs = new Set<string>();
         let unchangedDirs = new Set<string>();
-        let dirMtimes = new Map<string, number>();
+        let dirMtimes: Map<string, number> | undefined;
 
         // Load stored dir mtimes for incremental scanning (unless forced full)
         let knownDirMtimes: Map<string, number> | undefined;
@@ -1868,8 +1881,8 @@ export class ScannerService implements OnApplicationBootstrap {
         totals.updatedCount += counts.updatedCount;
         totals.missingCount += counts.missingCount;
 
-        // Persist dir scan state after successful folder processing
-        if (dirMtimes.size > 0 && scanStateVersion !== undefined) {
+        // An empty successful walk also replaces stale state for directories it could not timestamp.
+        if (dirMtimes && scanStateVersion !== undefined) {
           try {
             const entries = [...dirMtimes].map(([dirPath, mtimeMs]) => ({ dirPath, mtimeMs }));
             await this.scannerRepo.persistDirScanState(folder.id, scanStateVersion, entries);
@@ -2055,7 +2068,7 @@ export class ScannerService implements OnApplicationBootstrap {
         await this.scannerRepo.markBooksAsMissing(missingIds);
         counts.missingCount += missingIds.length;
         this.scanJobStore.increment(libraryId, { missing: missingIds.length });
-        this.scanGateway.emitBookMissing({ libraryId, bookIds: missingIds } satisfies BookMissingEvent);
+        void this.scanGateway.emitBookMissing({ libraryId, bookIds: missingIds } satisfies BookMissingEvent);
         this.bufferBooksUnavailableNotification(libraryId, missingIds);
       }
 
@@ -2748,7 +2761,7 @@ export class ScannerService implements OnApplicationBootstrap {
         if (survivor.status === 'missing') {
           await this.scannerRepo.updateBookStatus(survivor.id, 'present');
           counts.updatedCount++;
-          this.scanGateway.emitBookRestored({ libraryId, bookIds: [survivor.id] });
+          void this.scanGateway.emitBookRestored({ libraryId, bookIds: [survivor.id] });
           this.bufferBooksRestoredNotification(libraryId, [survivor.id]);
         }
         bookByFolderPath.set(candidate.folderPath, { ...survivor, folderPath: candidate.folderPath });
@@ -2798,7 +2811,7 @@ export class ScannerService implements OnApplicationBootstrap {
     if (existing.status === 'missing') {
       await this.scannerRepo.updateBookStatus(existing.id, 'present');
       counts.updatedCount++;
-      this.scanGateway.emitBookRestored({ libraryId, bookIds: [existing.id] });
+      void this.scanGateway.emitBookRestored({ libraryId, bookIds: [existing.id] });
       this.bufferBooksRestoredNotification(libraryId, [existing.id]);
     }
 
@@ -2899,7 +2912,7 @@ export class ScannerService implements OnApplicationBootstrap {
     if (restored) {
       await this.scannerRepo.updateBookStatus(sourceBook.id, 'present');
       counts.updatedCount++;
-      this.scanGateway.emitBookRestored({ libraryId, bookIds: [sourceBook.id] });
+      void this.scanGateway.emitBookRestored({ libraryId, bookIds: [sourceBook.id] });
       this.bufferBooksRestoredNotification(libraryId, [sourceBook.id]);
     }
 
@@ -3078,7 +3091,7 @@ export class ScannerService implements OnApplicationBootstrap {
     if (previousLibraryId != null) this.cancelBooksUnavailableNotification(previousLibraryId, [sourceBookId]);
     const libraryChanged = moved.libraryChanged ?? (previousLibraryId != null && previousLibraryId !== libraryId);
     if (libraryChanged && previousLibraryId != null && previousLibraryId !== libraryId) {
-      this.scanGateway.emitBookTransferred({
+      void this.scanGateway.emitBookTransferred({
         fromLibraryId: previousLibraryId,
         toLibraryId: libraryId,
         bookIds: [moved.id],
@@ -3673,7 +3686,7 @@ export class ScannerService implements OnApplicationBootstrap {
       missing: entry?.missing ?? 0,
       errorMessage,
     };
-    this.scanGateway.emitProgress(event);
+    void this.scanGateway.emitProgress(event);
     this.jobChanges.notify({ type: 'library-scan', ownerId: null, state: !progressOnly });
   }
 }

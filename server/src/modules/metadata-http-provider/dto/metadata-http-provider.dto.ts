@@ -64,6 +64,10 @@ export class TestMetadataHttpProviderDto {
 
 export class DeleteMetadataHttpProviderQueryDto {
   @IsOptional()
+  @IsString()
+  scope?: string;
+
+  @IsOptional()
   @Transform(({ value }) => value === true || value === 'true')
   @IsBoolean()
   purge?: boolean;

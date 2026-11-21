@@ -24,10 +24,6 @@ export interface ReadAlongJobRow extends SourceRow {
   job: ReadAloudPageRow;
 }
 
-function mayGenerate(user: RequestUser): boolean {
-  return user.active && (user.isSuperuser || user.permissions.includes(Permission.LibraryGenerateReadAloud));
-}
-
 /** Demo accounts may watch, as the book page lets them, but change nothing. */
 function restricted(user: RequestUser): boolean {
   return !user.isSuperuser && user.permissions.includes(Permission.DemoRestricted);
@@ -86,7 +82,7 @@ function statusAllows(row: ActionableJob, action: JobActionKind, now: number): b
 function viewerMay(user: RequestUser, row: ActionableJob, action: JobActionKind): boolean {
   if (restricted(user)) return false;
   if (action === 'prioritize') return managesReadAlong(user);
-  return mayGenerate(user) && (user.isSuperuser || (row.requestedByUserId !== null && row.requestedByUserId === user.id));
+  return user.active && (user.isSuperuser || (row.requestedByUserId !== null && row.requestedByUserId === user.id));
 }
 
 /**
@@ -112,7 +108,7 @@ export class ReadAlongJobSource implements JobSource<ReadAlongJobRow>, OnModuleI
   }
 
   access(user: RequestUser): JobAccess {
-    return { own: mayGenerate(user), all: user.active && managesReadAlong(user) };
+    return { own: user.active, all: user.active && managesReadAlong(user) };
   }
 
   async list(query: SourceListQuery): Promise<ReadAlongJobRow[]> {
@@ -157,7 +153,7 @@ export class ReadAlongJobSource implements JobSource<ReadAlongJobRow>, OnModuleI
   async describe(rows: ReadAlongJobRow[], viewer: JobViewer): Promise<Map<string, JobSubject>> {
     const books = await this.subjects.describe(
       rows.map((row) => row.job.bookId),
-      { user: viewer.user, manages: viewer.access.all },
+      viewer.user,
     );
     const subjects = new Map<string, JobSubject>();
     for (const row of rows) {

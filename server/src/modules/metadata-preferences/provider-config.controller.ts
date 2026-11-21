@@ -1,38 +1,57 @@
-import { MetadataProviderKey, Permission } from '@bookorbit/types';
-import { BadRequestException, Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Put } from '@nestjs/common';
+import { MetadataProviderKey } from '@bookorbit/types';
+import { BadRequestException, Body, Controller, Get, Header, HttpCode, HttpStatus, Param, Post, Put, Query } from '@nestjs/common';
 
-import { RequirePermission } from '../../common/decorators/require-permission.decorator';
+import { InteractiveOnly } from '../../common/decorators/api-key-policy.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { librarySettingsAccount } from '../../common/library-scope/library-settings-scope';
+import type { RequestUser } from '../../common/types/request-user';
 import { UpdateProviderConfigDto } from './dto/update-provider-config.dto';
 import { ProviderConfigService } from './provider-config.service';
 
-const KNOWN_PROVIDER_KEYS = new Set<MetadataProviderKey>(Object.values(MetadataProviderKey));
+import { IsString, MaxLength } from 'class-validator';
 
-function parseProviderKey(value: string): MetadataProviderKey {
-  if (KNOWN_PROVIDER_KEYS.has(value as MetadataProviderKey)) return value as MetadataProviderKey;
-  throw new BadRequestException(`Unknown provider key: ${value}`);
+class PersonalExternalAuthorizationDto {
+  @IsString()
+  @MaxLength(8192)
+  authorization!: string;
 }
 
+const KNOWN_PROVIDER_KEYS = new Set<MetadataProviderKey>(Object.values(MetadataProviderKey));
+
+@InteractiveOnly()
 @Controller('metadata-preferences/providers')
-@RequirePermission(Permission.ManageMetadataConfig)
 export class ProviderConfigController {
   constructor(private readonly service: ProviderConfigService) {}
 
   @Get()
-  async getConfig() {
-    const config = await this.service.getConfig();
-    const statuses = await this.service.getProviderStatuses(config);
-    return { config, statuses };
+  @Header('Cache-Control', 'private, no-store')
+  getConfig(@CurrentUser() user: RequestUser, @Query('scope') scope?: string) {
+    return this.service.getSettingsView(librarySettingsAccount(user, scope));
   }
 
   @Put()
-  @HttpCode(HttpStatus.OK)
-  updateConfig(@Body() dto: UpdateProviderConfigDto) {
-    return this.service.updateConfig(dto);
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async updateConfig(@Body() dto: UpdateProviderConfigDto, @CurrentUser() user: RequestUser, @Query('scope') scope?: string) {
+    await this.service.updateConfig(dto, librarySettingsAccount(user, scope));
+  }
+
+  @Put('external/:key')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async setExternalAuthorization(@Param('key') key: string, @Body() dto: PersonalExternalAuthorizationDto, @CurrentUser() user: RequestUser) {
+    librarySettingsAccount(user);
+    await this.service.setExternalAuthorization(user.id, key, dto.authorization);
   }
 
   @Post(':key/test')
   @HttpCode(HttpStatus.OK)
-  testProvider(@Param('key') key: string, @Body() dto: UpdateProviderConfigDto = {}) {
-    return this.service.testProvider(parseProviderKey(key), dto);
+  @Header('Cache-Control', 'private, no-store')
+  async testProvider(
+    @Param('key') key: string,
+    @Body() dto: UpdateProviderConfigDto,
+    @CurrentUser() user: RequestUser,
+    @Query('scope') scope?: string,
+  ) {
+    if (!KNOWN_PROVIDER_KEYS.has(key as MetadataProviderKey)) throw new BadRequestException('Unknown provider');
+    return this.service.runForAccount(librarySettingsAccount(user, scope), () => this.service.testProvider(key as MetadataProviderKey, dto));
   }
 }

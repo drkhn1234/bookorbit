@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { join } from 'node:path';
 
 import { GUARDS_METADATA, METHOD_METADATA } from '@nestjs/common/constants';
 import { ModulesContainer } from '@nestjs/core';
@@ -6,7 +7,8 @@ import { ModulesContainer } from '@nestjs/core';
 import { AppAttestGuard } from '../src/modules/app-attest/app-attest.guard';
 import { androidAttestClientData, appAttestBodySha256 } from '../src/modules/app-attest/app-attest.service';
 import { androidAssertion, androidChain } from '../src/modules/app-attest/test-fixtures/android-attestation-test-helpers';
-import { closeE2EContext, createE2EContext, type E2EContext } from './e2e/app-harness';
+import * as schema from '../src/db/schema';
+import { closeE2EContext, createE2EContext, seedLibrary, type E2EContext } from './e2e/app-harness';
 
 const TIMEOUT = 120_000;
 const ID = '0b6c1f0e-8d3a-4c43-9f0f-2a5f2f1d7c11';
@@ -95,12 +97,6 @@ const UNGUARDED_ROUTES: Array<[method: string, path: string]> = [
   ['GET', '/reading-history/summary'],
 ];
 
-const THIRD_PARTY_PROGRESS_ROUTES: Array<[method: string, path: string]> = [
-  ['GET', '/books/files/1/progress'],
-  ['POST', '/books/files/1/progress'],
-  ['DELETE', '/books/files/1/progress'],
-];
-
 describe('App Attest enforcement (e2e)', { timeout: TIMEOUT }, () => {
   let ctx: E2EContext;
 
@@ -156,10 +152,39 @@ describe('App Attest enforcement (e2e)', { timeout: TIMEOUT }, () => {
     }
   });
 
-  it('leaves per-file progress routes open to third-party clients', async () => {
-    for (const [method, path] of THIRD_PARTY_PROGRESS_ROUTES) {
-      expect((await send(method, path)).statusCode, `${method} ${path}`).not.toBe(403);
-    }
+  it('allows file progress without attestation when the session has the library grant', async () => {
+    const rootPath = join(ctx.isolatedAppData!.path, 'progress-fixture');
+    const { libraryId, libraryFolderId } = await seedLibrary(ctx.db, { rootPath, mode: 'book_per_folder', watch: false });
+    const [book] = await ctx.db.insert(schema.books).values({ libraryId, libraryFolderId, folderPath: rootPath }).returning({ id: schema.books.id });
+    const [file] = await ctx.db
+      .insert(schema.bookFiles)
+      .values({
+        id: 2_000_000_000,
+        bookId: book.id,
+        libraryFolderId,
+        absolutePath: join(rootPath, 'example.epub'),
+        relPath: 'example.epub',
+        ino: 1n,
+        sizeBytes: 1,
+        format: 'epub',
+        role: 'content',
+      })
+      .returning({ id: schema.bookFiles.id });
+    const path = `/books/files/${file.id}/progress`;
+    expect((await send('GET', path)).statusCode).toBe(403);
+    const { id: userId } = (await send('GET', '/auth/me')).json<{ id: number }>();
+    await ctx.db.insert(schema.userLibraryAccess).values({ userId, libraryId, accessLevel: 'viewer' });
+    expect((await send('GET', path)).statusCode).toBe(200);
+    const save = await ctx.app.inject({
+      method: 'POST',
+      url: `/api/v1${path}`,
+      headers: { authorization: `Bearer ${ctx.adminToken}` },
+      payload: { percentage: 0.5 },
+    });
+    expect(save.statusCode).toBe(201);
+    expect((await send('GET', path)).json()).toMatchObject({ percentage: 0.5 });
+    expect((await send('DELETE', path)).statusCode).toBe(204);
+    expect((await send('GET', path)).json()).toMatchObject({ percentage: 0 });
   });
 
   it('guards exactly the routes listed here', () => {

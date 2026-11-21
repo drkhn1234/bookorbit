@@ -17,6 +17,7 @@ import * as schema from '../../../src/db/schema';
 import { BookDockWatcherService } from '../../../src/modules/book-dock/book-dock-watcher.service';
 import { LibraryDockRegistry } from '../../../src/modules/book-dock/library-dock-registry.service';
 import { seedLibrary, waitForCondition, type Db } from '../app-harness';
+import { allowAppAttest } from '../allow-app-attest';
 import { buildFb2Fixture, createBookDockFixtureRoot, writeFixtureFile, type BookDockFixtureRoot } from './book-dock-fixture-builder';
 
 const ADMIN_SETUP_DTO = {
@@ -35,6 +36,7 @@ export interface BookDockE2EContext {
   app: NestFastifyApplication;
   db: Db;
   adminToken: string;
+  adminUserId: number;
   fixture: BookDockFixtureRoot;
   envSnapshot: EnvSnapshot;
 }
@@ -93,9 +95,11 @@ export async function createBookDockE2EContext(): Promise<BookDockE2EContext> {
   // before the module compiles.
   process.env.FILE_WRITE_DEBOUNCE_MS = '25';
 
-  const moduleFixture = await Test.createTestingModule({
-    imports: [AppModule],
-  }).compile();
+  const moduleFixture = await allowAppAttest(
+    Test.createTestingModule({
+      imports: [AppModule],
+    }),
+  ).compile();
 
   const app = moduleFixture.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
   app.setGlobalPrefix('api/v1');
@@ -115,6 +119,9 @@ export async function createBookDockE2EContext(): Promise<BookDockE2EContext> {
 
   const db = app.get<Db>(DB);
   const adminToken = await getAdminToken(app, db);
+  const me = await app.inject({ method: 'GET', url: '/api/v1/auth/me', headers: authHeader(adminToken) });
+  if (me.statusCode !== 200) throw new Error('Could not identify synthetic dock administrator');
+  const { id: adminUserId } = me.json<{ id: number }>();
   await setSetting(db, 'book_dock_auto_fetch_metadata', 'false');
   await setSetting(db, 'book_dock_auto_finalize_enabled', 'false');
 
@@ -122,6 +129,7 @@ export async function createBookDockE2EContext(): Promise<BookDockE2EContext> {
     app,
     db,
     adminToken,
+    adminUserId,
     fixture,
     envSnapshot,
   };
@@ -162,6 +170,8 @@ export async function createLibraryWithFolder(
     watch: false,
     name: options.name,
   });
+
+  await grantLibraryAccess(ctx, ctx.adminUserId, libraryId, 'owner');
 
   // FB2 writes have their own toggle which is off by default, so `fileWriteEnabled` alone still skips them.
   if (options.fileWriteEnabled !== undefined || options.fileWriteFb2Enabled !== undefined) {

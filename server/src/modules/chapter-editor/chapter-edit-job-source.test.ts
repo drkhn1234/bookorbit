@@ -148,7 +148,7 @@ describe('ChapterEditJobSource', () => {
   it('names the book only where the viewer still reaches it', async () => {
     const { source, subjects } = makeSource();
     const found = await source.describe([rowOf({})], viewerOf(editor));
-    expect(subjects.describe).toHaveBeenCalledWith([12], { user: editor, manages: false });
+    expect(subjects.describe).toHaveBeenCalledWith([12], editor);
     expect(found.get(JOB_ID)).toMatchObject({ label: 'Dune', url: '/book/12' });
     subjects.describe.mockResolvedValue(new Map());
     expect((await source.describe([rowOf({})], viewerOf(editor))).size).toBe(0);

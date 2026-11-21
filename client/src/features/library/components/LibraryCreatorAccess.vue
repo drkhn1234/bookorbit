@@ -11,11 +11,13 @@ const { t } = useI18n()
 
 const props = defineProps<{
   libraryId: number | null
+  saving?: boolean
 }>()
 
 const access = inject(LIBRARY_ACCESS_KEY)
 if (!access) throw new Error('LibraryCreatorAccess needs the library access state provided by LibraryCreatorModal')
-const { entries, pending, loading, busy, loaded, error, availableUsers, failedGrants, load, grant, changeLevel, revoke, applyPending } = access
+const { entries, pending, loading, loaded, error, availableUsers, failedGrants, load, grant, changeLevel, revoke, applyPending } = access
+const busy = computed(() => props.saving || access.busy.value)
 
 const LEVELS: AccessLevel[] = ['viewer', 'editor', 'owner']
 
@@ -206,8 +208,8 @@ onMounted(() => {
 
     <p class="flex items-center gap-1.5 text-xs text-muted-foreground">
       <ShieldCheck :size="13" class="shrink-0" aria-hidden="true" />
-      {{ t('library.creator.access.superusers') }}
+      {{ t('library.personal.explicitAccess') }}
     </p>
-    <p class="text-xs text-muted-foreground">{{ t('library.creator.access.levelsHint') }}</p>
+    <p class="text-xs text-muted-foreground">{{ t('library.creator.access.roleCapabilitiesHint') }}</p>
   </div>
 </template>

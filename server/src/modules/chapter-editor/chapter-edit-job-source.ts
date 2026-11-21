@@ -113,7 +113,7 @@ export class ChapterEditJobSource implements JobSource<ChapterEditJobRow>, OnMod
   async describe(rows: ChapterEditJobRow[], viewer: JobViewer): Promise<Map<string, JobSubject>> {
     const books = await this.subjects.describe(
       rows.map((row) => row.job.bookId),
-      { user: viewer.user, manages: viewer.access.all },
+      viewer.user,
     );
     const subjects = new Map<string, JobSubject>();
     for (const row of rows) {

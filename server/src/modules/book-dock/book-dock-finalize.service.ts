@@ -98,7 +98,7 @@ import type { BookDockFileRow, BookDockUnitFileRow } from '../../db/schema';
 type Db = NodePgDatabase<typeof schema>;
 type LibraryRow = typeof libraries.$inferSelect;
 type LibraryFolderRow = typeof libraryFolders.$inferSelect;
-type NamingLibrary = { name?: string | null; fileNamingPattern?: string | null; organizationMode?: string | null };
+type NamingLibrary = { id?: number; name?: string | null; fileNamingPattern?: string | null; organizationMode?: string | null };
 
 type JoinBook = { bookId: number; folderPath: string; coverUrl?: string | null; storedAsFile?: boolean };
 
@@ -738,7 +738,8 @@ export class BookDockFinalizeService implements OnModuleInit, OnApplicationBoots
       }
 
       const library = await this.findLibraryOrFail(libraryId);
-      await this.libraryService.verifyAccess(requester ?? { id: userId, isSuperuser }, libraryId);
+      if (requester) await this.libraryService.verifyPermission(requester, libraryId, Permission.LibraryUpload);
+      else if (userId !== 0 || !isSuperuser) await this.libraryService.verifyAccess({ id: userId, isSuperuser }, libraryId);
       if (requestedJoin && requestedJoin.libraryId !== libraryId) {
         throw joinError('BOOK_DOCK_JOIN_OTHER_LIBRARY', 'The book this file was meant to join is in a different library');
       }
@@ -1370,9 +1371,8 @@ export class BookDockFinalizeService implements OnModuleInit, OnApplicationBoots
     if (row.uploadedBy == null) return null;
     const uploader = await this.users.findByIdWithPermissions(row.uploadedBy);
     if (!uploader?.active) return false;
-    if (!uploader.isSuperuser && !uploader.permissions.includes(Permission.LibraryUpload)) return false;
     try {
-      await this.libraryService.verifyAccess(uploader, libraryId);
+      await this.libraryService.verifyPermission(uploader, libraryId, Permission.LibraryUpload);
       return uploader;
     } catch (error) {
       if (error instanceof ForbiddenException || error instanceof NotFoundException) return false;
@@ -1526,20 +1526,22 @@ export class BookDockFinalizeService implements OnModuleInit, OnApplicationBoots
     if (!ids.length) return [];
 
     const rows = await this.repo.findByIds(ids, userId, canManageAll);
-    const appPatternFile = await this.appSettings.getUploadPattern();
-    const appPatternFolder = await this.appSettings.getUploadPatternBookPerFolder();
     const sanitizeForCrossPlatform = await this.appSettings.isCrossPlatformPathSanitizationEnabled();
     const libraryIds = [...new Set(rows.map((row) => row.targetLibraryId ?? defaultLibraryId).filter((id): id is number => id != null))];
     const libraryMap = libraryIds.length
       ? new Map((await this.db.select().from(libraries).where(inArray(libraries.id, libraryIds))).map((lib) => [lib.id, lib]))
       : new Map<number, typeof libraries.$inferSelect>();
 
+    const patterns = new Map(
+      await Promise.all([...libraryMap.values()].map(async (library) => [library.id, await this.resolveLibraryPattern(library)] as const)),
+    );
+    const fallbackPattern = await this.appSettings.getUploadPattern();
     return Promise.all(
       rows.map(async (row) => {
         const format = row.format ?? extname(row.fileName).toLowerCase().slice(1);
         const effectiveLibraryId = row.targetLibraryId ?? defaultLibraryId ?? null;
         const lib = effectiveLibraryId !== null ? libraryMap.get(effectiveLibraryId) : undefined;
-        const pattern = lib?.fileNamingPattern ?? (lib?.organizationMode === 'book_per_folder' ? appPatternFolder : appPatternFile);
+        const pattern = lib ? (patterns.get(lib.id) ?? fallbackPattern) : fallbackPattern;
         const newName = await this.resolveRelativeDestination(lib, row, format, pattern, sanitizeForCrossPlatform);
 
         return { fileId: row.id, fileName: row.fileName, newName };
@@ -1547,12 +1549,17 @@ export class BookDockFinalizeService implements OnModuleInit, OnApplicationBoots
     );
   }
 
-  private async resolveDestination(library: NamingLibrary, folderPath: string, row: BookDockFileRow, format: string): Promise<string> {
-    const pattern =
+  private async resolveLibraryPattern(library: NamingLibrary): Promise<string> {
+    return (
       library.fileNamingPattern ??
       (library.organizationMode === 'book_per_folder'
-        ? await this.appSettings.getUploadPatternBookPerFolder()
-        : await this.appSettings.getUploadPattern());
+        ? this.appSettings.getUploadPatternBookPerFolder(library.id)
+        : this.appSettings.getUploadPattern(library.id))
+    );
+  }
+
+  private async resolveDestination(library: NamingLibrary, folderPath: string, row: BookDockFileRow, format: string): Promise<string> {
+    const pattern = await this.resolveLibraryPattern(library);
     const sanitizeForCrossPlatform = await this.appSettings.isCrossPlatformPathSanitizationEnabled();
 
     return join(folderPath, await this.resolveRelativeDestination(library, row, format, pattern, sanitizeForCrossPlatform));

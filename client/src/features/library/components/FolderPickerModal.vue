@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useEventListener, useMediaQuery } from '@vueuse/core'
 import { Check, ChevronUp, FolderTree, Info, TriangleAlert, Undo2, X } from '@lucide/vue'
@@ -23,6 +23,7 @@ import { useFolderPickerData } from '../composables/folder-picker/useFolderPicke
 import { useFolderPickerSelection } from '../composables/folder-picker/useFolderPickerSelection'
 import { useFolderPickerTree } from '../composables/folder-picker/useFolderPickerTree'
 import { usePickerPlanWidth } from '../composables/folder-picker/usePickerPlanWidth'
+import { ADMINISTRATIVE_STORAGE } from '../composables/useLibraryPathApi'
 import FolderPickerDivider from './folder-picker/FolderPickerDivider.vue'
 import FolderPickerPlan from './folder-picker/FolderPickerPlan.vue'
 import FolderPickerTree from './folder-picker/FolderPickerTree.vue'
@@ -91,12 +92,14 @@ const libraries = computed<PickerLibrary[]>(() => {
 })
 const others = computed(() => libraries.value.filter((library) => !library.self))
 const modeLocked = computed(() => props.organizationModeLocked)
+const administrativeStorage = inject(ADMINISTRATIVE_STORAGE, null)
 
 const selection = useFolderPickerSelection({
   data,
   own: () => own.value,
   others: () => others.value,
   appDataPath: () => data.places.value?.appDataPath ?? null,
+  allowAppData: () => administrativeStorage?.value === true,
   mode,
   onModeChange: (next) => emit('update:organizationMode', next),
 })

@@ -1,6 +1,9 @@
 <script setup lang="ts">
+import { useLibraryPermissions } from '@/features/library/composables/useLibraryPermissions'
+import LibraryCreatorModal from '@/features/library/components/LibraryCreatorModal.vue'
 import { computed, defineAsyncComponent, onUnmounted, provide, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useEventListener } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
 import { formatNumber } from '@/i18n/formatters'
 import { Bookmark, BookmarkCheck, BookOpen, FileSpreadsheet, Pencil, RefreshCw, Telescope, Upload, X } from '@lucide/vue'
@@ -68,6 +71,7 @@ import { useViewSort } from '@/features/book/composables/useViewSort'
 import { usePageTitle } from '@/composables/usePageTitle'
 import { COVER_ASPECT_RATIO_KEY, DEFAULT_COVER_ASPECT_RATIO } from '@/features/book/lib/cover-aspect-ratio'
 import { useDisplaySettings } from '@/composables/useDisplaySettings'
+import { useAuth } from '@/features/auth/composables/useAuth'
 import { usePermissions } from '@/features/auth/composables/usePermissions'
 import { useBookViewContext } from '@/features/book/composables/useBookViewContext'
 import { useBookTableShell } from '@/features/book/composables/useBookTableShell'
@@ -84,8 +88,9 @@ const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const { viewMode, effectiveViewMode } = useEffectiveViewMode()
-const { libraries, loaded: librariesLoaded } = useLibraries()
-const { hasPermission, isDemoRestrictedAccount } = usePermissions()
+const { libraries, loaded: librariesLoaded, refreshLibraries } = useLibraries()
+const { isSuperuser, isDemoRestrictedAccount } = usePermissions()
+const { user } = useAuth()
 
 const libraryId = shallowRef<number | null>(route.params.id ? Number(route.params.id) : null)
 const currentLibrary = computed(() => libraries.value.find((l) => l.id === libraryId.value))
@@ -364,12 +369,42 @@ const showFormatFacets = computed(() => chipFormatFacets.value.length > 1 || sel
 const selectedFormatsLabel = computed(() => (selectedFormats.value.length > 0 ? selectedFormats.value.map(formatFilterValueLabel).join(', ') : null))
 const isNarrowed = computed(() => filterRuleCount.value > 0 || debouncedQuery.value.trim().length > 0)
 
-const canManageLibraries = computed(() => hasPermission('manage_libraries'))
-const canUpload = computed(() => hasPermission('library_upload'))
-const canExport = computed(() => hasPermission('library_download') && !isDemoRestrictedAccount.value)
-const hasPageMenu = computed(() => canExport.value || ((canManageLibraries.value || canUpload.value) && currentLibrary.value !== undefined))
+const editingOwnedLibrary = ref(false)
+const administratorMode = ref(false)
+const assignedRole = computed(() => currentLibrary.value?.accessLevel)
+const canEnableAdministratorMode = computed(() => isSuperuser.value && !isDemoRestrictedAccount.value && assignedRole.value != null)
+const canManageOwnedLibrary = computed(() => !isDemoRestrictedAccount.value && (assignedRole.value === 'owner' || administratorMode.value))
+function removedOwnedLibrary() {
+  editingOwnedLibrary.value = false
+  void router.push({ name: 'libraries' })
+}
+watch(
+  canManageOwnedLibrary,
+  (allowed) => {
+    if (!allowed) editingOwnedLibrary.value = false
+  },
+  { flush: 'sync' },
+)
+function closeOwnedLibrary() {
+  editingOwnedLibrary.value = false
+}
+async function savedOwnedLibrary() {
+  editingOwnedLibrary.value = false
+  await refreshLibraries()
+}
+const { hasLibraryPermission } = useLibraryPermissions()
+const canManageLibraries = computed(() => administratorMode.value || hasLibraryPermission('manage_libraries', libraryId.value, 'editor'))
+const canUpload = computed(() => administratorMode.value || hasLibraryPermission('library_upload', libraryId.value))
+const canExport = computed(() => hasLibraryPermission('library_download', libraryId.value) && !isDemoRestrictedAccount.value)
+const hasPageMenu = computed(
+  () =>
+    canEnableAdministratorMode.value ||
+    canManageOwnedLibrary.value ||
+    canExport.value ||
+    ((canManageLibraries.value || canUpload.value) && currentLibrary.value !== undefined),
+)
 
-const { sizeBytes, lastScanAt } = useLibraryHeaderFacts(libraryId, canManageLibraries)
+const { sizeBytes, lastScanAt } = useLibraryHeaderFacts(libraryId, canManageLibraries, administratorMode)
 const libraryScanning = computed(() => libraryId.value !== null && isScanning(libraryId.value))
 
 interface HeaderFact {
@@ -456,6 +491,19 @@ function openSaveAsSmartScope() {
 
 const uploadOpen = ref(false)
 
+function setAdministratorMode(enabled: boolean) {
+  if (enabled && !canEnableAdministratorMode.value) return
+  administratorMode.value = enabled
+  uploadOpen.value = false
+  editingOwnedLibrary.value = false
+}
+
+watch([() => user.value?.id, libraryId, assignedRole, canEnableAdministratorMode], () => setAdministratorMode(false), { flush: 'sync' })
+watch(libraryId, () => void refreshLibraries())
+useEventListener('focus', () => {
+  if (libraryId.value !== null) void refreshLibraries()
+})
+
 function openUpload() {
   uploadOpen.value = true
 }
@@ -467,12 +515,11 @@ function closeUpload() {
 const { scanLibrary } = useLibraryScan()
 
 function handleMenuScan() {
-  if (currentLibrary.value) void scanLibrary(currentLibrary.value)
+  if (currentLibrary.value) void scanLibrary(currentLibrary.value, administratorMode.value)
 }
 
 function openLibrarySettings() {
-  if (libraryId.value === null) return
-  void router.push({ name: 'settings-libraries', query: { edit: String(libraryId.value) } })
+  if (canManageOwnedLibrary.value) editingOwnedLibrary.value = true
 }
 
 function openAllMatchingExport() {
@@ -530,6 +577,8 @@ const {
   selectedIds,
   selectedCount,
   canEditSelectionMetadata,
+  canDownloadSelection,
+  canDeleteSelection,
   mergeSelection,
   mergeOpen,
   mergeBookIds,
@@ -777,6 +826,15 @@ defineOptions({ name: 'HomeView' })
 </script>
 
 <template>
+  <LibraryCreatorModal
+    v-if="editingOwnedLibrary && canManageOwnedLibrary && currentLibrary"
+    :library="currentLibrary"
+    :administrator-mode="administratorMode"
+    @disable-administrator-mode="setAdministratorMode(false)"
+    @close="closeOwnedLibrary"
+    @saved="savedOwnedLibrary"
+    @removed="removedOwnedLibrary"
+  />
   <div class="flex h-full flex-col">
     <section class="flex flex-1 flex-col min-h-0">
       <BrowseHeader
@@ -796,12 +854,23 @@ defineOptions({ name: 'HomeView' })
         </template>
 
         <template #actions>
-          <BrowseScanButton v-if="canManageLibraries && currentLibrary" class="hidden md:inline-flex" :library="currentLibrary" />
+          <span v-if="administratorMode" role="status" class="rounded-md border border-primary/45 px-2 py-1 text-xs text-primary">
+            {{ t('library.personal.administratorActive') }}
+          </span>
+          <BrowseScanButton
+            v-if="canManageLibraries && currentLibrary"
+            class="hidden md:inline-flex"
+            :library="currentLibrary"
+            :administrator-mode="administratorMode"
+          />
           <button v-if="canUpload && currentLibrary" type="button" :class="cn(outlineButton, 'hidden md:inline-flex')" @click="openUpload">
             <Upload :size="14" class="text-muted-foreground" aria-hidden="true" />
             {{ t('book.detail.addFile.upload') }}
           </button>
           <BrowsePageMenu v-if="hasPageMenu" :name="title">
+            <DropdownMenuItem v-if="canEnableAdministratorMode" @click="setAdministratorMode(!administratorMode)">
+              {{ t(administratorMode ? 'library.personal.disableAdministrator' : 'library.personal.enableAdministrator') }}
+            </DropdownMenuItem>
             <DropdownMenuItem v-if="canManageLibraries && currentLibrary" class="md:hidden" @click="handleMenuScan">
               <RefreshCw :size="14" class="mr-2" />
               {{ t('settings.admin.libraries.scan') }}
@@ -814,7 +883,7 @@ defineOptions({ name: 'HomeView' })
               <FileSpreadsheet :size="14" class="mr-2" />
               {{ t('views.bookView.exportMetadata') }}
             </DropdownMenuItem>
-            <DropdownMenuItem v-if="canManageLibraries && currentLibrary" @click="openLibrarySettings">
+            <DropdownMenuItem v-if="canManageOwnedLibrary && currentLibrary" @click="openLibrarySettings">
               <Pencil :size="14" class="mr-2" />
               {{ t('settings.admin.libraries.editLibrary') }}
             </DropdownMenuItem>
@@ -1108,6 +1177,8 @@ defineOptions({ name: 'HomeView' })
 
     <SelectionActionBar
       :metadata-editable="canEditSelectionMetadata"
+      :downloadable="canDownloadSelection"
+      :deletable="canDeleteSelection"
       :visible="selectionMode"
       :count="querySelection ? querySelection.total : selectedCount"
       :in-flight="inFlight"
@@ -1191,7 +1262,13 @@ defineOptions({ name: 'HomeView' })
       @close="saveAsSmartScopeOpen = false"
     />
 
-    <BookUploadModal v-if="uploadOpen && libraryId !== null" :library-id="libraryId" @close="closeUpload" @uploaded="closeUpload" />
+    <BookUploadModal
+      v-if="uploadOpen && canUpload && libraryId !== null"
+      :library-id="libraryId"
+      :administrator-mode="administratorMode"
+      @close="closeUpload"
+      @uploaded="closeUpload"
+    />
 
     <DeleteBookDialog
       :open="deleteBookId !== null"

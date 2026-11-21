@@ -128,16 +128,8 @@ async function collectByDir(
     shouldExclude,
     skipDirectories,
     logger,
-    visit: async ({ path: dir, filePaths, subdirectoryPaths }) => {
-      // Record this directory's mtime for incremental scan state
-      if (dirMtimes) {
-        try {
-          const dirStat = await stat(dir);
-          dirMtimes.set(dir, Math.round(dirStat.mtimeMs));
-        } catch {
-          // Dir was readable (readdir succeeded) but stat failed - unusual, just skip mtime tracking
-        }
-      }
+    visit: async ({ path: dir, filePaths, subdirectoryPaths, mtimeMs }) => {
+      if (mtimeMs !== undefined) dirMtimes?.set(dir, Math.round(mtimeMs));
 
       // Leaf-level mtime skip: if this dir has files, check if its mtime is unchanged.
       // Safety rules:

@@ -20,56 +20,34 @@ describe('useLibraryAccess', () => {
     apiMock.mockReset()
   })
 
-  it('queues grants while the library does not exist yet', async () => {
+  it('loads the minimal creation directory and queues grants without writing yet', async () => {
     apiMock.mockResolvedValue(jsonResponse(USERS))
     const { useLibraryAccess } = await import('../useLibraryAccess')
     const access = useLibraryAccess(ref<number | null>(null))
-
     await access.load()
-    await access.grant(2, 'editor')
-    await access.changeLevel(2, 'owner')
-
-    expect(apiMock).toHaveBeenCalledTimes(1)
+    expect(await access.grant(2, 'owner')).toBe(true)
+    expect(apiMock.mock.calls).toEqual([['/api/v1/libraries/assignable-users']])
     expect(access.pending.value).toEqual([{ userId: 2, username: 'maya', name: 'Maya Ortiz', accessLevel: 'owner', failed: false }])
-    expect(access.availableUsers.value.map((user) => user.id)).toEqual([3])
-    expect(access.count.value).toBe(1)
-
-    await access.revoke(2)
-    expect(access.pending.value).toEqual([])
+    expect(access.entries.value).toEqual([])
   })
 
-  it('sends queued grants once the library exists and keeps the ones that fail', async () => {
+  it('loads owner-scoped sharing options once the library exists', async () => {
     const libraryId = ref<number | null>(null)
-    apiMock.mockImplementation(async (url, init) => {
-      const path = String(url)
-      if (path.endsWith('/users/assignable')) return jsonResponse(USERS)
-      if (init?.method === 'POST') {
-        const body = JSON.parse(String(init.body)) as { userId: number }
-        return body.userId === 2 ? jsonResponse({}) : jsonResponse({ message: 'nope' }, 500)
-      }
-      return jsonResponse([{ userId: 2, username: 'maya', name: 'Maya Ortiz', accessLevel: 'viewer' }])
-    })
+    apiMock.mockImplementation(async (url) => jsonResponse(String(url).endsWith('/assignable-users') ? USERS : []))
     const { useLibraryAccess } = await import('../useLibraryAccess')
     const access = useLibraryAccess(libraryId)
     await access.load()
-    await access.grant(2, 'viewer')
-    await access.grant(3, 'viewer')
-
-    libraryId.value = 9
-    const failed = await access.applyPending()
-
-    expect(failed).toBe(1)
-    expect(access.failedGrants.value.map((grant) => grant.userId)).toEqual([3])
-    expect(access.entries.value.map((entry) => entry.userId)).toEqual([2])
-    expect(apiMock).toHaveBeenCalledWith(
-      '/api/v1/libraries/9/access',
-      expect.objectContaining({ method: 'POST', body: JSON.stringify({ userId: 3, accessLevel: 'viewer' }) }),
-    )
+    expect(apiMock).toHaveBeenCalledWith('/api/v1/libraries/assignable-users')
+    libraryId.value = 7
+    await access.load()
+    expect(apiMock).toHaveBeenCalledWith('/api/v1/libraries/7/assignable-users')
+    expect(access.availableUsers.value.map((user) => user.id)).toEqual([2, 3])
+    expect(access.pending.value).toEqual([])
   })
 
   it('writes straight to the server for an existing library and reports its message on failure', async () => {
     apiMock.mockImplementation(async (url, init) => {
-      if (String(url).endsWith('/users/assignable')) return jsonResponse(USERS)
+      if (String(url).endsWith('/assignable-users')) return jsonResponse(USERS)
       if (init?.method === 'PATCH') return jsonResponse({ message: 'Owners cannot be demoted' }, 400)
       return jsonResponse([])
     })

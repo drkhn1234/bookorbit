@@ -24,6 +24,7 @@ function resetEnv(): void {
   delete process.env.APP_DATA_PATH;
   delete process.env.BOOK_DOCK_PATH;
   delete process.env.LIBRARY_BROWSE_ROOT;
+  delete process.env.PERSONAL_LIBRARY_ROOT;
   delete process.env.FILE_WRITE_DEBOUNCE_MS;
   delete process.env.FILE_WRITE_MAX_CONCURRENT_WRITES;
   delete process.env.EMAIL_ENCRYPTION_KEY;
@@ -162,6 +163,12 @@ describe('config', () => {
     process.env.BOOK_DOCK_PATH = '/books/bookdrop';
 
     expect(storageConfig().bookDockPath).toBe(resolve('/books/bookdrop'));
+  });
+
+  it('defaults personal namespaces to /books and supports an operator-supplied parent', () => {
+    expect(storageConfig().personalLibraryRoot).toBe('/books');
+    process.env.PERSONAL_LIBRARY_ROOT = ' ./personal-books ';
+    expect(storageConfig().personalLibraryRoot).toBe(resolve('./personal-books'));
   });
 
   it('uses LIBRARY_BROWSE_ROOT as the library folder picker root when provided', () => {

@@ -1,3 +1,4 @@
+import { Permission } from '@bookorbit/types';
 import { LibraryScopeService } from '../../common/library-scope/library-scope.service';
 import {
   BadRequestException,
@@ -81,6 +82,7 @@ export interface BookMoveRunState {
   jobId: number;
   userId: number;
   target: MoveTargetLibrary;
+  sourceLibraryIds: number[];
   work: Map<number, MoveWork>;
   /** Books the replanned run will not move, and why. */
   skips: Map<number, MoveSkip>;
@@ -251,7 +253,7 @@ export class BookMoveService implements OnApplicationBootstrap {
     try {
       const target = await this.moveRepo.findTargetLibrary(options.targetLibraryId, options.targetFolderId);
       if (!target) throw new NotFoundException('Target library folder not found');
-      const editable = new Set(await this.libraryScope.editableIds(actor));
+      const editable = new Set(await this.libraryScope.permittedIds(actor, Permission.LibraryEditMetadata));
       if (!editable.has(target.libraryId)) throw new ForbiddenException(`Editor access is required for library ${target.libraryId} to move books`);
 
       const remaining = run.subjectIds.slice(run.processed);
@@ -312,6 +314,7 @@ export class BookMoveService implements OnApplicationBootstrap {
           jobId,
           userId: actor.id,
           target,
+          sourceLibraryIds,
           work,
           skips,
           releaseGate,
@@ -411,7 +414,14 @@ export class BookMoveService implements OnApplicationBootstrap {
           `merged=${counts.merged} failed=${counts.failed} skipped=${counts.skipped} cancelled=${end === 'cancelled'} - book move completed`,
       );
       // The run's totals, so a move continued after a restart reports everything it moved.
-      if (run.requestedBy !== null) await this.notifyCompletion(run.requestedBy, state.target, run.succeeded, run.failed);
+      if (run.requestedBy !== null)
+        await this.notifyCompletion(
+          run.requestedBy,
+          state.target,
+          (Array.isArray(run.options.sourceLibraryIds) ? run.options.sourceLibraryIds : state.sourceLibraryIds).filter(isLibraryId),
+          run.succeeded,
+          run.failed,
+        );
     } finally {
       state.releaseGate();
       await this.restartWatchers(state.stoppedWatchers);
@@ -420,7 +430,8 @@ export class BookMoveService implements OnApplicationBootstrap {
 
   /** The libraries the run's account may edit, read again whenever the run refreshed the account. */
   private async editableFor(state: BookMoveRunState, actor: RequestUser): Promise<Set<number>> {
-    if (state.editable.actor !== actor) state.editable = { actor, ids: new Set(await this.libraryScope.editableIds(actor)) };
+    if (state.editable.actor !== actor)
+      state.editable = { actor, ids: new Set(await this.libraryScope.permittedIds(actor, Permission.LibraryEditMetadata)) };
     return state.editable.ids;
   }
 
@@ -470,7 +481,7 @@ export class BookMoveService implements OnApplicationBootstrap {
   private emitTransfers(movedByLibrary: Map<number, number[]>, targetLibraryId: number): void {
     for (const [sourceLibraryId, bookIds] of movedByLibrary) {
       if (bookIds.length === 0) continue;
-      this.scanGateway.emitBookTransferred({ fromLibraryId: sourceLibraryId, toLibraryId: targetLibraryId, bookIds });
+      void this.scanGateway.emitBookTransferred({ fromLibraryId: sourceLibraryId, toLibraryId: targetLibraryId, bookIds });
     }
   }
 
@@ -499,8 +510,8 @@ export class BookMoveService implements OnApplicationBootstrap {
     const pattern =
       target.fileNamingPattern ??
       (target.organizationMode === 'book_per_folder'
-        ? await this.appSettings.getUploadPatternBookPerFolder()
-        : await this.appSettings.getUploadPattern());
+        ? await this.appSettings.getUploadPatternBookPerFolder(target.libraryId)
+        : await this.appSettings.getUploadPattern(target.libraryId));
 
     const sanitizeForCrossPlatform = await this.appSettings.isCrossPlatformPathSanitizationEnabled();
 
@@ -563,11 +574,7 @@ export class BookMoveService implements OnApplicationBootstrap {
   private async assertEditorAccess(user: RequestUser, libraryIds: number[]): Promise<void> {
     if (libraryIds.length === 0) return;
 
-    const granted = new Set(await this.libraryScope.editableIds(user));
-    const missing = libraryIds.filter((id) => !granted.has(id));
-    if (missing.length > 0) {
-      throw new ForbiddenException(`Editor access is required for library ${missing[0]} to move books`);
-    }
+    await Promise.all(libraryIds.map((id) => this.libraryScope.assertPermission(user, id, Permission.LibraryEditMetadata)));
   }
 
   private selectWork(
@@ -726,10 +733,9 @@ export class BookMoveService implements OnApplicationBootstrap {
     }
 
     const userRows = await this.moveRepo.findUsers([...losingBookCounts.keys()]);
-    const nonSuperusers = userRows.filter((row) => !row.isSuperuser);
-    const deviceCounts = await this.moveRepo.countKoboDevicesByUser(nonSuperusers.map((row) => row.id));
+    const deviceCounts = await this.moveRepo.countKoboDevicesByUser(userRows.map((row) => row.id));
 
-    const accessLosers = nonSuperusers.map((row) => ({
+    const accessLosers = userRows.map((row) => ({
       userId: row.id,
       username: row.username,
       bookCount: losingBookCounts.get(row.id) ?? 0,
@@ -783,14 +789,25 @@ export class BookMoveService implements OnApplicationBootstrap {
     return false;
   }
 
-  private async notifyCompletion(userId: number, target: MoveTargetLibrary, movedCount: number, failed: number): Promise<void> {
+  private async notifyCompletion(
+    userId: number,
+    target: MoveTargetLibrary,
+    sourceLibraryIds: number[],
+    movedCount: number,
+    failed: number,
+  ): Promise<void> {
     await this.notificationService
       .notify({
         type: failed > 0 ? NotificationType.BulkRenameFailed : NotificationType.BulkRenameCompleted,
         title: failed > 0 ? 'Book move completed with errors' : 'Book move completed',
         message: `${movedCount} moved to ${target.libraryName}, ${failed} failed`,
         scope: { kind: 'user', userId },
-        meta: { targetLibraryId: target.libraryId, moved: movedCount, failed },
+        meta: {
+          targetLibraryId: target.libraryId,
+          sourceLibraryIds: sourceLibraryIds.length ? sourceLibraryIds : [target.libraryId],
+          moved: movedCount,
+          failed,
+        },
       })
       .catch(() => {});
   }

@@ -12,7 +12,8 @@ interface Row {
 }
 
 const mocks = vi.hoisted(() => ({
-  permissions: new Set<string>(),
+  isSuperuser: false,
+  canCreate: false,
   activityFor: () => null,
   reorderLibraries: undefined as unknown as Mock<Reorder>,
   reorderSmartScopes: undefined as unknown as Mock<Reorder>,
@@ -24,6 +25,15 @@ const libraries = ref<Row[]>([])
 const scopes = ref<Row[]>([])
 const collections = ref<Row[]>([])
 
+vi.mock('@/features/library/composables/useLibraryCapabilities', () => ({
+  useLibraryCapabilities: () => ({
+    canCreate: {
+      get value() {
+        return mocks.canCreate
+      },
+    },
+  }),
+}))
 vi.mock('vue-i18n', () => ({
   useI18n: () => ({ t: (key: string, params?: Record<string, unknown>) => (params ? `${key} ${JSON.stringify(params)}` : key) }),
 }))
@@ -33,7 +43,7 @@ vi.mock('vue-router', () => ({ useRoute: () => route }))
 vi.mock('@/composables/useSidebarLibraryActivity', () => ({ useSidebarLibraryActivity: () => ({ activityFor: mocks.activityFor }) }))
 
 vi.mock('@/features/auth/composables/usePermissions', () => ({
-  usePermissions: () => ({ hasPermission: (name: string) => mocks.permissions.has(name) }),
+  usePermissions: () => ({ isSuperuser: ref(mocks.isSuperuser), isDemoRestrictedAccount: ref(false) }),
 }))
 
 vi.mock('@/features/library/composables/useLibraries', () => ({
@@ -67,7 +77,8 @@ function section(id: string) {
 
 describe('useSidebarSections', () => {
   beforeEach(() => {
-    mocks.permissions.clear()
+    mocks.isSuperuser = false
+    mocks.canCreate = false
     mocks.reorderLibraries = vi.fn<Reorder>().mockResolvedValue(undefined)
     mocks.reorderSmartScopes = vi.fn<Reorder>().mockResolvedValue(undefined)
     mocks.reorderCollections = vi.fn<Reorder>().mockResolvedValue(undefined)
@@ -100,12 +111,14 @@ describe('useSidebarSections', () => {
     expect(section('libraries').props.seeAllLabel).toBe('components.sidebar.seeAllLibraries {"count":"2"}')
   })
 
-  it('gates adding and reordering libraries on manage_libraries, but not scopes or collections', () => {
+  it('uses creation capabilities separately from administrative reorder permissions', () => {
     const scopesSection = section('smartScopes')
     expect([section('libraries').props.canAdd, section('libraries').canReorder]).toEqual([false, false])
     expect([scopesSection.props.canAdd, scopesSection.canReorder]).toEqual([true, true])
 
-    mocks.permissions.add('manage_libraries')
+    mocks.canCreate = true
+    expect([section('libraries').props.canAdd, section('libraries').canReorder]).toEqual([true, false])
+    mocks.isSuperuser = true
 
     expect([section('libraries').props.canAdd, section('libraries').canReorder]).toEqual([true, true])
   })
@@ -153,7 +166,7 @@ describe('useSidebarSections', () => {
   })
 
   it('persists a library reorder in one request', async () => {
-    mocks.permissions.add('manage_libraries')
+    mocks.isSuperuser = true
 
     await section('libraries').persistOrder([
       { id: 2, displayOrder: 0 },

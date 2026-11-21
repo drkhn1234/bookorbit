@@ -8,7 +8,6 @@ vi.mock('drizzle-orm', () => ({
   inArray: vi.fn((left: unknown, right: unknown) => ({ op: 'inArray', left, right })),
   isNull: vi.fn((value: unknown) => ({ op: 'isNull', value })),
   ne: vi.fn((left: unknown, right: unknown) => ({ op: 'ne', left, right })),
-  notInArray: vi.fn((left: unknown, right: unknown) => ({ op: 'notInArray', left, right })),
   or: vi.fn((...clauses: unknown[]) => ({ op: 'or', clauses })),
   sql: Object.assign(
     vi.fn((strings: TemplateStringsArray, ...values: unknown[]) => ({ op: 'sql', text: strings.join(''), values })),
@@ -491,15 +490,6 @@ describe('UserRepository', () => {
     );
   });
 
-  it('delete issues a scoped user update', async () => {
-    const deleteWhere = vi.fn().mockResolvedValue(undefined);
-    db.delete.mockReturnValue({ where: deleteWhere });
-
-    await repo.delete(12);
-    expect(db.delete).toHaveBeenCalledWith(schema.users);
-    expect(deleteWhere).toHaveBeenCalledWith(expect.objectContaining({ op: 'eq', left: schema.users.id, right: 12 }));
-  });
-
   it('setSuperuser serializes the transition and revokes target sessions in the same transaction', async () => {
     const execute = vi.fn().mockResolvedValue(undefined);
     const lifecycleWhere = vi.fn().mockResolvedValue([
@@ -657,7 +647,10 @@ describe('UserRepository', () => {
     });
     const tx = {
       execute: vi.fn().mockResolvedValue(undefined),
-      select: vi.fn().mockReturnValue({ from: lifecycleFrom }),
+      select: vi
+        .fn()
+        .mockReturnValueOnce({ from: lifecycleFrom })
+        .mockReturnValueOnce({ from: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([]) }) }),
       delete: vi.fn().mockReturnValue({ where: deleteWhere }),
     };
     db.transaction.mockImplementation((callback) => callback(tx as never));
@@ -670,6 +663,7 @@ describe('UserRepository', () => {
     ).resolves.toBe('updated');
 
     expect(order).toEqual(['cleanup', 'delete']);
+    expect(deleteWhere).toHaveBeenCalledWith(expect.objectContaining({ op: 'eq', left: schema.users.id, right: 12 }));
   });
 
   it('clearLockout resets the attempt counter and the lock timestamp', async () => {
@@ -690,6 +684,7 @@ describe('UserRepository', () => {
       cb({
         delete: txDelete,
         insert: txInsert,
+        select: vi.fn().mockReturnValue({ from: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([]) }) }),
       }),
     );
 
@@ -827,16 +822,23 @@ describe('UserRepository', () => {
     expect(updateWhere).toHaveBeenCalledWith(expect.objectContaining({ op: 'eq', left: schema.users.id, right: 3 }));
   });
 
-  it('assignViewerLibraries short-circuits empty lists and inserts viewer rows for non-empty input', async () => {
+  it('assignViewerLibraries skips empty lists and inserts viewer rows in a transaction', async () => {
     const onConflictDoNothing = vi.fn().mockResolvedValue(undefined);
     const values = vi.fn().mockReturnValue({ onConflictDoNothing });
-    db.insert.mockReturnValue({ values });
+    const tx = {
+      execute: vi.fn().mockResolvedValue(undefined),
+      insert: vi.fn().mockReturnValue({ values }),
+      select: vi.fn().mockReturnValue({
+        from: () => ({ where: () => ({ orderBy: () => ({ for: () => Promise.resolve([{ id: 1 }, { id: 2 }]) }) }) }),
+      }),
+    };
+    db.transaction.mockImplementation((callback) => callback(tx));
 
     await repo.assignViewerLibraries(5, []);
-    expect(db.insert).not.toHaveBeenCalled();
+    expect(db.transaction).not.toHaveBeenCalled();
 
     await repo.assignViewerLibraries(5, [1, 2]);
-    expect(db.insert).toHaveBeenCalledWith(schema.userLibraryAccess);
+    expect(tx.insert).toHaveBeenCalledWith(schema.userLibraryAccess);
     expect(values).toHaveBeenCalledWith([
       { userId: 5, libraryId: 1, accessLevel: 'viewer' },
       { userId: 5, libraryId: 2, accessLevel: 'viewer' },
@@ -844,7 +846,7 @@ describe('UserRepository', () => {
     expect(onConflictDoNothing).toHaveBeenCalled();
   });
 
-  it('findLibraryIdsByUserId and replaceLibraries manage user-library rows', async () => {
+  it('lists library IDs and grant levels for the given user', async () => {
     const where = vi.fn().mockResolvedValue([{ libraryId: 10 }, { libraryId: 11 }]);
     const from = vi.fn().mockReturnValue({ where });
     select.mockReturnValue({ from });
@@ -855,37 +857,5 @@ describe('UserRepository', () => {
     await expect(repo.findLibraryGrantsByUserId(2)).resolves.toEqual([{ libraryId: 10, accessLevel: 'editor' }]);
     expect(select).toHaveBeenLastCalledWith({ libraryId: schema.userLibraryAccess.libraryId, accessLevel: schema.userLibraryAccess.accessLevel });
     expect(where).toHaveBeenLastCalledWith(expect.objectContaining({ op: 'eq', left: schema.userLibraryAccess.userId, right: 2 }));
-
-    const txDeleteWhere = vi.fn().mockResolvedValue(undefined);
-    const txDelete = vi.fn().mockReturnValue({ where: txDeleteWhere });
-    const txOnConflictDoNothing = vi.fn().mockResolvedValue(undefined);
-    const txInsertValues = vi.fn().mockReturnValue({ onConflictDoNothing: txOnConflictDoNothing });
-    const txInsert = vi.fn().mockReturnValue({ values: txInsertValues });
-    db.transaction.mockImplementation(async (cb: (tx: unknown) => Promise<void>) =>
-      cb({
-        delete: txDelete,
-        insert: txInsert,
-      }),
-    );
-
-    await repo.replaceLibraries(2, []);
-    expect(txDelete).toHaveBeenCalledWith(schema.userLibraryAccess);
-    expect(txDeleteWhere).toHaveBeenCalledWith(expect.objectContaining({ op: 'eq', left: schema.userLibraryAccess.userId, right: 2 }));
-    expect(txInsert).not.toHaveBeenCalled();
-
-    txDeleteWhere.mockClear();
-    await repo.replaceLibraries(2, [10, 11]);
-    expect(txDeleteWhere).toHaveBeenCalledWith({
-      op: 'and',
-      clauses: [
-        { op: 'eq', left: schema.userLibraryAccess.userId, right: 2 },
-        { op: 'notInArray', left: schema.userLibraryAccess.libraryId, right: [10, 11] },
-      ],
-    });
-    expect(txInsertValues).toHaveBeenCalledWith([
-      { userId: 2, libraryId: 10, accessLevel: 'viewer' },
-      { userId: 2, libraryId: 11, accessLevel: 'viewer' },
-    ]);
-    expect(txOnConflictDoNothing).toHaveBeenCalled();
   });
 });

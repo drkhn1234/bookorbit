@@ -91,6 +91,7 @@ async function uploadSingle(item: FileUploadItem, url: string): Promise<void> {
 
 export function useBookUpload() {
   const files = ref<FileUploadItem[]>([])
+  let uploadGeneration = 0
 
   const pendingCount = computed(() => files.value.filter((f) => f.status === 'pending').length)
   const isUploading = computed(() => files.value.some((f) => f.status === 'uploading'))
@@ -128,6 +129,7 @@ export function useBookUpload() {
   }
 
   function reset() {
+    uploadGeneration++
     files.value = []
   }
 
@@ -145,14 +147,19 @@ export function useBookUpload() {
     }
   }
 
-  async function startUpload(libraryId: number, folderId?: number) {
+  async function startUpload(libraryId: number, folderId?: number, administrative = false) {
     const baseUrl = `/api/v1/libraries/${libraryId}/upload`
-    await uploadPending(folderId !== undefined ? `${baseUrl}?folderId=${folderId}` : baseUrl)
+    const params = new URLSearchParams()
+    if (folderId !== undefined) params.set('folderId', String(folderId))
+    if (administrative) params.set('scope', 'admin')
+    await uploadPending(params.size ? `${baseUrl}?${params}` : baseUrl)
   }
 
   /** Sends the files to the library's dock, where metadata is fetched and they wait to be filed. */
-  async function startDockUpload(libraryId: number) {
-    await uploadPending(`/api/v1/book-dock/upload?libraryId=${libraryId}`)
+  async function startDockUpload(libraryId: number, administrative = false) {
+    const params = new URLSearchParams({ libraryId: String(libraryId) })
+    if (administrative) params.set('scope', 'admin')
+    await uploadPending(`/api/v1/book-dock/upload?${params}`)
   }
 
   async function uploadPending(url: string) {
@@ -160,8 +167,10 @@ export function useBookUpload() {
     if (pending.length === 0) return
 
     // Process pending items with a concurrency limit of UPLOAD_CONCURRENCY
+    const generation = ++uploadGeneration
     let index = 0
     async function runNext(): Promise<void> {
+      if (generation !== uploadGeneration) return
       const item = pending[index++]
       if (!item) return
       await uploadSingle(item, url)

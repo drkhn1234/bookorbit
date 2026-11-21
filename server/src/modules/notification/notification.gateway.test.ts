@@ -7,7 +7,7 @@ import { NotificationGateway } from './notification.gateway';
 import { EMPTY_CONTENT_FILTER_RULES } from '@bookorbit/types';
 
 function makeGateway() {
-  return new NotificationGateway({} as never, {} as never, { appUrl: 'http://localhost:6263' } as never);
+  return new NotificationGateway({} as never, {} as never, { appUrl: 'http://localhost:6263' } as never, {} as never);
 }
 
 function makeUser(overrides: Partial<RequestUser> = {}): RequestUser {
@@ -87,7 +87,7 @@ describe('NotificationGateway handshake rejection', () => {
     const notificationRepo = { countUnread: vi.fn().mockResolvedValue(0) };
     const config = { appUrl: 'http://localhost:6263' };
     const authenticator = new AuthenticatorService(jwtService as never, authService as never);
-    const gateway = new NotificationGateway(authenticator, notificationRepo as never, config as never);
+    const gateway = new NotificationGateway(authenticator, notificationRepo as never, config as never, {} as never);
     const client = { id: 'sock-1', handshake: { auth: { token: 'jwt' } }, data: {}, join: vi.fn(), emit: vi.fn(), disconnect: vi.fn() };
     return { gateway, client };
   }

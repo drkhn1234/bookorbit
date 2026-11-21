@@ -22,6 +22,7 @@ type InjectResponse = Awaited<ReturnType<ReaderStateIsolationE2EContext['app']['
 
 const SCENARIO_TIMEOUT_MS = 120_000;
 const EPUB_STYLESHEET = 'body { background: #f5f1e8; color: #1f2937; }\nimg { max-width: 100%; }';
+const EPUB_AUDIO = Buffer.from('synthetic overlay byte fixture');
 const EPUB_BOOKMARKS = 'last-read=OPS/chapter.xhtml#intro';
 const PAGE_PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+cQpUAAAAASUVORK5CYII=', 'base64');
 const PAGE_JPEG = Buffer.from(
@@ -54,7 +55,7 @@ async function createReaderDeliveryEpub(
   rootPath: string,
   relativePath: string,
   title: string,
-  options: { metadataPrefix?: string; language?: string } = {},
+  options: { metadataPrefix?: string; language?: string; narrated?: boolean } = {},
 ): Promise<string> {
   const metadataPrefix = options.metadataPrefix ?? '';
   const identifier = `urn:uuid:${randomUUID()}`;
@@ -79,7 +80,8 @@ async function createReaderDeliveryEpub(
     <meta property="dcterms:modified">2026-01-01T00:00:00Z</meta>
   </${metadataPrefix}metadata>
   <manifest>
-    <item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml" />
+    <item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"${options.narrated ? ' media-overlay="overlay"' : ''} />
+    ${options.narrated ? '<item id="overlay" href="chapter.smil" media-type="application/smil+xml" /><item id="audio" href="chapter.mp4" media-type="audio/mp4" />' : ''}
     <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav" />
     <item id="style" href="styles/reader style.css" media-type="text/css" />
     <item id="cover" href="images/cover image.png" media-type="image/png" properties="cover-image" />
@@ -103,6 +105,16 @@ async function createReaderDeliveryEpub(
     { path: 'OPS/styles/reader style.css', content: EPUB_STYLESHEET },
     { path: 'OPS/images/cover image.png', content: PAGE_PNG },
     { path: 'OPS/private.txt', content: 'hidden-unmanifested-entry' },
+    ...(options.narrated
+      ? [
+          {
+            path: 'OPS/chapter.smil',
+            content:
+              '<smil xmlns="http://www.w3.org/ns/SMIL" version="3.0"><body><seq><par><text src="chapter.xhtml#intro"/><audio src="chapter.mp4" clipBegin="0s" clipEnd="1s"/></par></seq></body></smil>',
+          },
+          { path: 'OPS/chapter.mp4', content: EPUB_AUDIO, store: true },
+        ]
+      : []),
   ]);
 }
 
@@ -145,7 +157,9 @@ describe('Reader format delivery (e2e)', { timeout: SCENARIO_TIMEOUT_MS }, () =>
     sharedLibrary = await createLibraryWithFolder(ctx, { name: `reader-delivery-shared-${randomUUID()}` });
     hiddenLibrary = await createLibraryWithFolder(ctx, { name: `reader-delivery-hidden-${randomUUID()}` });
 
-    const sharedEpubPath = await createReaderDeliveryEpub(sharedLibrary.folderPath, 'delivery/reader-delivery.epub', 'Reader Delivery EPUB');
+    const sharedEpubPath = await createReaderDeliveryEpub(sharedLibrary.folderPath, 'delivery/reader-delivery.epub', 'Reader Delivery EPUB', {
+      narrated: true,
+    });
     const prefixedEpubPath = await createReaderDeliveryEpub(
       sharedLibrary.folderPath,
       'delivery/prefixed-metadata.epub',
@@ -290,7 +304,7 @@ describe('Reader format delivery (e2e)', { timeout: SCENARIO_TIMEOUT_MS }, () =>
       });
       expect(chapterResponse.statusCode).toBe(200);
       expect(chapterResponse.headers['content-type']).toContain('application/xhtml+xml');
-      expect(chapterResponse.headers['cache-control']).toBe('public, max-age=3600');
+      expect(chapterResponse.headers['cache-control']).toBe('private, no-store');
       expect(chapterResponse.body).toContain('id="intro"');
 
       const stylesheetResponse = await ctx.app.inject({
@@ -301,7 +315,7 @@ describe('Reader format delivery (e2e)', { timeout: SCENARIO_TIMEOUT_MS }, () =>
       expect(stylesheetResponse.statusCode).toBe(200);
       expect(stylesheetResponse.headers['content-type']).toContain('text/css');
       expect(stylesheetResponse.headers['content-length']).toBe(String(Buffer.byteLength(EPUB_STYLESHEET)));
-      expect(stylesheetResponse.headers['cache-control']).toBe('public, max-age=3600');
+      expect(stylesheetResponse.headers['cache-control']).toBe('private, no-store');
       expect(stylesheetResponse.body).toBe(EPUB_STYLESHEET);
 
       const optionalFileResponse = await ctx.app.inject({
@@ -322,7 +336,7 @@ describe('Reader format delivery (e2e)', { timeout: SCENARIO_TIMEOUT_MS }, () =>
         url: `/api/v1/epub/${hiddenEpub.bookId}/info?fileId=${hiddenEpub.bookFileId}`,
         headers: authHeader(viewer.accessToken),
       });
-      expectError(hiddenInfoForbidden, 403, 'No access to this library');
+      expectError(hiddenInfoForbidden, 404, `Book ${hiddenEpub.bookId} not found`);
 
       const hiddenInfoAllowed = await ctx.app.inject({
         method: 'GET',
@@ -358,8 +372,57 @@ describe('Reader format delivery (e2e)', { timeout: SCENARIO_TIMEOUT_MS }, () =>
         url: `/api/v1/epub/${sharedEpub.bookId}/info?fileId=${sharedEpub.bookFileId}`,
         headers: authHeader(outsider.accessToken),
       });
-      expectError(outsiderResponse, 403, 'No access to this library');
+      expectError(outsiderResponse, 404, `Book ${sharedEpub.bookId} not found`);
     });
+  });
+
+  it('enforces ordinary per-book visibility before serving EPUB metadata, chapters and overlay audio', async () => {
+    const reader = await createUserAndLogin(ctx);
+    await grantLibraryAccess(ctx, reader.userId, sharedLibrary.libraryId, 'viewer');
+    const bookId = sharedEpub.bookId;
+    const epubUrl = `/api/v1/epub/${bookId}`;
+    const fileQuery = `?fileId=${sharedEpub.bookFileId}`;
+    const get = (url: string, headers: Record<string, string> = {}) =>
+      ctx.app.inject({ method: 'GET', url, headers: { ...authHeader(reader.accessToken), ...headers } });
+
+    const routes = [
+      { url: `/api/v1/books/${bookId}`, status: 200 },
+      { url: `${epubUrl}/info`, status: 200 },
+      { url: `${epubUrl}/info${fileQuery}`, status: 200 },
+      { url: `${epubUrl}/file/OPS/chapter.xhtml${fileQuery}`, status: 200 },
+      { url: `${epubUrl}/file/OPS/images/cover%20image.png${fileQuery}`, status: 200 },
+      { url: `${epubUrl}/media-overlay${fileQuery}`, status: 200 },
+      { url: `${epubUrl}/media-overlay/file/OPS/chapter.mp4${fileQuery}`, status: 206, range: 'bytes=0-3' },
+    ];
+
+    for (const route of routes) {
+      const response = await get(route.url, route.range ? { range: route.range } : {});
+      expect(response.statusCode, route.url).toBe(route.status);
+      if (route.range) {
+        expect(response.headers['content-range']).toBe(`bytes 0-3/${EPUB_AUDIO.length}`);
+        expect(responseBuffer(response)).toEqual(EPUB_AUDIO.subarray(0, 4));
+      }
+    }
+    expect((await get(`${epubUrl}/file/OPS/chapter.xhtml${fileQuery}`)).body).toContain('Reader Delivery EPUB');
+
+    const [tag] = await ctx.db
+      .insert(schema.tags)
+      .values({ name: `Reader exclusion ${randomUUID()}` })
+      .returning({ id: schema.tags.id });
+    await ctx.db.insert(schema.bookTags).values({ bookId, tagId: tag!.id });
+    await ctx.db.insert(schema.userContentFilterTags).values({ userId: reader.userId, filterType: 'exclude', tagId: tag!.id });
+
+    // The same library grant still permits another book in that library.
+    expect((await get(`/api/v1/books/${prefixedEpub.bookId}`)).statusCode).toBe(200);
+    expect((await get(`/api/v1/epub/${prefixedEpub.bookId}/info`)).statusCode).toBe(200);
+
+    for (const route of routes) {
+      const response = await get(route.url, { 'if-none-match': '*', ...(route.range ? { range: route.range } : {}) });
+      expect(response.statusCode, route.url).toBe(404);
+      expectError(response, 404, `Book ${bookId} not found`);
+      expect(response.body).not.toContain('Reader Delivery EPUB');
+      expect(response.headers['content-range']).toBeUndefined();
+    }
   });
 
   describe('CBZ page delivery contract', () => {
@@ -425,16 +488,26 @@ describe('Reader format delivery (e2e)', { timeout: SCENARIO_TIMEOUT_MS }, () =>
 
   describe('reader access revocation', () => {
     it('applies library access changes immediately while leaving other users isolated', async () => {
+      const chapterUrl = `/api/v1/epub/${sharedEpub.bookId}/file/OPS/chapter.xhtml?fileId=${sharedEpub.bookFileId}`;
+      const readChapter = (token: string) => ctx.app.inject({ method: 'GET', url: chapterUrl, headers: authHeader(token) });
+      const before = await readChapter(viewer.accessToken);
+      expect(before.statusCode).toBe(200);
+      expect(before.headers['cache-control']).toBe('private, no-store');
+      expect(before.body).toContain('fixture chapter');
+
       await ctx.db
         .delete(schema.userLibraryAccess)
         .where(and(eq(schema.userLibraryAccess.userId, viewer.userId), eq(schema.userLibraryAccess.libraryId, sharedLibrary.libraryId)));
+
+      expectError(await readChapter(viewer.accessToken), 404, `Book ${sharedEpub.bookId} not found`);
+      expect((await readChapter(crossLibraryUser.accessToken)).statusCode).toBe(200);
 
       const revokedEpubInfo = await ctx.app.inject({
         method: 'GET',
         url: `/api/v1/epub/${sharedEpub.bookId}/info?fileId=${sharedEpub.bookFileId}`,
         headers: authHeader(viewer.accessToken),
       });
-      expectError(revokedEpubInfo, 403, 'No access to this library');
+      expectError(revokedEpubInfo, 404, `Book ${sharedEpub.bookId} not found`);
 
       const revokedCbzPages = await ctx.app.inject({
         method: 'GET',

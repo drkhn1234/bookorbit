@@ -69,6 +69,10 @@ export class UpdateMetadataCacheConfigDto {
 
 export class ClearMetadataCacheQueryDto {
   @IsOptional()
+  @IsString()
+  scope?: string;
+
+  @IsOptional()
   @IsIn(METADATA_CACHE_NAMESPACES)
   namespace?: MetadataCacheNamespace;
 

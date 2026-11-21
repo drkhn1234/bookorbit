@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useLibraryCapabilities } from '@/features/library/composables/useLibraryCapabilities'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { AlertTriangle, Loader2, RefreshCw, Settings2, Sparkles } from '@lucide/vue'
@@ -6,7 +7,6 @@ import type { ScrollerType } from '@bookorbit/types'
 
 import { useAuth } from '@/features/auth/composables/useAuth'
 import { getDashboardGreetingLabel } from '@/features/dashboard/lib/greeting'
-import { usePermissions } from '@/features/auth/composables/usePermissions'
 import { useLibraries } from '@/features/library/composables/useLibraries'
 import PageTitleRow from '@/components/page-header/PageTitleRow.vue'
 import DashboardScroller from '@/features/dashboard/components/DashboardScroller.vue'
@@ -19,7 +19,7 @@ import { useOnboardingTour } from '@/features/onboarding/composables/useOnboardi
 import { useSmartScopes } from '@/features/smart-scope/composables/useSmartScopes'
 
 const { t } = useI18n()
-const { hasPermission } = usePermissions()
+const { canCreate: canCreateLibrary } = useLibraryCapabilities()
 const { user } = useAuth()
 const { libraries, loading: librariesLoading, loaded: librariesLoaded, error: librariesError, fetchLibraries } = useLibraries()
 const { scrollers, shelfLayout, pruneDeletedSmartScopeScrollers } = useDashboardConfig()
@@ -159,7 +159,7 @@ onUnmounted(() => {
             {{ t('common.retry') }}
           </button>
         </div>
-        <DashboardWelcome v-else-if="libraryState === 'empty'" :can-create="hasPermission('manage_libraries')" />
+        <DashboardWelcome v-else-if="libraryState === 'empty'" :can-create="canCreateLibrary" />
         <template v-else>
           <DashboardWidgetRow :key="`widgets-${dashboardRevision}`" class="animate-fade-up" />
           <div v-if="enabledScrollers.length > 0" :class="shelfLayoutClass">

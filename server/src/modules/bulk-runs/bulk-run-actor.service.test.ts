@@ -13,7 +13,11 @@ const keyActor = {
 function setup() {
   const auth = { findActingUser: vi.fn((): Promise<RequestUser | null> => Promise.resolve(editor)) };
   const apiKeys = { actorForStoredKey: vi.fn((): Promise<RequestUser | null> => Promise.resolve(keyActor)) };
-  return { service: new BulkRunActorService(auth as never, apiKeys as never), auth, apiKeys };
+  return {
+    service: new BulkRunActorService(auth as never, apiKeys as never, { permittedIds: vi.fn().mockResolvedValue([]) } as never),
+    auth,
+    apiKeys,
+  };
 }
 
 const sessionRun = { requestedBy: 7, credentialKind: 'session', apiKeyId: null };

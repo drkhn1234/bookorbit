@@ -1,3 +1,4 @@
+import type { RequestUser } from '../../common/types/request-user';
 import { Test } from '@nestjs/testing';
 
 import { AppSettingsController } from './app-settings.controller';
@@ -49,6 +50,7 @@ function makeOidcProviderService(): jest.Mocked<OidcProviderService> {
 
 describe('AppSettingsController', () => {
   let controller: AppSettingsController;
+  const admin = { id: 1, permissions: [], isSuperuser: true } as unknown as RequestUser;
   let service: ReturnType<typeof makeService>;
   let oidcProviderService: ReturnType<typeof makeOidcProviderService>;
 
@@ -77,7 +79,7 @@ describe('AppSettingsController', () => {
     it('delegates to service.update', async () => {
       const setting = { key: 'allow_registration', value: 'true' };
       service.update.mockResolvedValue(setting as never);
-      const result = await controller.update('allow_registration', { value: 'true' });
+      const result = await controller.update('allow_registration', { value: 'true' }, admin, 'admin');
       expect(service.update).toHaveBeenCalledWith('allow_registration', 'true');
       expect(result).toEqual(setting);
     });
@@ -91,7 +93,7 @@ describe('AppSettingsController', () => {
 
     it('setUploadPattern calls service and returns pattern', async () => {
       service.setUploadPattern.mockResolvedValue(undefined);
-      const result = await controller.setUploadPattern({ pattern: '{title}' });
+      const result = await controller.setUploadPattern({ pattern: '{title}' }, admin, 'admin');
       expect(service.setUploadPattern).toHaveBeenCalledWith('{title}');
       expect(result).toEqual({ pattern: '{title}' });
     });
@@ -105,7 +107,7 @@ describe('AppSettingsController', () => {
 
     it('setUploadPatternBookPerFolder calls service and returns pattern', async () => {
       service.setUploadPatternBookPerFolder.mockResolvedValue(undefined);
-      const result = await controller.setUploadPatternBookPerFolder({ pattern: '{title}/' });
+      const result = await controller.setUploadPatternBookPerFolder({ pattern: '{title}/' }, admin, 'admin');
       expect(service.setUploadPatternBookPerFolder).toHaveBeenCalledWith('{title}/');
       expect(result).toEqual({ pattern: '{title}/' });
     });
@@ -119,7 +121,7 @@ describe('AppSettingsController', () => {
 
     it('setDownloadPattern calls service and returns pattern', async () => {
       service.setDownloadPattern.mockResolvedValue(undefined);
-      const result = await controller.setDownloadPattern({ pattern: '{originalFilename}' });
+      const result = await controller.setDownloadPattern({ pattern: '{originalFilename}' }, admin, 'admin');
       expect(service.setDownloadPattern).toHaveBeenCalledWith('{originalFilename}');
       expect(result).toEqual({ pattern: '{originalFilename}' });
     });
@@ -133,7 +135,7 @@ describe('AppSettingsController', () => {
 
     it('setCrossPlatformPathSanitization calls service and returns enabled flag', async () => {
       service.setCrossPlatformPathSanitizationEnabled.mockResolvedValue(undefined);
-      const result = await controller.setCrossPlatformPathSanitization({ enabled: true });
+      const result = await controller.setCrossPlatformPathSanitization({ enabled: true }, admin, 'admin');
       expect(service.setCrossPlatformPathSanitizationEnabled).toHaveBeenCalledWith(true);
       expect(result).toEqual({ enabled: true });
     });

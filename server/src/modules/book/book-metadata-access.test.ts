@@ -264,11 +264,22 @@ describe('library roles for book metadata writes', () => {
     expect(ctx.bookRepo.updateMetadataFields).toHaveBeenCalledWith(1, expect.objectContaining({ title: 'Changed' }), expect.anything());
   });
 
-  it('allows a superuser without membership to persist metadata', async () => {
+  it('rejects a superuser without membership before persisting metadata', async () => {
     const ctx = await context(null);
-    await ctx.service.updateMetadata(1, { title: 'Changed' }, { ...user, isSuperuser: true, permissions: [] });
-    expect(ctx.bookRepo.updateMetadataFields).toHaveBeenCalled();
-    expect(ctx.scopeRepo.findGrantedLevel).not.toHaveBeenCalled();
+    await expect(ctx.service.updateMetadata(1, { title: 'Changed' }, { ...user, isSuperuser: true, permissions: [] })).rejects.toThrow(
+      NotFoundException,
+    );
+    expectNoWrites(ctx);
+  });
+
+  it('rejects a superuser viewer but allows an explicitly granted editor to persist metadata', async () => {
+    const viewer = await context('viewer');
+    const admin = { ...user, isSuperuser: true, permissions: [] };
+    await expect(viewer.service.updateMetadata(1, { title: 'Changed' }, admin)).rejects.toThrow(ForbiddenException);
+    expectNoWrites(viewer);
+    const editor = await context('editor');
+    await editor.service.updateMetadata(1, { title: 'Changed' }, admin);
+    expect(editor.bookRepo.updateMetadataFields).toHaveBeenCalled();
   });
 
   it('keeps missing membership and missing books concealed as 404', async () => {

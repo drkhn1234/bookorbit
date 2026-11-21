@@ -22,6 +22,7 @@ import { useBookDockSummary } from '@/features/book-dock/composables/useBookDock
 import { useBrowseCounts } from '@/composables/useBrowseCounts'
 import { useBookRequestVisibility } from '@/features/book-requests/composables/useBookRequestVisibility'
 import { useAppInfo } from '@/features/settings/composables/useAppInfo'
+import { useLibraries } from '@/features/library/composables/useLibraries'
 import { useJobsSummary } from '@/features/jobs/composables/useJobsSummary'
 import { formatList } from '@/i18n/formatters'
 
@@ -39,6 +40,7 @@ interface NavContext {
   browseCounts: BrowseCounts | null
   /** The server builds story guides now; until it does, the permission to build them shows no jobs. */
   storyGuidesBuilding?: boolean
+  ownsLibrary?: boolean
   /** The viewer's own jobs, phrased for the Jobs entry; null until the summary has loaded. */
   jobs?: JobsNavState | null
 }
@@ -128,7 +130,7 @@ const GENRE_ROUTE_NAMES = new Set(['genres', 'genre-detail', 'tags', 'tag-detail
 
 /** Building story guides shows jobs only while the server builds them; every other Jobs permission always does. */
 function canSeeJobs(context: NavContext): boolean {
-  if (context.storyGuidesBuilding === true) return true
+  if (context.storyGuidesBuilding === true || context.ownsLibrary) return true
   return JOBS_VIEW_PERMISSIONS.some((name) => name !== Permission.LibraryGenerateStoryGuide && context.hasPermission(name))
 }
 
@@ -223,7 +225,6 @@ export const SIDEBAR_NAV_REGISTRY: readonly SidebarNavEntry[] = [
     zone: 'primary',
     to: { name: 'jobs-activity' },
     isActive: (route) => routeNameStartsWith(route, 'jobs-'),
-    permission: [...JOBS_VIEW_PERMISSIONS],
     visible: canSeeJobs,
     badge: (context) =>
       context.jobs && context.jobs.needsYou > 0 ? { value: context.jobs.needsYou, label: context.jobs.needsYouLabel, tone: 'accent' } : null,
@@ -299,6 +300,7 @@ export function useSidebarNav(getOutstandingRequestTotal: () => number = () => 0
   const { counts: browseCounts } = useBrowseCounts()
   const { showBookRequests } = useBookRequestVisibility()
   const { storyGuides } = useAppInfo()
+  const { libraries } = useLibraries()
   const { summary: jobsSummary } = useJobsSummary()
 
   /** A type this build does not know yet still reads as a job. */
@@ -340,6 +342,7 @@ export function useSidebarNav(getOutstandingRequestTotal: () => number = () => 0
       outstandingRequestTotal,
       outstandingRequestLabel: t(outstandingRequestLabelKey, { count: outstandingRequestTotal }),
       browseCounts: browseCounts.value,
+      ownsLibrary: libraries.value.some((library) => library.accessLevel === 'owner'),
       storyGuidesBuilding: storyGuides.value?.building === true,
       jobs: jobs.value,
     }

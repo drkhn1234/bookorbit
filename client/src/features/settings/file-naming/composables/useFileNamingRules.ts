@@ -1,8 +1,8 @@
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { toast } from 'vue-sonner'
 import { validatePattern, type Library } from '@bookorbit/types'
-import { api } from '@/lib/api'
+import { useLibrarySettingsApi, useLibrarySettingsMode } from '@/features/settings/composables/useLibrarySettingsMode'
 import { useLibraries } from '@/features/library/composables/useLibraries'
 import { findUnbalancedDelimiter, findUnknownModifier } from '../lib/pattern-highlight'
 import {
@@ -38,8 +38,11 @@ async function runBounded<T>(items: T[], limit: number, worker: (item: T) => Pro
 }
 
 export function useFileNamingRules() {
+  const api = useLibrarySettingsApi()
   const { t } = useI18n()
   const { libraries, fetchLibraries } = useLibraries()
+  const administratorMode = useLibrarySettingsMode()
+  const ownedLibraries = computed(() => libraries.value.filter((library) => library.accessLevel === 'owner'))
 
   const savedPatterns = ref<Record<string, Draft>>({})
   const draftPatterns = ref<Record<string, Draft>>({})
@@ -53,11 +56,27 @@ export function useFileNamingRules() {
   const selectedRuleId = ref<NamingRuleId>('global:fileAsBook')
 
   const globalRules = computed<NamingRule[]>(() => GLOBAL_RULE_KEYS.map(globalRule))
-  const libraryRules = computed<NamingRule[]>(() => libraries.value.map(libraryRule))
+  const libraryRules = computed<NamingRule[]>(() => ownedLibraries.value.map(libraryRule))
   const rules = computed<NamingRule[]>(() => [...globalRules.value, ...libraryRules.value])
 
   const ruleById = computed(() => new Map(rules.value.map((rule) => [rule.id, rule])))
   const selectedRule = computed<NamingRule | null>(() => ruleById.value.get(selectedRuleId.value) ?? null)
+  const inheritedPatterns = ref<Record<number, { pattern: string; followsSelectedDefaults: boolean }>>({})
+
+  watch(selectedRule, async (rule) => {
+    if (rule?.kind !== 'library' || !rule.library || inheritedPatterns.value[rule.library.id]) return
+    const id = rule.library.id
+    const kind = GLOBAL_RULE_ENDPOINTS[globalKeyForMode(rule.organizationMode ?? 'book_per_file')].split('/').at(-1)
+    try {
+      const res = await api(`/api/v1/app-settings/library-naming/libraries/${id}/${kind}`)
+      if (res.ok) {
+        const result = await res.json()
+        if (typeof result.pattern === 'string' && typeof result.followsSelectedDefaults === 'boolean') inheritedPatterns.value[id] = result
+      }
+    } catch {
+      // The owning session may have changed while the request was outstanding.
+    }
+  })
 
   const overriddenLibraryIds = computed(
     () =>
@@ -82,7 +101,10 @@ export function useFileNamingRules() {
     if (rule.kind === 'global') return globalDraft(rule.globalKey!)
     const own = draftOf(rule)
     if (own !== null) return own
-    return globalDraft(globalKeyForMode(rule.organizationMode ?? 'book_per_file'))
+    const inherited = rule.library ? inheritedPatterns.value[rule.library.id] : undefined
+    return inherited && !inherited.followsSelectedDefaults
+      ? inherited.pattern
+      : globalDraft(globalKeyForMode(rule.organizationMode ?? 'book_per_file'))
   }
 
   function isInherited(rule: NamingRule): boolean {
@@ -125,7 +147,7 @@ export function useFileNamingRules() {
   async function fetchCrossPlatformSanitization(): Promise<void> {
     loadingCrossPlatformSanitization.value = true
     try {
-      const res = await api('/api/v1/app-settings/cross-platform-path-sanitization')
+      const res = await api('/api/v1/app-settings/library-naming-sanitization')
       if (!res.ok) return
       const data: { enabled: boolean } = await res.json()
       crossPlatformSanitizationEnabled.value = data.enabled
@@ -135,7 +157,7 @@ export function useFileNamingRules() {
   }
 
   function seedLibraryDrafts(): void {
-    for (const library of libraries.value) {
+    for (const library of ownedLibraries.value) {
       const id: NamingRuleId = `library:${library.id}`
       const pattern = library.fileNamingPattern ?? null
       savedPatterns.value[id] = pattern

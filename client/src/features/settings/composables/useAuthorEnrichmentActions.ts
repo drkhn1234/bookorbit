@@ -1,7 +1,8 @@
-import { api } from '@/lib/api'
+import { useLibrarySettingsApi } from '@/features/settings/composables/useLibrarySettingsMode'
 import { ignoreCachePostInit, type IgnoreCacheOptions } from '@/features/metadata-cache/lib/metadata-cache'
 
 export function useAuthorEnrichmentActions() {
+  const api = useLibrarySettingsApi()
   /** Queues authors that match the eligibility conditions. */
   async function backfill(options: IgnoreCacheOptions = {}): Promise<{ queued: number }> {
     const res = await api('/api/v1/authors/enrichment/backfill', ignoreCachePostInit(options))

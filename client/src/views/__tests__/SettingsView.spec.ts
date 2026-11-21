@@ -1,12 +1,15 @@
 import { describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
-import { reactive } from 'vue'
+import { reactive, ref } from 'vue'
 import SettingsView from '@/views/SettingsView.vue'
 
 const routeState = reactive<{ name: string; meta: Record<string, unknown> }>({
   name: 'settings-appearance-layout',
   meta: {},
 })
+
+const settingsUser = ref<{ id: number; isSuperuser: boolean } | null>(null)
+vi.mock('@/features/auth/composables/useAuth', () => ({ useAuth: () => ({ user: settingsUser }) }))
 
 vi.mock('vue-router', () => ({
   useRoute: () => routeState,
@@ -25,6 +28,26 @@ function mountView(routeName: string, meta: Record<string, unknown> = {}) {
 }
 
 describe('SettingsView shell', () => {
+  it('keeps Administrator Mode deliberate and clears it when the account or section changes', async () => {
+    settingsUser.value = { id: 1, isSuperuser: true }
+    const wrapper = mountView('settings-metadata-field-rules')
+    const button = () => wrapper.findAll('button').find((item) => item.text().endsWith('Administrator Mode'))!
+    expect(button().text()).toBe('Enable Administrator Mode')
+    await button().trigger('click')
+    expect(button().text()).toBe('Disable Administrator Mode')
+    settingsUser.value = { id: 2, isSuperuser: true }
+    await wrapper.vm.$nextTick()
+    expect(button().text()).toBe('Enable Administrator Mode')
+    await button().trigger('click')
+    routeState.name = 'settings-appearance-layout'
+    await wrapper.vm.$nextTick()
+    routeState.name = 'settings-metadata-field-rules'
+    await wrapper.vm.$nextTick()
+    expect(button().text()).toBe('Enable Administrator Mode')
+    settingsUser.value = null
+    wrapper.unmount()
+  })
+
   it('renders a single column page without a second navigation pane', () => {
     const wrapper = mountView('settings-appearance-layout')
     expect(wrapper.find('[data-testid="settings-page-header"]').exists()).toBe(true)

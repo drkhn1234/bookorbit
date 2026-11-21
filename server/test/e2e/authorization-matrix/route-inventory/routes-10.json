@@ -5,7 +5,9 @@
     "methodName": "removeOrphan",
     "httpMethod": "DELETE",
     "path": "/admin/download-clients/:id/reconciliation/:clientKey",
-    "permissions": ["Permission.ManageAppSettings"],
+    "permissions": [
+      "Permission.ManageAppSettings"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -18,7 +20,9 @@
     "methodName": "deleteProvider",
     "httpMethod": "DELETE",
     "path": "/tts/admin/providers/:id",
-    "permissions": ["Permission.ManageAppSettings"],
+    "permissions": [
+      "Permission.ManageAppSettings"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -61,7 +65,9 @@
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "AppAttestGuard"
+    ],
     "apiKey": "write"
   },
   {
@@ -70,7 +76,9 @@
     "methodName": "reconcile",
     "httpMethod": "GET",
     "path": "/admin/download-clients/:id/reconciliation",
-    "permissions": ["Permission.ManageAppSettings"],
+    "permissions": [
+      "Permission.ManageAppSettings"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -109,12 +117,17 @@
     "methodName": "downloadAudiolessEpub",
     "httpMethod": "GET",
     "path": "/books/files/:fileId/audioless-epub/download",
-    "permissions": ["Permission.LibraryDownload"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
-    "apiKey": "read"
+    "apiKey": "read",
+    "scopedPermission": {
+      "permission": "Permission.LibraryDownload",
+      "resource": "file",
+      "param": "fileId"
+    }
   },
   {
     "file": "server/src/modules/reader/epub/epub.controller.ts",
@@ -161,7 +174,9 @@
     "methodName": "getAllProviders",
     "httpMethod": "GET",
     "path": "/tts/admin/providers",
-    "permissions": ["Permission.ManageAppSettings"],
+    "permissions": [
+      "Permission.ManageAppSettings"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -174,7 +189,9 @@
     "methodName": "discoverVoices",
     "httpMethod": "GET",
     "path": "/tts/admin/providers/:id/voices/discover",
-    "permissions": ["Permission.ManageAppSettings"],
+    "permissions": [
+      "Permission.ManageAppSettings"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -269,7 +286,9 @@
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "AppAttestGuard"
+    ],
     "apiKey": "read"
   },
   {
@@ -282,7 +301,9 @@
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "AppAttestGuard"
+    ],
     "apiKey": "read"
   },
   {
@@ -295,7 +316,9 @@
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "AppAttestGuard"
+    ],
     "apiKey": "read"
   },
   {
@@ -308,7 +331,9 @@
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "AppAttestGuard"
+    ],
     "apiKey": "read"
   },
   {
@@ -321,7 +346,9 @@
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "AppAttestGuard"
+    ],
     "apiKey": "read"
   },
   {
@@ -334,7 +361,9 @@
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "AppAttestGuard"
+    ],
     "apiKey": "read"
   },
   {
@@ -347,7 +376,9 @@
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "AppAttestGuard"
+    ],
     "apiKey": "read"
   },
   {
@@ -360,7 +391,9 @@
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "AppAttestGuard"
+    ],
     "apiKey": "read"
   },
   {
@@ -373,7 +406,9 @@
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "AppAttestGuard"
+    ],
     "apiKey": "read"
   },
   {
@@ -490,7 +525,9 @@
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": ["JwtAuthGuard"],
+    "useGuards": [
+      "JwtAuthGuard"
+    ],
     "apiKey": "read"
   },
   {
@@ -503,7 +540,10 @@
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": ["JwtAuthGuard"],
+    "useGuards": [
+      "JwtAuthGuard",
+      "AppAttestGuard"
+    ],
     "apiKey": "write"
   },
   {
@@ -516,7 +556,10 @@
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": ["JwtAuthGuard"],
+    "useGuards": [
+      "JwtAuthGuard",
+      "AppAttestGuard"
+    ],
     "apiKey": "write"
   },
   {
@@ -525,7 +568,9 @@
     "methodName": "adopt",
     "httpMethod": "POST",
     "path": "/admin/download-clients/:id/reconciliation/:clientKey/adopt",
-    "permissions": ["Permission.ManageAppSettings"],
+    "permissions": [
+      "Permission.ManageAppSettings"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -542,7 +587,9 @@
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "AppAttestGuard"
+    ],
     "apiKey": "write"
   },
   {
@@ -551,7 +598,9 @@
     "methodName": "addProvider",
     "httpMethod": "POST",
     "path": "/tts/admin/providers",
-    "permissions": ["Permission.ManageAppSettings"],
+    "permissions": [
+      "Permission.ManageAppSettings"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -564,7 +613,9 @@
     "methodName": "testProvider",
     "httpMethod": "POST",
     "path": "/tts/admin/providers/:id/test",
-    "permissions": ["Permission.ManageAppSettings"],
+    "permissions": [
+      "Permission.ManageAppSettings"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -607,7 +658,9 @@
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "AppAttestGuard"
+    ],
     "apiKey": "write"
   },
   {
@@ -620,7 +673,9 @@
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "AppAttestGuard"
+    ],
     "apiKey": "write"
   },
   {
@@ -646,7 +701,9 @@
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "AppAttestGuard"
+    ],
     "apiKey": "write"
   },
   {
@@ -655,11 +712,13 @@
     "methodName": "create",
     "httpMethod": "POST",
     "path": "/watch-downloads",
-    "permissions": ["Permission.LibraryDownload"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "AppAttestGuard"
+    ],
     "apiKey": "write"
   },
   {
@@ -668,11 +727,13 @@
     "methodName": "createMediaOverlay",
     "httpMethod": "POST",
     "path": "/watch-downloads/media-overlay",
-    "permissions": ["Permission.LibraryDownload"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "AppAttestGuard"
+    ],
     "apiKey": "write"
   },
   {
@@ -681,7 +742,9 @@
     "methodName": "updateProvider",
     "httpMethod": "PUT",
     "path": "/tts/admin/providers/:id",
-    "permissions": ["Permission.ManageAppSettings"],
+    "permissions": [
+      "Permission.ManageAppSettings"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -694,7 +757,9 @@
     "methodName": "reorderProviders",
     "httpMethod": "PUT",
     "path": "/tts/admin/providers/order",
-    "permissions": ["Permission.ManageAppSettings"],
+    "permissions": [
+      "Permission.ManageAppSettings"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -750,7 +815,9 @@
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "AppAttestGuard"
+    ],
     "apiKey": "read"
   },
   {
@@ -763,7 +830,9 @@
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "AppAttestGuard"
+    ],
     "apiKey": "write"
   },
   {
@@ -776,7 +845,9 @@
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "AppAttestGuard"
+    ],
     "apiKey": "write"
   },
   {
@@ -789,7 +860,9 @@
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "AppAttestGuard"
+    ],
     "apiKey": "write"
   },
   {
@@ -802,7 +875,9 @@
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "AppAttestGuard"
+    ],
     "apiKey": "write"
   },
   {
@@ -815,7 +890,9 @@
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "AppAttestGuard"
+    ],
     "apiKey": "write"
   },
   {
@@ -828,7 +905,9 @@
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "AppAttestGuard"
+    ],
     "apiKey": "read"
   },
   {
@@ -841,7 +920,9 @@
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "AppAttestGuard"
+    ],
     "apiKey": "read"
   },
   {
@@ -854,7 +935,9 @@
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "AppAttestGuard"
+    ],
     "apiKey": "read"
   },
   {
@@ -867,7 +950,9 @@
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "AppAttestGuard"
+    ],
     "apiKey": "read"
   },
   {
@@ -880,7 +965,9 @@
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "AppAttestGuard"
+    ],
     "apiKey": "read"
   },
   {
@@ -906,7 +993,9 @@
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "AppAttestGuard"
+    ],
     "apiKey": "read"
   },
   {
@@ -915,11 +1004,15 @@
     "methodName": "getConfig",
     "httpMethod": "GET",
     "path": "/metadata-cache/config",
-    "permissions": ["Permission.ManageMetadataConfig"],
+    "permissions": [
+      "Permission.ManageMetadataConfig"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "LibraryAdministratorModeGuard"
+    ],
     "apiKey": "read"
   },
   {
@@ -928,11 +1021,15 @@
     "methodName": "updateConfig",
     "httpMethod": "PUT",
     "path": "/metadata-cache/config",
-    "permissions": ["Permission.ManageMetadataConfig"],
+    "permissions": [
+      "Permission.ManageMetadataConfig"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "LibraryAdministratorModeGuard"
+    ],
     "apiKey": "write"
   },
   {
@@ -941,11 +1038,15 @@
     "methodName": "getStats",
     "httpMethod": "GET",
     "path": "/metadata-cache/stats",
-    "permissions": ["Permission.ManageMetadataConfig"],
+    "permissions": [
+      "Permission.ManageMetadataConfig"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "LibraryAdministratorModeGuard"
+    ],
     "apiKey": "read"
   },
   {
@@ -954,11 +1055,15 @@
     "methodName": "clear",
     "httpMethod": "DELETE",
     "path": "/metadata-cache",
-    "permissions": ["Permission.ManageMetadataConfig"],
+    "permissions": [
+      "Permission.ManageMetadataConfig"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "LibraryAdministratorModeGuard"
+    ],
     "apiKey": "write"
   },
   {
@@ -1023,7 +1128,9 @@
     "libraryAccess": [],
     "isPublic": true,
     "allowDefault": false,
-    "useGuards": ["KoreaderAuthGuard"],
+    "useGuards": [
+      "KoreaderAuthGuard"
+    ],
     "apiKey": "public"
   },
   {
@@ -1032,7 +1139,7 @@
     "methodName": "capability",
     "httpMethod": "GET",
     "path": "/books/:bookId/read-aloud",
-    "permissions": ["Permission.LibraryGenerateReadAloud", "Permission.DemoRestricted"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -1045,7 +1152,7 @@
     "methodName": "create",
     "httpMethod": "POST",
     "path": "/books/:bookId/read-aloud-jobs",
-    "permissions": ["Permission.LibraryGenerateReadAloud", "Permission.DemoRestricted"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -1058,7 +1165,7 @@
     "methodName": "get",
     "httpMethod": "GET",
     "path": "/read-aloud-jobs/:jobId",
-    "permissions": ["Permission.LibraryGenerateReadAloud", "Permission.DemoRestricted"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -1071,7 +1178,7 @@
     "methodName": "cancel",
     "httpMethod": "DELETE",
     "path": "/read-aloud-jobs/:jobId",
-    "permissions": ["Permission.LibraryGenerateReadAloud", "Permission.DemoRestricted"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -1084,7 +1191,7 @@
     "methodName": "publish",
     "httpMethod": "POST",
     "path": "/read-aloud-jobs/:jobId/publish",
-    "permissions": ["Permission.LibraryGenerateReadAloud", "Permission.DemoRestricted"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -1097,7 +1204,7 @@
     "methodName": "retry",
     "httpMethod": "POST",
     "path": "/read-aloud-jobs/:jobId/retry",
-    "permissions": ["Permission.LibraryGenerateReadAloud", "Permission.DemoRestricted"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -1110,7 +1217,7 @@
     "methodName": "resync",
     "httpMethod": "POST",
     "path": "/read-aloud-jobs/:jobId/resync",
-    "permissions": ["Permission.LibraryGenerateReadAloud", "Permission.DemoRestricted"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -1123,7 +1230,7 @@
     "methodName": "dismiss",
     "httpMethod": "POST",
     "path": "/read-aloud-jobs/:jobId/dismiss",
-    "permissions": ["Permission.LibraryGenerateReadAloud", "Permission.DemoRestricted"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -1136,7 +1243,7 @@
     "methodName": "pause",
     "httpMethod": "POST",
     "path": "/read-aloud-jobs/:jobId/pause",
-    "permissions": ["Permission.LibraryGenerateReadAloud", "Permission.DemoRestricted"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -1149,7 +1256,7 @@
     "methodName": "resume",
     "httpMethod": "POST",
     "path": "/read-aloud-jobs/:jobId/resume",
-    "permissions": ["Permission.LibraryGenerateReadAloud", "Permission.DemoRestricted"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -1162,7 +1269,7 @@
     "methodName": "report",
     "httpMethod": "GET",
     "path": "/read-aloud-jobs/:jobId/report",
-    "permissions": ["Permission.LibraryGenerateReadAloud", "Permission.DemoRestricted"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -1175,7 +1282,7 @@
     "methodName": "events",
     "httpMethod": "GET",
     "path": "/read-aloud-jobs/:jobId/events",
-    "permissions": ["Permission.LibraryGenerateReadAloud", "Permission.DemoRestricted"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -1227,11 +1334,15 @@
     "methodName": "list",
     "httpMethod": "GET",
     "path": "/metadata-http-providers",
-    "permissions": ["Permission.ManageMetadataConfig"],
+    "permissions": [
+      "Permission.ManageMetadataConfig"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "LibraryAdministratorModeGuard"
+    ],
     "apiKey": "read"
   },
   {
@@ -1240,11 +1351,15 @@
     "methodName": "create",
     "httpMethod": "POST",
     "path": "/metadata-http-providers",
-    "permissions": ["Permission.ManageMetadataConfig"],
+    "permissions": [
+      "Permission.ManageMetadataConfig"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "LibraryAdministratorModeGuard"
+    ],
     "apiKey": "write"
   },
   {
@@ -1253,11 +1368,15 @@
     "methodName": "update",
     "httpMethod": "PATCH",
     "path": "/metadata-http-providers/:id",
-    "permissions": ["Permission.ManageMetadataConfig"],
+    "permissions": [
+      "Permission.ManageMetadataConfig"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "LibraryAdministratorModeGuard"
+    ],
     "apiKey": "write"
   },
   {
@@ -1266,11 +1385,15 @@
     "methodName": "remove",
     "httpMethod": "DELETE",
     "path": "/metadata-http-providers/:id",
-    "permissions": ["Permission.ManageMetadataConfig"],
+    "permissions": [
+      "Permission.ManageMetadataConfig"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "LibraryAdministratorModeGuard"
+    ],
     "apiKey": "write"
   },
   {
@@ -1279,11 +1402,15 @@
     "methodName": "test",
     "httpMethod": "POST",
     "path": "/metadata-http-providers/:id/test",
-    "permissions": ["Permission.ManageMetadataConfig"],
+    "permissions": [
+      "Permission.ManageMetadataConfig"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "LibraryAdministratorModeGuard"
+    ],
     "apiKey": "write"
   },
   {
@@ -1292,11 +1419,15 @@
     "methodName": "directoryList",
     "httpMethod": "GET",
     "path": "/metadata-http-providers/directory",
-    "permissions": ["Permission.ManageMetadataConfig"],
+    "permissions": [
+      "Permission.ManageMetadataConfig"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "LibraryAdministratorModeGuard"
+    ],
     "apiKey": "read"
   },
   {
@@ -1322,7 +1453,9 @@
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "AppAttestGuard"
+    ],
     "apiKey": "write"
   },
   {
@@ -1335,7 +1468,9 @@
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "AppAttestGuard"
+    ],
     "apiKey": "read"
   },
   {
@@ -1348,7 +1483,9 @@
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "AppAttestGuard"
+    ],
     "apiKey": "write"
   },
   {
@@ -1361,7 +1498,9 @@
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "AppAttestGuard"
+    ],
     "apiKey": "write"
   },
   {
@@ -1374,7 +1513,9 @@
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "AppAttestGuard"
+    ],
     "apiKey": "write"
   },
   {
@@ -1387,7 +1528,9 @@
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "AppAttestGuard"
+    ],
     "apiKey": "write"
   },
   {
@@ -1400,7 +1543,9 @@
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "AppAttestGuard"
+    ],
     "apiKey": "read"
   },
   {
@@ -1413,7 +1558,9 @@
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "AppAttestGuard"
+    ],
     "apiKey": "write"
   },
   {
@@ -1435,7 +1582,9 @@
     "methodName": "build",
     "httpMethod": "POST",
     "path": "/books/:bookId/story-guide",
-    "permissions": ["Permission.LibraryGenerateStoryGuide"],
+    "permissions": [
+      "Permission.LibraryGenerateStoryGuide"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -1448,7 +1597,9 @@
     "methodName": "retry",
     "httpMethod": "POST",
     "path": "/books/:bookId/story-guide/retry",
-    "permissions": ["Permission.LibraryGenerateStoryGuide"],
+    "permissions": [
+      "Permission.LibraryGenerateStoryGuide"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -1461,7 +1612,9 @@
     "methodName": "cancel",
     "httpMethod": "POST",
     "path": "/books/:bookId/story-guide/cancel",
-    "permissions": ["Permission.LibraryGenerateStoryGuide"],
+    "permissions": [
+      "Permission.LibraryGenerateStoryGuide"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -1474,7 +1627,9 @@
     "methodName": "remove",
     "httpMethod": "DELETE",
     "path": "/books/:bookId/story-guide",
-    "permissions": ["Permission.LibraryGenerateStoryGuide"],
+    "permissions": [
+      "Permission.LibraryGenerateStoryGuide"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -1487,7 +1642,9 @@
     "methodName": "summary",
     "httpMethod": "GET",
     "path": "/admin/ai/features/story-guides",
-    "permissions": ["Permission.ManageAppSettings"],
+    "permissions": [
+      "Permission.ManageAppSettings"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -1500,7 +1657,9 @@
     "methodName": "deleteAll",
     "httpMethod": "POST",
     "path": "/admin/ai/features/story-guides/delete-all",
-    "permissions": ["Permission.ManageAppSettings"],
+    "permissions": [
+      "Permission.ManageAppSettings"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -1513,7 +1672,9 @@
     "methodName": "guides",
     "httpMethod": "GET",
     "path": "/admin/ai/features/story-guides/guides",
-    "permissions": ["Permission.ManageAppSettings"],
+    "permissions": [
+      "Permission.ManageAppSettings"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -1526,7 +1687,9 @@
     "methodName": "history",
     "httpMethod": "GET",
     "path": "/admin/ai/features/story-guides/history",
-    "permissions": ["Permission.ManageAppSettings"],
+    "permissions": [
+      "Permission.ManageAppSettings"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -1539,7 +1702,9 @@
     "methodName": "speeds",
     "httpMethod": "GET",
     "path": "/admin/ai/features/story-guides/speeds",
-    "permissions": ["Permission.ManageAppSettings"],
+    "permissions": [
+      "Permission.ManageAppSettings"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -1552,7 +1717,9 @@
     "methodName": "resetSpeed",
     "httpMethod": "POST",
     "path": "/admin/ai/features/story-guides/speeds/reset",
-    "permissions": ["Permission.ManageAppSettings"],
+    "permissions": [
+      "Permission.ManageAppSettings"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -1569,7 +1736,9 @@
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "AppAttestGuard"
+    ],
     "apiKey": "read"
   },
   {
@@ -1578,11 +1747,15 @@
     "methodName": "list",
     "httpMethod": "GET",
     "path": "/mobile/books/files/:fileId/story-guide/fixes",
-    "permissions": ["Permission.LibraryGenerateStoryGuide"],
+    "permissions": [
+      "Permission.LibraryGenerateStoryGuide"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "AppAttestGuard"
+    ],
     "apiKey": "read"
   },
   {
@@ -1591,11 +1764,15 @@
     "methodName": "put",
     "httpMethod": "PUT",
     "path": "/mobile/books/files/:fileId/story-guide/fixes/:id",
-    "permissions": ["Permission.LibraryGenerateStoryGuide"],
+    "permissions": [
+      "Permission.LibraryGenerateStoryGuide"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "AppAttestGuard"
+    ],
     "apiKey": "write"
   },
   {
@@ -1604,7 +1781,10 @@
     "methodName": "list",
     "httpMethod": "GET",
     "path": "/ai/jobs",
-    "permissions": ["Permission.ManageAppSettings", "Permission.LibraryGenerateStoryGuide"],
+    "permissions": [
+      "Permission.ManageAppSettings",
+      "Permission.LibraryGenerateStoryGuide"
+    ],
     "permissionMode": "any",
     "libraryAccess": [],
     "isPublic": false,
@@ -1618,7 +1798,10 @@
     "methodName": "act",
     "httpMethod": "POST",
     "path": "/ai/jobs/actions",
-    "permissions": ["Permission.ManageAppSettings", "Permission.LibraryGenerateStoryGuide"],
+    "permissions": [
+      "Permission.ManageAppSettings",
+      "Permission.LibraryGenerateStoryGuide"
+    ],
     "permissionMode": "any",
     "libraryAccess": [],
     "isPublic": false,
@@ -1632,19 +1815,7 @@
     "methodName": "list",
     "httpMethod": "GET",
     "path": "/jobs",
-    "permissions": [
-      "Permission.ManageAppSettings",
-      "Permission.LibraryGenerateStoryGuide",
-      "Permission.LibraryGenerateReadAloud",
-      "Permission.LibraryMergeBooks",
-      "Permission.LibraryEditMetadata",
-      "Permission.LibraryDeleteBooks",
-      "Permission.BookRequestSelfFulfill",
-      "Permission.ManageBookRequests",
-      "Permission.ManageLibraries",
-      "Permission.ManageMetadataConfig"
-    ],
-    "permissionMode": "any",
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -1657,19 +1828,7 @@
     "methodName": "summary",
     "httpMethod": "GET",
     "path": "/jobs/summary",
-    "permissions": [
-      "Permission.ManageAppSettings",
-      "Permission.LibraryGenerateStoryGuide",
-      "Permission.LibraryGenerateReadAloud",
-      "Permission.LibraryMergeBooks",
-      "Permission.LibraryEditMetadata",
-      "Permission.LibraryDeleteBooks",
-      "Permission.BookRequestSelfFulfill",
-      "Permission.ManageBookRequests",
-      "Permission.ManageLibraries",
-      "Permission.ManageMetadataConfig"
-    ],
-    "permissionMode": "any",
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -1682,23 +1841,41 @@
     "methodName": "act",
     "httpMethod": "POST",
     "path": "/jobs/actions",
-    "permissions": [
-      "Permission.ManageAppSettings",
-      "Permission.LibraryGenerateStoryGuide",
-      "Permission.LibraryGenerateReadAloud",
-      "Permission.LibraryMergeBooks",
-      "Permission.LibraryEditMetadata",
-      "Permission.LibraryDeleteBooks",
-      "Permission.BookRequestSelfFulfill",
-      "Permission.ManageBookRequests",
-      "Permission.ManageLibraries",
-      "Permission.ManageMetadataConfig"
-    ],
-    "permissionMode": "any",
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
     "apiKey": "interactive"
+  },
+  {
+    "file": "server/src/modules/setup-overview/setup-overview.controller.ts",
+    "className": "SetupOverviewController",
+    "methodName": "get",
+    "httpMethod": "GET",
+    "path": "/setup-overview",
+    "permissions": [
+      "Permission.ManageAppSettings"
+    ],
+    "libraryAccess": [],
+    "isPublic": false,
+    "allowDefault": false,
+    "useGuards": [],
+    "apiKey": "read"
+  },
+  {
+    "file": "server/src/modules/koreader/koreader-catalog.controller.ts",
+    "className": "KoreaderCatalogController",
+    "methodName": "booksQuery",
+    "httpMethod": "POST",
+    "path": "/koreader/plugin/catalog/books/query",
+    "permissions": [],
+    "libraryAccess": [],
+    "isPublic": true,
+    "allowDefault": false,
+    "useGuards": [
+      "KoreaderAuthGuard"
+    ],
+    "apiKey": "public"
   }
 ]

@@ -11,7 +11,7 @@ import * as unzipper from 'unzipper';
 import { EpubService, chapterTitleForHref } from './epub.service';
 import { openEpubZipEntryRange } from './epub-zip-entry-stream';
 import { BookReadService } from '../../book/book-read.service';
-import { LibraryService } from '../../library/library.service';
+import { BookService } from '../../book/book.service';
 
 const mockStat = stat as MockedFunction<typeof stat>;
 const mockOpenFile = (unzipper as any).Open.file as vi.Mock;
@@ -212,24 +212,22 @@ function makeEpubArchive(options?: { navBufferError?: boolean; omitChapterFile?:
 describe('EpubService', () => {
   const user = { id: 10, isSuperuser: false, permissions: [] } as any;
   const bookReadService = {
-    findLibraryIdByBookId: vi.fn(),
     findFileById: vi.fn(),
     findPrimaryFilesByBookIds: vi.fn(),
   };
-  const libraryService = {
-    verifyAccess: vi.fn(),
+  const bookService = {
+    verifyBookAccess: vi.fn(),
   };
   let service: EpubService;
 
   beforeEach(async () => {
     vi.resetAllMocks();
     const module = await Test.createTestingModule({
-      providers: [EpubService, { provide: BookReadService, useValue: bookReadService }, { provide: LibraryService, useValue: libraryService }],
+      providers: [EpubService, { provide: BookReadService, useValue: bookReadService }, { provide: BookService, useValue: bookService }],
     }).compile();
     service = module.get(EpubService);
-    bookReadService.findLibraryIdByBookId.mockResolvedValue(3);
     bookReadService.findPrimaryFilesByBookIds.mockResolvedValue([{ format: 'epub', absolutePath: '/books/book.epub', sizeBytes: null }]);
-    libraryService.verifyAccess.mockResolvedValue(undefined);
+    bookService.verifyBookAccess.mockResolvedValue(undefined);
     mockStat.mockResolvedValue({ mtimeMs: 100 } as Awaited<ReturnType<typeof stat>>);
     mockOpenRange.mockImplementation(async (_path, entry, start, end) => Readable.from([(await entry.buffer()).subarray(start, end + 1)]));
   });
@@ -329,7 +327,7 @@ describe('EpubService', () => {
         ],
       }),
     );
-    expect(libraryService.verifyAccess).toHaveBeenCalledWith(expect.objectContaining({ id: 10, isSuperuser: false }), 3);
+    expect(bookService.verifyBookAccess).toHaveBeenCalledWith(99, user);
   });
 
   it('falls back to NCX TOC when nav parsing fails', async () => {
@@ -610,10 +608,9 @@ describe('EpubService', () => {
   });
 
   it('validates EPUB path resolution for book and file constraints', async () => {
-    bookReadService.findLibraryIdByBookId.mockResolvedValueOnce(null);
+    bookService.verifyBookAccess.mockRejectedValueOnce(new NotFoundException('Book 5 not found'));
     await expect(service.getBookInfo(5, undefined, user)).rejects.toThrow(new NotFoundException('Book 5 not found'));
 
-    bookReadService.findLibraryIdByBookId.mockResolvedValue(3);
     bookReadService.findFileById.mockResolvedValueOnce({ bookId: 6, format: 'epub', absolutePath: '/books/other.epub' });
     await expect(service.getBookInfo(5, 77, user)).rejects.toThrow(new NotFoundException('File 77 not found for book 5'));
 

@@ -5,7 +5,10 @@
     "methodName": "listDismissals",
     "httpMethod": "GET",
     "path": "/book-duplicates/dismissals",
-    "permissions": ["Permission.LibraryDeleteBooks", "Permission.LibraryMergeBooks"],
+    "permissions": [
+      "Permission.LibraryDeleteBooks",
+      "Permission.LibraryMergeBooks"
+    ],
     "permissionMode": "any",
     "libraryAccess": [],
     "isPublic": false,
@@ -19,7 +22,10 @@
     "methodName": "dismissGroup",
     "httpMethod": "POST",
     "path": "/book-duplicates/dismissals",
-    "permissions": ["Permission.LibraryDeleteBooks", "Permission.LibraryMergeBooks"],
+    "permissions": [
+      "Permission.LibraryDeleteBooks",
+      "Permission.LibraryMergeBooks"
+    ],
     "permissionMode": "any",
     "libraryAccess": [],
     "isPublic": false,
@@ -33,7 +39,10 @@
     "methodName": "restoreDismissal",
     "httpMethod": "DELETE",
     "path": "/book-duplicates/dismissals/:bookIdA/:bookIdB",
-    "permissions": ["Permission.LibraryDeleteBooks", "Permission.LibraryMergeBooks"],
+    "permissions": [
+      "Permission.LibraryDeleteBooks",
+      "Permission.LibraryMergeBooks"
+    ],
     "permissionMode": "any",
     "libraryAccess": [],
     "isPublic": false,
@@ -47,7 +56,10 @@
     "methodName": "createScan",
     "httpMethod": "POST",
     "path": "/book-duplicates/scans",
-    "permissions": ["Permission.LibraryDeleteBooks", "Permission.LibraryMergeBooks"],
+    "permissions": [
+      "Permission.LibraryDeleteBooks",
+      "Permission.LibraryMergeBooks"
+    ],
     "permissionMode": "any",
     "libraryAccess": [],
     "isPublic": false,
@@ -61,7 +73,10 @@
     "methodName": "getActiveScan",
     "httpMethod": "GET",
     "path": "/book-duplicates/scans/active",
-    "permissions": ["Permission.LibraryDeleteBooks", "Permission.LibraryMergeBooks"],
+    "permissions": [
+      "Permission.LibraryDeleteBooks",
+      "Permission.LibraryMergeBooks"
+    ],
     "permissionMode": "any",
     "libraryAccess": [],
     "isPublic": false,
@@ -75,7 +90,10 @@
     "methodName": "getScan",
     "httpMethod": "GET",
     "path": "/book-duplicates/scans/:scanId",
-    "permissions": ["Permission.LibraryDeleteBooks", "Permission.LibraryMergeBooks"],
+    "permissions": [
+      "Permission.LibraryDeleteBooks",
+      "Permission.LibraryMergeBooks"
+    ],
     "permissionMode": "any",
     "libraryAccess": [],
     "isPublic": false,
@@ -89,7 +107,10 @@
     "methodName": "getGroups",
     "httpMethod": "GET",
     "path": "/book-duplicates/scans/:scanId/groups",
-    "permissions": ["Permission.LibraryDeleteBooks", "Permission.LibraryMergeBooks"],
+    "permissions": [
+      "Permission.LibraryDeleteBooks",
+      "Permission.LibraryMergeBooks"
+    ],
     "permissionMode": "any",
     "libraryAccess": [],
     "isPublic": false,
@@ -103,7 +124,10 @@
     "methodName": "startResolution",
     "httpMethod": "POST",
     "path": "/book-duplicates/resolutions",
-    "permissions": ["Permission.LibraryDeleteBooks", "Permission.LibraryMergeBooks"],
+    "permissions": [
+      "Permission.LibraryDeleteBooks",
+      "Permission.LibraryMergeBooks"
+    ],
     "permissionMode": "any",
     "libraryAccess": [],
     "isPublic": false,
@@ -117,7 +141,10 @@
     "methodName": "getResolution",
     "httpMethod": "GET",
     "path": "/book-duplicates/resolutions/:jobId",
-    "permissions": ["Permission.LibraryDeleteBooks", "Permission.LibraryMergeBooks"],
+    "permissions": [
+      "Permission.LibraryDeleteBooks",
+      "Permission.LibraryMergeBooks"
+    ],
     "permissionMode": "any",
     "libraryAccess": [],
     "isPublic": false,
@@ -131,7 +158,9 @@
     "methodName": "summary",
     "httpMethod": "GET",
     "path": "/chapter-health/summary",
-    "permissions": ["Permission.LibraryEditMetadata"],
+    "permissions": [
+      "Permission.LibraryEditMetadata"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -144,7 +173,9 @@
     "methodName": "list",
     "httpMethod": "GET",
     "path": "/chapter-health/books",
-    "permissions": ["Permission.LibraryEditMetadata"],
+    "permissions": [
+      "Permission.LibraryEditMetadata"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -157,7 +188,9 @@
     "methodName": "enqueue",
     "httpMethod": "POST",
     "path": "/chapter-health/lookups",
-    "permissions": ["Permission.LibraryEditMetadata"],
+    "permissions": [
+      "Permission.LibraryEditMetadata"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -170,7 +203,9 @@
     "methodName": "state",
     "httpMethod": "GET",
     "path": "/chapter-health/lookups/state",
-    "permissions": ["Permission.LibraryEditMetadata"],
+    "permissions": [
+      "Permission.LibraryEditMetadata"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -183,7 +218,9 @@
     "methodName": "cancel",
     "httpMethod": "DELETE",
     "path": "/chapter-health/lookups/queued",
-    "permissions": ["Permission.LibraryEditMetadata"],
+    "permissions": [
+      "Permission.LibraryEditMetadata"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -196,7 +233,9 @@
     "methodName": "clearFinished",
     "httpMethod": "DELETE",
     "path": "/chapter-health/lookups/finished",
-    "permissions": ["Permission.LibraryEditMetadata"],
+    "permissions": [
+      "Permission.LibraryEditMetadata"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -209,7 +248,9 @@
     "methodName": "dismissReview",
     "httpMethod": "DELETE",
     "path": "/chapter-health/lookups/:bookId",
-    "permissions": ["Permission.LibraryEditMetadata"],
+    "permissions": [
+      "Permission.LibraryEditMetadata"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -222,7 +263,9 @@
     "methodName": "getSummary",
     "httpMethod": "GET",
     "path": "/book-dock/summary",
-    "permissions": ["Permission.BookDockAccess"],
+    "permissions": [
+      "Permission.BookDockAccess"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -235,7 +278,9 @@
     "methodName": "getStatistics",
     "httpMethod": "GET",
     "path": "/book-dock/statistics",
-    "permissions": ["Permission.BookDockAccess"],
+    "permissions": [
+      "Permission.BookDockAccess"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -248,7 +293,9 @@
     "methodName": "getSettings",
     "httpMethod": "GET",
     "path": "/book-dock/settings",
-    "permissions": ["Permission.ManageBookDock"],
+    "permissions": [
+      "Permission.ManageBookDock"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -261,7 +308,9 @@
     "methodName": "updateSettings",
     "httpMethod": "PUT",
     "path": "/book-dock/settings",
-    "permissions": ["Permission.ManageBookDock"],
+    "permissions": [
+      "Permission.ManageBookDock"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -274,7 +323,9 @@
     "methodName": "getFile",
     "httpMethod": "GET",
     "path": "/book-dock/files/:id",
-    "permissions": ["Permission.BookDockAccess"],
+    "permissions": [
+      "Permission.BookDockAccess"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -287,7 +338,9 @@
     "methodName": "getCover",
     "httpMethod": "GET",
     "path": "/book-dock/files/:id/cover",
-    "permissions": ["Permission.BookDockAccess"],
+    "permissions": [
+      "Permission.BookDockAccess"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -300,7 +353,9 @@
     "methodName": "upload",
     "httpMethod": "POST",
     "path": "/book-dock/upload",
-    "permissions": ["Permission.BookDockAccess"],
+    "permissions": [
+      "Permission.BookDockAccess"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -313,7 +368,9 @@
     "methodName": "updateFile",
     "httpMethod": "PATCH",
     "path": "/book-dock/files/:id",
-    "permissions": ["Permission.BookDockAccess"],
+    "permissions": [
+      "Permission.BookDockAccess"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -326,7 +383,9 @@
     "methodName": "discardFile",
     "httpMethod": "DELETE",
     "path": "/book-dock/files/:id",
-    "permissions": ["Permission.BookDockAccess"],
+    "permissions": [
+      "Permission.BookDockAccess"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -339,7 +398,9 @@
     "methodName": "bulkDiscard",
     "httpMethod": "POST",
     "path": "/book-dock/files/discard",
-    "permissions": ["Permission.BookDockAccess"],
+    "permissions": [
+      "Permission.BookDockAccess"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -352,7 +413,9 @@
     "methodName": "applyFetched",
     "httpMethod": "POST",
     "path": "/book-dock/files/apply-fetched",
-    "permissions": ["Permission.BookDockAccess"],
+    "permissions": [
+      "Permission.BookDockAccess"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -365,7 +428,9 @@
     "methodName": "retryFetch",
     "httpMethod": "POST",
     "path": "/book-dock/files/retry-fetch",
-    "permissions": ["Permission.BookDockAccess"],
+    "permissions": [
+      "Permission.BookDockAccess"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -378,7 +443,9 @@
     "methodName": "setTarget",
     "httpMethod": "POST",
     "path": "/book-dock/files/set-target",
-    "permissions": ["Permission.BookDockAccess"],
+    "permissions": [
+      "Permission.BookDockAccess"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -391,7 +458,9 @@
     "methodName": "selectionSummary",
     "httpMethod": "POST",
     "path": "/book-dock/files/selection-summary",
-    "permissions": ["Permission.BookDockAccess"],
+    "permissions": [
+      "Permission.BookDockAccess"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -404,7 +473,9 @@
     "methodName": "bulkEdit",
     "httpMethod": "POST",
     "path": "/book-dock/files/bulk-edit",
-    "permissions": ["Permission.BookDockAccess"],
+    "permissions": [
+      "Permission.BookDockAccess"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -417,7 +488,9 @@
     "methodName": "previewNames",
     "httpMethod": "POST",
     "path": "/book-dock/files/preview-names",
-    "permissions": ["Permission.BookDockAccess"],
+    "permissions": [
+      "Permission.BookDockAccess"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -430,7 +503,9 @@
     "methodName": "finalize",
     "httpMethod": "POST",
     "path": "/book-dock/finalize",
-    "permissions": ["Permission.BookDockAccess", "Permission.LibraryUpload"],
+    "permissions": [
+      "Permission.BookDockAccess"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -443,7 +518,9 @@
     "methodName": "rescan",
     "httpMethod": "POST",
     "path": "/book-dock/rescan",
-    "permissions": ["Permission.ManageBookDock"],
+    "permissions": [
+      "Permission.ManageBookDock"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -456,7 +533,9 @@
     "methodName": "listUploadTargets",
     "httpMethod": "GET",
     "path": "/book-dock/docks",
-    "permissions": ["Permission.BookDockAccess"],
+    "permissions": [
+      "Permission.BookDockAccess"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -469,7 +548,9 @@
     "methodName": "checkFiling",
     "httpMethod": "POST",
     "path": "/book-dock/docks/filing-check",
-    "permissions": ["Permission.ManageBookDock"],
+    "permissions": [
+      "Permission.ManageBookDock"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -482,7 +563,9 @@
     "methodName": "getAdmin",
     "httpMethod": "GET",
     "path": "/book-dock/docks/admin",
-    "permissions": ["Permission.ManageBookDock"],
+    "permissions": [
+      "Permission.ManageBookDock"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -495,7 +578,9 @@
     "methodName": "update",
     "httpMethod": "PUT",
     "path": "/book-dock/docks/:libraryId",
-    "permissions": ["Permission.ManageBookDock"],
+    "permissions": [
+      "Permission.ManageBookDock"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -508,7 +593,9 @@
     "methodName": "renameFolder",
     "httpMethod": "POST",
     "path": "/book-dock/docks/:libraryId/rename-folder",
-    "permissions": ["Permission.ManageBookDock"],
+    "permissions": [
+      "Permission.ManageBookDock"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -521,7 +608,9 @@
     "methodName": "adoptFolder",
     "httpMethod": "POST",
     "path": "/book-dock/docks/folders/adopt",
-    "permissions": ["Permission.ManageBookDock"],
+    "permissions": [
+      "Permission.ManageBookDock"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -534,7 +623,9 @@
     "methodName": "moveFolderToUnsorted",
     "httpMethod": "POST",
     "path": "/book-dock/docks/folders/move-to-unsorted",
-    "permissions": ["Permission.ManageBookDock"],
+    "permissions": [
+      "Permission.ManageBookDock"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -547,7 +638,9 @@
     "methodName": "removeFolder",
     "httpMethod": "POST",
     "path": "/book-dock/docks/folders/remove",
-    "permissions": ["Permission.ManageBookDock"],
+    "permissions": [
+      "Permission.ManageBookDock"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -820,12 +913,17 @@
     "methodName": "uploadBook",
     "httpMethod": "POST",
     "path": "/libraries/:id/upload",
-    "permissions": ["Permission.LibraryUpload"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
-    "apiKey": "write"
+    "apiKey": "write",
+    "scopedPermission": {
+      "permission": "Permission.LibraryUpload",
+      "resource": "library",
+      "param": "id"
+    }
   },
   {
     "file": "server/src/modules/user/user.controller.ts",
@@ -833,7 +931,9 @@
     "methodName": "findAll",
     "httpMethod": "GET",
     "path": "/users",
-    "permissions": ["Permission.ManageUsers"],
+    "permissions": [
+      "Permission.ManageUsers"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -846,7 +946,9 @@
     "methodName": "summary",
     "httpMethod": "GET",
     "path": "/users/summary",
-    "permissions": ["Permission.ManageUsers"],
+    "permissions": [
+      "Permission.ManageUsers"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -859,7 +961,9 @@
     "methodName": "findNeedingAttention",
     "httpMethod": "GET",
     "path": "/users/attention",
-    "permissions": ["Permission.ManageUsers"],
+    "permissions": [
+      "Permission.ManageUsers"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -872,7 +976,9 @@
     "methodName": "findAssignable",
     "httpMethod": "GET",
     "path": "/users/assignable",
-    "permissions": ["Permission.ManageLibraries"],
+    "permissions": [
+      "Permission.ManageLibraries"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -924,7 +1030,9 @@
     "methodName": "findById",
     "httpMethod": "GET",
     "path": "/users/:id",
-    "permissions": ["Permission.ManageUsers"],
+    "permissions": [
+      "Permission.ManageUsers"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -950,7 +1058,9 @@
     "methodName": "createUser",
     "httpMethod": "POST",
     "path": "/users",
-    "permissions": ["Permission.ManageUsers"],
+    "permissions": [
+      "Permission.ManageUsers"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -963,7 +1073,9 @@
     "methodName": "updateUser",
     "httpMethod": "PATCH",
     "path": "/users/:id",
-    "permissions": ["Permission.ManageUsers"],
+    "permissions": [
+      "Permission.ManageUsers"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -976,7 +1088,9 @@
     "methodName": "deleteUser",
     "httpMethod": "DELETE",
     "path": "/users/:id",
-    "permissions": ["Permission.ManageUsers"],
+    "permissions": [
+      "Permission.ManageUsers"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -989,7 +1103,9 @@
     "methodName": "setPermissions",
     "httpMethod": "PUT",
     "path": "/users/:id/permissions",
-    "permissions": ["Permission.ManageUsers"],
+    "permissions": [
+      "Permission.ManageUsers"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -1002,7 +1118,9 @@
     "methodName": "setSuperuser",
     "httpMethod": "PUT",
     "path": "/users/:id/superuser",
-    "permissions": ["Permission.ManageUsers"],
+    "permissions": [
+      "Permission.ManageUsers"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -1015,7 +1133,9 @@
     "methodName": "getLibraries",
     "httpMethod": "GET",
     "path": "/users/:id/libraries",
-    "permissions": ["Permission.ManageUsers"],
+    "permissions": [
+      "Permission.ManageUsers"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -1028,7 +1148,9 @@
     "methodName": "getLibraryGrants",
     "httpMethod": "GET",
     "path": "/users/:id/library-access",
-    "permissions": ["Permission.ManageUsers"],
+    "permissions": [
+      "Permission.ManageUsers"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,

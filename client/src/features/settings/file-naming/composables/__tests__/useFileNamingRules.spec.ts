@@ -14,6 +14,7 @@ const { apiMock, toastSuccess, toastError, fetchLibraries } = vi.hoisted(() => (
 // shared library list can live here and still be seen by the mocked composable.
 const libraries = ref<Library[]>([])
 
+vi.mock('@/features/auth/composables/useAuth', () => ({ useAuth: () => ({ user: ref(null) }) }))
 vi.mock('@/lib/api', () => ({ api: apiMock }))
 vi.mock('vue-sonner', () => ({ toast: { success: toastSuccess, error: toastError } }))
 vi.mock('@/features/library/composables/useLibraries', () => ({ useLibraries: () => ({ libraries, fetchLibraries }) }))
@@ -39,7 +40,7 @@ function mountComposable(): Rules {
 }
 
 function makeLibrary(overrides: Partial<Library> = {}): Library {
-  return { id: 1, name: 'Novels', organizationMode: 'book_per_folder', fileNamingPattern: null, ...overrides } as Library
+  return { id: 1, name: 'Novels', accessLevel: 'owner', organizationMode: 'book_per_folder', fileNamingPattern: null, ...overrides } as Library
 }
 
 const ok = (body: object = {}): Response =>
@@ -47,9 +48,9 @@ const ok = (body: object = {}): Response =>
 const failed = (): Response => ({ ok: false, status: 500, json: vi.fn<() => Promise<unknown>>() }) as unknown as Response
 
 const GLOBAL_PATTERNS: Record<string, string> = {
-  '/api/v1/app-settings/upload-pattern': '{authors}/{title}',
-  '/api/v1/app-settings/upload-pattern-folder': '{authors}/{title}/{title}',
-  '/api/v1/app-settings/download-pattern': '{originalFilename}',
+  '/api/v1/app-settings/library-naming/upload-pattern': '{authors}/{title}',
+  '/api/v1/app-settings/library-naming/upload-pattern-folder': '{authors}/{title}/{title}',
+  '/api/v1/app-settings/library-naming/download-pattern': '{originalFilename}',
 }
 
 /** GETs answer from the table above; every write succeeds unless a test overrides it. */
@@ -58,7 +59,7 @@ function respondNormally() {
     const url = String(input)
     if (!init || init.method === undefined) {
       if (url in GLOBAL_PATTERNS) return Promise.resolve(ok({ pattern: GLOBAL_PATTERNS[url] }))
-      if (url.includes('cross-platform')) return Promise.resolve(ok({ enabled: true }))
+      if (url.includes('library-naming-sanitization')) return Promise.resolve(ok({ enabled: true }))
     }
     return Promise.resolve(ok())
   })
@@ -191,7 +192,7 @@ describe('saving', () => {
     await flushPromises()
 
     expect(apiMock).toHaveBeenCalledWith(
-      '/api/v1/app-settings/download-pattern',
+      '/api/v1/app-settings/library-naming/download-pattern',
       expect.objectContaining({ method: 'PUT', body: JSON.stringify({ pattern: '{title}' }) }),
     )
   })
@@ -319,7 +320,7 @@ describe('cross-platform sanitization', () => {
   it('reads the stored value on load', async () => {
     apiMock.mockImplementation((input, init) => {
       const url = String(input)
-      if (!init && url.includes('cross-platform')) return Promise.resolve(ok({ enabled: false }))
+      if (!init && url.includes('library-naming-sanitization')) return Promise.resolve(ok({ enabled: false }))
       if (!init && url in GLOBAL_PATTERNS) return Promise.resolve(ok({ pattern: GLOBAL_PATTERNS[url] }))
       return Promise.resolve(ok())
     })

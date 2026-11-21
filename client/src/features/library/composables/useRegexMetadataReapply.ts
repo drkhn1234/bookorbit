@@ -8,9 +8,9 @@ const ERROR_KEYS: Record<string, string> = {
   REGEX_REAPPLY_BUSY: 'busy',
 }
 
-export function useRegexMetadataReapply(libraryId: Ref<number | null>) {
+export function useRegexMetadataReapply(libraryId: Ref<number | null>, administrative?: Ref<boolean>) {
   return useLibraryJob<RegexMetadataReapplyJob>(libraryId, {
-    path: (id) => `/api/v1/scanner/libraries/${id}/reapply-regex-metadata`,
+    path: (id) => `/api/v1/scanner/libraries/${id}/reapply-regex-metadata${administrative?.value ? '?scope=admin' : ''}`,
     errorKeys: ERROR_KEYS,
     errorPrefix: 'library.creator.metadata.regex.reapply.errors.',
   })

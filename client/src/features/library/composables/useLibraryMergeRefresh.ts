@@ -14,17 +14,21 @@ export function useLibraryMergeRefresh(): void {
   const { refreshCounts } = useBrowseCounts()
   let timer: ReturnType<typeof setTimeout> | null = null
 
-  const stop = useBookEvents().onBookMerged(() => {
+  function scheduleRefresh() {
     if (timer) clearTimeout(timer)
     timer = setTimeout(() => {
       timer = null
       void refreshLibraries()
       void refreshCounts()
     }, REFRESH_DEBOUNCE_MS)
-  })
+  }
+  const { onBookMerged, onLibraryChanged } = useBookEvents()
+  const stop = onBookMerged(scheduleRefresh)
+  const stopChanged = onLibraryChanged(scheduleRefresh)
 
   onScopeDispose(() => {
     stop()
+    stopChanged()
     if (timer) clearTimeout(timer)
   })
 }

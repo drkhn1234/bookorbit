@@ -4,7 +4,6 @@ import { AuditAction, AuditResource, Permission } from '@bookorbit/types';
 
 import { AUDITABLE_KEY } from '../../common/decorators/auditable.decorator';
 import { FORBIDDEN_PERMISSION_KEY } from '../../common/decorators/forbid-permission.decorator';
-import { PERMISSION_KEY } from '../../common/decorators/require-permission.decorator';
 import type { RequestUser } from '../../common/types/request-user';
 import type { BulkRunsService, StartBulkRun } from '../bulk-runs/bulk-runs.service';
 import { BookMoveController } from './book-move.controller';
@@ -60,10 +59,9 @@ describe('BookMoveController.move', () => {
     expect(reply.raw.writeHead).not.toHaveBeenCalled();
   });
 
-  it('keeps the edit permission, refuses demo accounts and audits at creation instead of per request', () => {
+  it('refuses demo accounts and attaches the audit record to the queued run', () => {
     const handler = BookMoveController.prototype.move;
 
-    expect(Reflect.getMetadata(PERMISSION_KEY, handler)).toBe(Permission.LibraryEditMetadata);
     expect(Reflect.getMetadata(FORBIDDEN_PERMISSION_KEY, handler)).toEqual({
       permission: Permission.DemoRestricted,
       message: 'Demo-restricted account cannot move books',

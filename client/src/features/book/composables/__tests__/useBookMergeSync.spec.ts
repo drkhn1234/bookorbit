@@ -3,7 +3,12 @@ import { effectScope, ref, type EffectScope } from 'vue'
 import type { BookCard, BookMergedEvent } from '@bookorbit/types'
 import { useBookMergeSync } from '../useBookMergeSync'
 
-vi.mock('../useBookEvents', () => ({ useBookEvents: () => ({ onBookMerged: vi.fn<(callback: (event: BookMergedEvent) => void) => void>() }) }))
+vi.mock('../useBookEvents', () => ({
+  useBookEvents: () => ({
+    onBookMerged: vi.fn<(callback: (event: BookMergedEvent) => void) => void>(),
+    onLibraryChanged: vi.fn<(callback: (event: { libraryIds: number[] }) => void) => void>(),
+  }),
+}))
 
 function card(id: number): BookCard {
   return { id, libraryId: 1, title: `Book ${id}` } as unknown as BookCard

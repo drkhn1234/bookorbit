@@ -40,6 +40,7 @@ vi.mock('@/features/book/composables/useBookDetail', () => ({
 
 vi.mock('@/features/book/composables/useBookEvents', () => ({
   useBookEvents: () => ({
+    onLibraryChanged: () => undefined,
     onBookMissing: () => undefined,
     onBookRestored: () => undefined,
     onBookMoved: () => undefined,

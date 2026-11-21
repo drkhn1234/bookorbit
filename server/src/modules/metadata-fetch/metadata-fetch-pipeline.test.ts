@@ -87,6 +87,7 @@ describe('MetadataFetchPipeline', () => {
 
     providerConfig = {
       getConfig: vi.fn().mockResolvedValue(makeProviderConfig()),
+      runForLibrary: vi.fn((_id, run) => Promise.resolve(run())),
     } as unknown as Mocked<ProviderConfigService>;
 
     resolver = {
@@ -1906,7 +1907,7 @@ describe('MetadataFetchPipeline', () => {
 
     const result = await pipeline.run({ title: 'Query' }, {}, 10);
 
-    expect(preferencesService.getForLibrary).toHaveBeenCalledWith(10, global);
+    expect(preferencesService.getForLibrary).toHaveBeenCalledWith(10);
     expect(result.title).toBe('Library Title');
   });
 
@@ -1953,7 +1954,7 @@ describe('MetadataFetchPipeline', () => {
 
     const result = await pipeline.getEffectiveProviderKeys(10);
 
-    expect(preferencesService.getForLibrary).toHaveBeenCalledWith(10, global);
+    expect(preferencesService.getForLibrary).toHaveBeenCalledWith(10);
     expect(result).toEqual([MetadataProviderKey.KOBO, MetadataProviderKey.GOOGLE]);
   });
 

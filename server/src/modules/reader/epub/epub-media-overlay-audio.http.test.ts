@@ -12,7 +12,7 @@ import type { EpubMediaOverlayPlaylist } from '@bookorbit/types';
 import type { RequestUser } from '../../../common/types/request-user';
 import { registerDeclaredCompressionOptOuts } from '../../../common/utils/bootstrap.utils';
 import { BookReadService } from '../../book/book-read.service';
-import { LibraryService } from '../../library/library.service';
+import { BookService } from '../../book/book.service';
 import { EpubController } from './epub.controller';
 import { EpubService } from './epub.service';
 
@@ -27,7 +27,6 @@ class StubAuthGuard implements CanActivate {
 }
 
 const bookReadService = {
-  findLibraryIdByBookId: vi.fn(),
   findFileById: vi.fn(),
   findPrimaryFilesByBookIds: vi.fn(),
 };
@@ -37,7 +36,7 @@ const bookReadService = {
   providers: [
     EpubService,
     { provide: BookReadService, useValue: bookReadService },
-    { provide: LibraryService, useValue: { verifyAccess: vi.fn().mockResolvedValue(undefined) } },
+    { provide: BookService, useValue: { verifyBookAccess: vi.fn().mockResolvedValue(undefined) } },
     { provide: APP_GUARD, useClass: StubAuthGuard },
   ],
 })
@@ -114,7 +113,6 @@ describe('media-overlay audio over HTTP', () => {
     root = await mkdtemp(join(tmpdir(), 'bookorbit-overlay-http-'));
     const epubPath = join(root, 'narrated.epub');
     await writeNarratedEpub(epubPath);
-    bookReadService.findLibraryIdByBookId.mockResolvedValue(3);
     bookReadService.findPrimaryFilesByBookIds.mockResolvedValue([{ format: 'epub', absolutePath: epubPath, sizeBytes: null }]);
 
     const moduleFixture = await Test.createTestingModule({ imports: [EpubAudioTestModule] }).compile();
@@ -147,7 +145,7 @@ describe('media-overlay audio over HTTP', () => {
     expect(response.headers['content-length']).toBe(String(audio.bytes.length));
     expect(response.headers['x-content-length-full']).toBe(String(audio.bytes.length));
     expect(response.headers['accept-ranges']).toBe('bytes');
-    expect(response.headers['cache-control']).toBe('private, max-age=3600');
+    expect(response.headers['cache-control']).toBe('private, no-store');
     expect(response.headers['content-type']).toBe(audio.inManifest ? 'audio/mp4' : 'application/octet-stream');
     expect(response.rawPayload.equals(audio.bytes)).toBe(true);
   });

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useLibraryCapabilities } from '@/features/library/composables/useLibraryCapabilities'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
@@ -12,6 +13,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { api } from '@/lib/api'
 import { apiError, jsonBody } from '@/lib/api-json'
+import { useLibrarySettingsMode } from './composables/useLibrarySettingsMode'
 import { usePermissions } from '@/features/auth/composables/usePermissions'
 import LibraryCreatorModal from '@/features/library/components/LibraryCreatorModal.vue'
 import type { LibraryCreatorSectionId } from '@/features/library/composables/useLibraryCreator'
@@ -34,10 +36,40 @@ const HEADER_ACTIONS_TARGET = '#settings-header-actions'
 const { t, locale } = useI18n()
 const route = useRoute()
 const router = useRouter()
-const { hasPermission } = usePermissions()
+const { isSuperuser } = usePermissions()
+const administratorMode = useLibrarySettingsMode()
+const showingOtherLibraries = ref(false)
+const otherLibraries = ref<{ id: number; name: string; owners?: string[] }[]>([])
+const otherLibrariesLoading = ref(false)
 
-if (!hasPermission('manage_libraries')) {
-  router.replace({ name: 'settings-appearance-theme' })
+async function toggleOtherLibraries() {
+  showingOtherLibraries.value = !showingOtherLibraries.value
+  if (!showingOtherLibraries.value) {
+    otherLibraries.value = []
+    return
+  }
+  otherLibrariesLoading.value = true
+  try {
+    const res = await api('/api/v1/libraries/settings-inventory?scope=admin')
+    if (!res.ok) throw new Error('Administrative inventory unavailable')
+    const inventory: typeof otherLibraries.value = await res.json()
+    if (showingOtherLibraries.value) otherLibraries.value = inventory.filter((entry) => !libraries.value.some((library) => library.id === entry.id))
+  } catch {
+    showingOtherLibraries.value = false
+    toast.error('Unable to load other libraries')
+  } finally {
+    otherLibrariesLoading.value = false
+  }
+}
+
+async function editOtherLibrary(id: number) {
+  if (!administratorMode.value) return
+  const res = await api(`/api/v1/libraries/${id}/settings?scope=admin`)
+  if (!res.ok) {
+    toast.error('Unable to load library settings')
+    return
+  }
+  if (administratorMode.value) openEdit(await res.json())
 }
 
 const { libraries, fetchLibraries, refreshLibraries } = useLibraries()
@@ -52,6 +84,7 @@ const query = ref('')
 const expandedId = ref<number | null>(null)
 const sortBy = ref<LibrarySortField>('default')
 const scanningAll = ref(false)
+const { canCreate, canUseAdministrativeStorage } = useLibraryCapabilities()
 const creatorOpen = ref(false)
 const editingLibrary = ref<LibraryType | null>(null)
 const editingSection = ref<LibraryCreatorSectionId | undefined>(undefined)
@@ -60,6 +93,7 @@ const savingAutomation = ref<Set<number>>(new Set())
 const justFinished = ref<Set<number>>(new Set())
 const deletingLibrary = ref<LibraryType | null>(null)
 const deleteConfirmName = ref('')
+const deleteWithAdministrativeIntent = ref(false)
 const deleting = ref(false)
 const fileSyncingMap = ref<Record<number, boolean>>({})
 const confirmSyncLibrary = ref<LibraryType | null>(null)
@@ -81,7 +115,7 @@ const visibleLibraries = computed(() =>
 )
 const folderCount = computed(() => libraries.value.reduce((sum, library) => sum + library.folders.length, 0))
 const hasLibraries = computed(() => libraries.value.length > 0)
-const showSkeleton = computed(() => !overview.loaded.value && !overview.error.value && hasLibraries.value)
+const showSkeleton = computed(() => isSuperuser.value && !overview.loaded.value && !overview.error.value && hasLibraries.value)
 
 function subscribeAll() {
   for (const library of libraries.value) subscribeLibrary(library.id)
@@ -95,7 +129,7 @@ onMounted(async () => {
   getSocket()
   await fetchLibraries()
   subscribeAll()
-  void overview.load()
+  if (isSuperuser.value) void overview.load()
   openEditorFromQuery()
 })
 
@@ -302,7 +336,7 @@ async function refreshCovers(lib: LibraryType) {
 async function scanAll() {
   scanningAll.value = true
   try {
-    const results = await Promise.all(libraries.value.map((lib) => startScanRequest(lib)))
+    const results = await Promise.all(libraries.value.filter((lib) => lib.accessLevel === 'owner').map((lib) => startScanRequest(lib)))
     const failed = results.filter((res) => !res.ok).length
     if (failed === 0) {
       toast.success(t('settings.admin.libraries.scanStartedAll'))
@@ -346,6 +380,7 @@ async function confirmSyncFiles() {
 }
 
 function openCreate() {
+  if (!canCreate.value && !canUseAdministrativeStorage.value) return
   editingLibrary.value = null
   editingSection.value = undefined
   templateLibrary.value = null
@@ -361,6 +396,7 @@ function openEdit(lib: LibraryType, section?: LibraryCreatorSectionId) {
 
 /** A new library seeded from this one's settings; its folders and access are left for the new one. */
 function openDuplicate(lib: LibraryType) {
+  if (!canCreate.value && !canUseAdministrativeStorage.value) return
   editingLibrary.value = null
   editingSection.value = undefined
   templateLibrary.value = lib
@@ -387,7 +423,7 @@ async function onSaved(library: LibraryType) {
   }
   detail.invalidate()
   if (expandedId.value !== null) void detail.load(expandedId.value)
-  void overview.load()
+  if (isSuperuser.value) void overview.load()
 }
 
 /** Both open their own confirmation, which cannot sit on top of the editor, so the editor closes first. */
@@ -398,10 +434,11 @@ function syncFilesFromEditor(lib: LibraryType) {
 
 function removeFromEditor(lib: LibraryType) {
   closeCreator()
-  openDelete(lib)
+  openDelete(lib, administratorMode.value)
 }
 
-function openDelete(lib: LibraryType) {
+function openDelete(lib: LibraryType, administrative = false) {
+  deleteWithAdministrativeIntent.value = administrative
   deletingLibrary.value = lib
   deleteConfirmName.value = ''
 }
@@ -415,14 +452,14 @@ async function confirmDelete() {
   if (!lib) return
   deleting.value = true
   try {
-    const res = await api(`/api/v1/libraries/${lib.id}`, { method: 'DELETE' })
+    const res = await api(`/api/v1/libraries/${lib.id}${deleteWithAdministrativeIntent.value ? '?scope=admin' : ''}`, { method: 'DELETE' })
     if (res.ok) {
       toast.success(t('settings.admin.libraries.libraryDeleted', { name: lib.name }))
       deletingLibrary.value = null
       if (expandedId.value === lib.id) expandedId.value = null
       detail.invalidate()
       await refreshLibraries()
-      void overview.load()
+      if (isSuperuser.value) void overview.load()
       if (route.name === 'library' && Number(route.params.id) === lib.id) {
         const next = libraries.value[0]
         if (next) router.replace({ name: 'library', params: { id: next.id } })
@@ -458,11 +495,34 @@ async function confirmDelete() {
             {{ scanningAll ? t('settings.admin.libraries.scanning') : t('settings.admin.libraries.scanAll') }}
           </span>
         </Button>
-        <Button size="sm" type="button" @click="openCreate">
+        <Button v-show="canCreate || canUseAdministrativeStorage" size="sm" type="button" @click="openCreate">
           <Plus :size="14" aria-hidden="true" />
           {{ t('settings.admin.libraries.addLibrary') }}
         </Button>
       </Teleport>
+
+      <Button
+        v-if="isSuperuser"
+        type="button"
+        size="sm"
+        variant="outline"
+        :aria-expanded="showingOtherLibraries"
+        :disabled="otherLibrariesLoading"
+        @click="toggleOtherLibraries"
+      >
+        {{ showingOtherLibraries ? 'Hide other users’ libraries' : 'Show other users’ libraries' }}
+      </Button>
+      <section v-if="showingOtherLibraries" class="space-y-2 rounded-md border border-border p-3">
+        <h3 class="text-sm font-semibold">Other users’ libraries</h3>
+        <p v-if="!otherLibraries.length && !otherLibrariesLoading" class="text-sm text-muted-foreground">No other libraries.</p>
+        <div v-for="library in otherLibraries" :key="library.id" class="flex items-center justify-between gap-2">
+          <div>
+            <p class="text-sm">{{ library.name }} · #{{ library.id }}</p>
+            <p class="text-xs text-muted-foreground">{{ library.owners?.join(', ') || 'No owners' }}</p>
+          </div>
+          <Button v-if="administratorMode" type="button" size="sm" variant="outline" @click="editOtherLibrary(library.id)">Edit settings</Button>
+        </div>
+      </section>
 
       <template v-if="hasLibraries">
         <LibrariesToolbar
@@ -472,7 +532,7 @@ async function confirmDelete() {
           :folder-count="folderCount"
           :total-books="overview.totalBooks.value"
           :total-size-bytes="overview.totalSizeBytes.value"
-          :stats-pending="!overview.loaded.value"
+          :stats-pending="isSuperuser && !overview.loaded.value"
           @update:query="updateQuery"
           @update:sort-by="updateSortBy"
         />
@@ -543,7 +603,7 @@ async function confirmDelete() {
         </div>
         <p class="mb-1 text-sm font-medium text-foreground">{{ t('settings.admin.libraries.emptyTitle') }}</p>
         <p class="mb-5 text-sm text-muted-foreground">{{ t('settings.admin.libraries.emptyHint') }}</p>
-        <Button size="sm" type="button" @click="openCreate">
+        <Button v-show="canCreate || canUseAdministrativeStorage" size="sm" type="button" @click="openCreate">
           <Plus :size="14" aria-hidden="true" />
           {{ t('settings.admin.libraries.addFirstLibrary') }}
         </Button>
@@ -552,13 +612,12 @@ async function confirmDelete() {
 
     <LibraryCreatorModal
       v-if="creatorOpen"
+      :administrator-mode="administratorMode"
       :library="editingLibrary"
       :initial-section="editingSection"
       :template="templateLibrary"
       @close="closeCreator"
       @saved="onSaved"
-      @scan="scan"
-      @refresh-covers="refreshCovers"
       @sync-files="syncFilesFromEditor"
       @remove="removeFromEditor"
     />

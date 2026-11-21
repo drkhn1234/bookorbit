@@ -16,6 +16,7 @@ import BookDestinationFields from './BookDestinationFields.vue'
 import { formatBytes } from '@/lib/formatting'
 const props = defineProps<{
   libraryId?: number
+  administratorMode?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -118,7 +119,10 @@ onMounted(() => {
   }
   document.addEventListener('keydown', onKeydown)
 })
-onUnmounted(() => document.removeEventListener('keydown', onKeydown))
+onUnmounted(() => {
+  document.removeEventListener('keydown', onKeydown)
+  reset()
+})
 
 function handleClose() {
   if (uploadedBookIds.value.length > 0) emit('uploaded', uploadedBookIds.value)
@@ -169,14 +173,15 @@ async function handleUpload() {
 
   if (dockTarget.value) rememberUploadMode(user.value?.id ?? null, libraryId, mode.value)
   if (reviewInDock.value) {
-    await startDockUpload(libraryId)
+    await startDockUpload(libraryId, props.administratorMode === true && props.libraryId === libraryId)
     return
   }
 
   const uploadedBefore = new Set(files.value.filter((f) => f.status === 'done' && f.bookId !== undefined).map((f) => f.bookId!))
   const errorCountBefore = files.value.filter((f) => f.status === 'error').length
 
-  await startUpload(libraryId, folderId)
+  if (props.administratorMode && props.libraryId === libraryId) await startUpload(libraryId, folderId, true)
+  else await startUpload(libraryId, folderId)
 
   const uploadedAfter = files.value.filter((f) => f.status === 'done' && f.bookId !== undefined).map((f) => f.bookId!)
   const newlyUploaded = uploadedAfter.filter((id) => !uploadedBefore.has(id))

@@ -3,6 +3,7 @@ import { useI18n } from 'vue-i18n'
 import { ALL_METADATA_FIELDS } from '@bookorbit/types'
 import type { FieldPreference, FieldPreferenceOverrides, MetadataField, MetadataFetchPreferences, MetadataProviderKey } from '@bookorbit/types'
 import { useLibraries } from '@/features/library/composables/useLibraries'
+import { useLibrarySettingsMode } from '@/features/settings/composables/useLibrarySettingsMode'
 import { useMetadataPreferences } from './useMetadataPreferences'
 import { applyProviderAction, BULK_REORDER_EXEMPT_FIELDS, type ProviderBulkAction } from '../lib/field-rules'
 
@@ -50,6 +51,7 @@ export function useFieldRuleScopes() {
   const { t } = useI18n()
   const { libraries, fetchLibraries } = useLibraries()
   const prefs = useMetadataPreferences()
+  const administratorMode = useLibrarySettingsMode()
 
   const activeScopeId = ref<FieldRuleScopeId>(GLOBAL_SCOPE)
   const drafts = ref<Map<string, ScopeDraft>>(new Map())
@@ -140,14 +142,14 @@ export function useFieldRuleScopes() {
     const entries: FieldRuleScope[] = [
       {
         id: GLOBAL_SCOPE,
-        name: t('settings.metadata.fieldRules.scope.global'),
+        name: administratorMode.value ? 'Instance defaults' : 'Personal defaults',
         isGlobal: true,
         overrideCount: 0,
         unsavedCount: (globalDraft?.pending.size ?? 0) + (optionsDirty.value ? 1 : 0),
         loaded: Boolean(globalDraft),
       },
     ]
-    for (const library of libraries.value) {
+    for (const library of libraries.value.filter((library) => library.accessLevel === 'owner')) {
       const saved = prefs.libraryPrefs.value.get(library.id)?.overrides ?? {}
       const pending = drafts.value.get(draftKey(library.id))?.pending ?? new Map<MetadataField, FieldPreference | null>()
       const overrides = new Set(Object.keys(saved) as MetadataField[])
@@ -186,7 +188,7 @@ export function useFieldRuleScopes() {
   /** Drops a library override so the field inherits the global rule again. */
   function revertField(field: MetadataField) {
     const draft = activeDraft.value
-    const globalPref = prefs.globalPrefs.value?.fields[field]
+    const globalPref = activeScopeId.value === GLOBAL_SCOPE ? undefined : prefs.libraryPrefs.value.get(activeScopeId.value)?.inherited?.fields[field]
     if (!draft || isGlobalScope.value || !globalPref || saving.value) return
     const pending = new Map(draft.pending).set(field, null)
     writeDraft(activeScopeId.value, { fields: { ...draft.fields, [field]: { ...globalPref, providers: [...globalPref.providers] } }, pending })

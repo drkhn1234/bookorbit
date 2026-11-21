@@ -51,7 +51,7 @@ export class BookMergeJobSource implements JobSource<BookMergeJobRow>, OnModuleI
 
   access(user: RequestUser): JobAccess {
     return {
-      own: user.active && (user.isSuperuser || user.permissions.includes(Permission.LibraryMergeBooks)),
+      own: user.active && !user.permissions.includes(Permission.DemoRestricted),
       all: user.active && (user.isSuperuser || user.permissions.includes(Permission.ManageAppSettings)),
     };
   }
@@ -103,7 +103,7 @@ export class BookMergeJobSource implements JobSource<BookMergeJobRow>, OnModuleI
   async describe(rows: BookMergeJobRow[], viewer: JobViewer): Promise<Map<string, JobSubject>> {
     const books = await this.subjects.describe(
       rows.map((row) => row.job.targetBookId),
-      { user: viewer.user, manages: viewer.access.all },
+      viewer.user,
     );
     const subjects = new Map<string, JobSubject>();
     for (const row of rows) {

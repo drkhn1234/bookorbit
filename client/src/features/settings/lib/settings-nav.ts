@@ -282,7 +282,6 @@ export const SETTINGS_NAV: readonly SettingsNavGroup[] = [
         icon: Folder,
         keywords: 'library folder path scan watch ignore mount storage',
         status: 'libraryScan',
-        isVisible: anyPermission('manage_libraries'),
       },
       {
         id: 'metadata',
@@ -298,7 +297,6 @@ export const SETTINGS_NAV: readonly SettingsNavGroup[] = [
             descriptionKey: 'settings.metadata.tabSubtitles.providers',
             icon: Database,
             keywords: 'provider source google books open library comicvine priority credentials',
-            isVisible: anyPermission('manage_metadata_config'),
           },
           {
             id: 'metadata-field-rules',
@@ -307,7 +305,6 @@ export const SETTINGS_NAV: readonly SettingsNavGroup[] = [
             descriptionKey: 'settings.metadata.tabSubtitles.field-rules',
             icon: SlidersHorizontal,
             keywords: 'field rule merge strategy overwrite protect title author series',
-            isVisible: anyPermission('manage_metadata_config'),
           },
           {
             id: 'metadata-custom-fields',
@@ -335,7 +332,6 @@ export const SETTINGS_NAV: readonly SettingsNavGroup[] = [
             descriptionKey: 'settings.metadata.tabSubtitles.auto-fetch',
             icon: Zap,
             keywords: 'auto fetch schedule missing fields import books conditions',
-            isVisible: anyPermission('manage_metadata_config'),
           },
           {
             id: 'metadata-authors',
@@ -362,7 +358,6 @@ export const SETTINGS_NAV: readonly SettingsNavGroup[] = [
             descriptionKey: 'settings.metadata.tabSubtitles.genre-blocklist',
             icon: Filter,
             keywords: 'genre tag blocklist exclude ignore',
-            isVisible: anyPermission('manage_metadata_config'),
           },
           {
             id: 'metadata-reminders',
@@ -381,7 +376,6 @@ export const SETTINGS_NAV: readonly SettingsNavGroup[] = [
         descriptionKey: 'settings.nav.descriptions.fileNaming',
         icon: FileText,
         keywords: 'file naming pattern template rename folder structure',
-        isVisible: anyPermission(Permission.ManageAppSettings),
       },
       {
         id: 'maintenance',
@@ -390,7 +384,6 @@ export const SETTINGS_NAV: readonly SettingsNavGroup[] = [
         descriptionKey: 'settings.nav.descriptions.maintenance',
         icon: Wrench,
         keywords: 'scan maintenance duplicates orphans cleanup thumbnails cache',
-        isVisible: anyPermission(Permission.ManageAppSettings),
       },
     ],
   },

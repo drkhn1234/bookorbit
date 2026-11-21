@@ -50,6 +50,7 @@ const rows = useProviderRows()
 const draft = ref<ProviderConfigurations | null>(null)
 const expandedKeys = ref(new Set<string>())
 const search = ref('')
+const removedCredentials = ref<Record<string, string>>({})
 const filter = ref<ProviderFilter>('all')
 
 const nowMs = ref(Date.now())
@@ -72,6 +73,7 @@ watch(
   (config) => {
     if (!config) return
     draft.value = JSON.parse(JSON.stringify(config)) as ProviderConfigurations
+    removedCredentials.value = {}
   },
   { immediate: true },
 )
@@ -135,7 +137,7 @@ function hasPassingTestForCurrentInput(key: BuiltInMetadataProviderKey): boolean
 function enableBlockedMessage(row: ProviderRowDef): string | null {
   if (!draft.value || !row.enableRequirement) return null
   const requirement = row.enableRequirement
-  if (!requirement.isConfigured(draft.value)) return requirement.blockedMessage
+  if (!requirement.isConfigured(draft.value) && !statusFor(row.key)?.configured) return requirement.blockedMessage
   if (requirement.requiresPassingTest && !hasPassingTestForCurrentInput(row.key)) {
     return requirement.missingTestMessage ?? t('settings.metadata.providers.runTestBeforeEnabling')
   }
@@ -223,7 +225,7 @@ const dirtyRows = computed(() => {
   const config = props.config
   const current = draft.value
   if (!config || !current) return []
-  return presentRows.value.filter((row) => JSON.stringify(current[row.key]) !== JSON.stringify(config[row.key]))
+  return presentRows.value.filter((row) => removedCredentials.value[row.key] || JSON.stringify(current[row.key]) !== JSON.stringify(config[row.key]))
 })
 
 const dirtyNames = computed(() => formatList(dirtyRows.value.map((row) => row.label)))
@@ -259,22 +261,38 @@ function updateField(row: ProviderRowDef, payload: { key: string; value: string 
   const provider = draft.value?.[row.key] as unknown as Record<string, unknown> | undefined
   if (!provider) return
   provider[payload.key] = payload.value
+  if (removedCredentials.value[row.key] === payload.key) delete removedCredentials.value[row.key]
+}
+
+function removeCredential(row: ProviderRowDef, field: string) {
+  updateField(row, { key: field, value: '' })
+  removedCredentials.value[row.key] = field
+}
+
+function patchFor(row: ProviderRowDef): Record<string, unknown> {
+  const before = props.config?.[row.key] as unknown as Record<string, unknown> | undefined
+  const after = draft.value?.[row.key] as unknown as Record<string, unknown> | undefined
+  const changed = Object.fromEntries(Object.entries(after ?? {}).filter(([key, value]) => value !== before?.[key]))
+  const removal = removedCredentials.value[row.key]
+  if (removal) changed[removal] = ''
+  return changed
 }
 
 function testProvider(row: ProviderRowDef) {
   if (!draft.value || !isTestable(row.key)) return
-  const patch = { [row.key]: { ...draft.value[row.key] } } as Partial<ProviderConfigurations>
+  const patch = { [row.key]: patchFor(row) } as Partial<ProviderConfigurations>
   emit('test', row.key, patch)
 }
 
 function discard() {
   if (!props.config) return
   draft.value = JSON.parse(JSON.stringify(props.config)) as ProviderConfigurations
+  removedCredentials.value = {}
 }
 
 function save() {
   if (!draft.value) return
-  emit('save', draft.value)
+  emit('save', Object.fromEntries(dirtyRows.value.map((row) => [row.key, patchFor(row)])) as Partial<ProviderConfigurations>)
 }
 
 function setFilter(value: ProviderFilter) {
@@ -348,11 +366,13 @@ function clearFilters() {
             :chip="chipFor(row)"
             :expanded="isExpanded(row)"
             :testable="isTestable(row.key)"
+            :credential-source="statusFor(row.key)?.credentialSource"
             :testing="isTesting(row.key)"
             :test-result="testResultFor(row.key)"
             :blocked-message="enableBlockedMessage(row)"
             @toggle="toggleProvider(row)"
             @test="testProvider(row)"
+            @remove-credential="removeCredential(row, $event)"
             @update:expanded="setExpanded(row, $event)"
             @update:field="updateField(row, $event)"
           />

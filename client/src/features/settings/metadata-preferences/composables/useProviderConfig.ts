@@ -1,12 +1,13 @@
 import { ref } from 'vue'
 import { toast } from 'vue-sonner'
-import { api } from '@/lib/api'
+import { useLibrarySettingsApi } from '@/features/settings/composables/useLibrarySettingsMode'
 import { registerProviderAppearance } from '@/lib/provider-appearance'
 import { isBuiltInMetadataProviderKey, MetadataProviderKey } from '@bookorbit/types'
 import type { ProviderConfigurations, ProviderConnectionTestResult, ProviderStatus } from '@bookorbit/types'
 import { stripBearerPrefix } from '../lib/provider-token'
 
 export function useProviderConfig() {
+  const api = useLibrarySettingsApi()
   const config = ref<ProviderConfigurations | null>(null)
   const statuses = ref<ProviderStatus[]>([])
   const loading = ref(false)
@@ -61,6 +62,8 @@ export function useProviderConfig() {
         body: JSON.stringify(patch),
       })
       if (res.ok) {
+        passingTestSignatureByKey.value = {}
+        testResultsByKey.value = {}
         await fetchConfig()
         toast.success('Provider settings saved')
       } else {

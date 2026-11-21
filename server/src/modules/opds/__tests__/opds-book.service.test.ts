@@ -110,7 +110,7 @@ function collectValues(value: unknown, seen = new WeakSet<object>()): unknown[] 
 describe('OpdsBookService', () => {
   it('returns accessible library ids for superusers and regular users', async () => {
     const { service } = makeService();
-    await expect(service.getAccessibleLibraryIds(7, true)).resolves.toEqual([1, 2, 3, 4]);
+    await expect(service.getAccessibleLibraryIds(7, true)).resolves.toEqual([2, 3]);
     await expect(service.getAccessibleLibraryIds(7, false)).resolves.toEqual([2, 3]);
   });
 

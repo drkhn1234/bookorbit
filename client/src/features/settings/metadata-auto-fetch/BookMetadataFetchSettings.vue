@@ -11,6 +11,7 @@ import { formatList, formatRelativeTimeFromNow } from '@/i18n/formatters'
 import IgnoreCacheCheckbox from '@/features/metadata-cache/components/IgnoreCacheCheckbox.vue'
 import FieldRulesScopeTabs from '@/features/settings/metadata-preferences/components/FieldRulesScopeTabs.vue'
 import FieldRulesSaveBar from '@/features/settings/metadata-preferences/components/FieldRulesSaveBar.vue'
+import { useLibrarySettingsMode } from '@/features/settings/composables/useLibrarySettingsMode'
 import { useBookMetadataFetchActions } from '@/features/book-metadata-fetch/composables/useBookMetadataFetchActions'
 import AutoFetchConditionColumns from './components/AutoFetchConditionColumns.vue'
 import AutoFetchPreviewList from './components/AutoFetchPreviewList.vue'
@@ -23,6 +24,7 @@ const JUST_NOW_MS = 2 * 60 * 1000
 
 const { t } = useI18n()
 const scopes = useAutoFetchScopes()
+const administratorMode = useLibrarySettingsMode()
 const { triggerGlobal, triggerForLibrary } = useBookMetadataFetchActions()
 const isPhone = useMediaQuery('(max-width: 767px)')
 
@@ -31,7 +33,11 @@ const running = ref(false)
 
 const conditions = computed(() => scopes.activeConfig.value?.conditions ?? null)
 const previewLimit = computed(() => (isPhone.value ? 6 : 12))
-const preview = useAutoFetchPreview(conditions, scopes.activeLibraryIds, previewLimit)
+const preview = useAutoFetchPreview(
+  computed(() => (administratorMode.value ? conditions.value : null)),
+  scopes.activeLibraryIds,
+  previewLimit,
+)
 
 const library = computed(() => scopes.activeLibrary.value)
 const globalOn = computed(() => (scopes.draftGlobal.value ? fetchesOnImport(scopes.draftGlobal.value) : false))
@@ -131,8 +137,9 @@ async function handleRun() {
     {{ t('settings.metadata.autoFetch.scope.loadFailed') }}
   </div>
 
+  <p v-else-if="!administratorMode && !library" class="text-sm text-muted-foreground">You do not own any libraries.</p>
   <div v-else class="flex flex-col gap-6">
-    <AutoFetchQueueBand />
+    <AutoFetchQueueBand v-if="administratorMode" />
 
     <!-- overflow-clip, not hidden: hidden would make the card the save bar's scroll container and stop it sticking. -->
     <div class="@container overflow-clip rounded-lg border border-border bg-card shadow-xs" data-testid="auto-fetch-card">
@@ -228,6 +235,7 @@ async function handleRun() {
       </div>
 
       <AutoFetchPreviewList
+        v-if="administratorMode"
         :items="preview.books.value?.items ?? []"
         :matching="preview.breakdown.value?.matching ?? null"
         :total="preview.breakdown.value?.total ?? null"

@@ -6,7 +6,7 @@ import {
   type RouteLocationNormalizedLoaded,
   type RouteRecordRaw,
 } from 'vue-router'
-import { JOBS_VIEW_PERMISSIONS, Permission } from '@bookorbit/types'
+import { Permission } from '@bookorbit/types'
 import { normalizeEmailTab } from '@/features/email/lib/email-tabs'
 import { normalizeMetadataTab, type MetadataTab } from '@/features/settings/lib/metadata-tabs'
 import { normalizeReaderTab, type ReaderTab } from '@/features/settings/lib/reader-tabs'
@@ -727,7 +727,7 @@ export const routes: RouteRecordRaw[] = [
       {
         path: '/jobs',
         component: () => import('@/features/jobs/views/JobsAreaView.vue'),
-        meta: { titleRow: true, requiredPermission: [...JOBS_VIEW_PERMISSIONS] },
+        meta: { titleRow: true },
         children: [
           { path: '', redirect: { name: 'jobs-activity' } },
           {

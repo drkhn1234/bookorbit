@@ -1,4 +1,6 @@
 import { Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { MetadataHttpProviderSecrets } from '../metadata-http-provider/metadata-http-provider-secrets.service';
 import { MetadataProviderKey } from '@bookorbit/types';
 
 import { ProviderConfigService } from './provider-config.service';
@@ -50,10 +52,12 @@ describe('ProviderConfigService', () => {
   let service: ProviderConfigService;
   let warnSpy: ReturnType<typeof vi.spyOn>;
   let fetchMock: ReturnType<typeof vi.fn>;
+  let secrets: MetadataHttpProviderSecrets;
 
   beforeEach(() => {
     db = createDb();
-    service = new ProviderConfigService(db as never);
+    secrets = new MetadataHttpProviderSecrets(new ConfigService({ bookRequest: { encryptionKey: 'ab'.repeat(32) } }));
+    service = new ProviderConfigService(db as never, undefined, undefined, undefined, secrets);
     warnSpy = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => {});
     fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
@@ -175,12 +179,10 @@ describe('ProviderConfigService', () => {
 
     expect(config.google.apiKey).toBe('');
     expect(config.hardcover.enabled).toBe(false);
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('[metadata_provider_config.parse] [fail] key=metadata_provider_config source=get durationMs='),
-    );
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('[metadata_provider_config.parse] [fail] stored configuration invalid'));
   });
 
-  it('escapes quotes in parse errors before logging', async () => {
+  it('omits parser error content that could contain a credential', async () => {
     db.query.appSettings.findFirst.mockResolvedValue({ value: '{"google":{"enabled":true}}' });
     const parseSpy = vi.spyOn(JSON, 'parse').mockImplementationOnce(() => {
       throw new Error('bad "json" value');
@@ -188,7 +190,8 @@ describe('ProviderConfigService', () => {
 
     await service.getConfig();
 
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('error="bad \\"json\\" value"'));
+    expect(warnSpy).toHaveBeenCalledWith('[metadata_provider_config.parse] [fail] stored configuration invalid');
+    expect(JSON.stringify(warnSpy.mock.calls)).not.toContain('bad');
     parseSpy.mockRestore();
   });
 
@@ -225,9 +228,13 @@ describe('ProviderConfigService', () => {
     expect(db.__txInsertChain.values).toHaveBeenCalledWith(
       expect.objectContaining({
         key: 'metadata_provider_config',
-        value: JSON.stringify(updated),
+        value: expect.any(String),
       }),
     );
+    const saved = JSON.parse(db.__txInsertChain.values.mock.calls[0][0].value);
+    expect(saved.amazon.cookie).not.toContain('session-cookie');
+    expect(secrets.decrypt(saved.amazon.cookie.slice('encrypted:'.length), 'amazon')).toBe('session-cookie');
+    expect(secrets.decrypt(saved.hardcover.apiKey.slice('encrypted:'.length), 'hardcover')).toBe('h-key');
   });
 
   it('normalizes enabling Google Books without an API key back to disabled', async () => {
@@ -267,9 +274,7 @@ describe('ProviderConfigService', () => {
       ),
     );
 
-    await expect(service.updateConfig({ hardcover: { enabled: true, apiKey: 'invalid-token' } })).rejects.toThrow(
-      'Hardcover API error: Malformed Authorization header',
-    );
+    await expect(service.updateConfig({ hardcover: { enabled: true, apiKey: 'invalid-token' } })).rejects.toThrow('Hardcover API returned an error.');
     expect(db.__tx.insert).not.toHaveBeenCalled();
   });
 
@@ -356,9 +361,7 @@ describe('ProviderConfigService', () => {
     });
 
     expect(updated.audible.enabled).toBe(true);
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('[metadata_provider_config.parse] [fail] key=metadata_provider_config source=update durationMs='),
-    );
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('[metadata_provider_config.parse] [fail] stored configuration invalid'));
   });
 
   it('builds provider statuses including provider-specific configuration hints', async () => {
@@ -512,7 +515,7 @@ describe('ProviderConfigService', () => {
       key: MetadataProviderKey.HARDCOVER,
       ok: true,
       status: 'success',
-      message: 'Connected as reader.',
+      message: 'Hardcover accepted the credential.',
     });
     expect(fetchMock).toHaveBeenCalledWith(
       'https://api.hardcover.app/v1/graphql',

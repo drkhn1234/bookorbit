@@ -6,65 +6,83 @@ import { ScanGateway } from './scan.gateway';
 import { AuthenticatorService } from '../auth/authenticator.service';
 
 function makeGateway() {
-  const jwtService = { verify: vi.fn() };
-  const authService = { validateSessionUser: vi.fn() };
+  const jwtService = { verify: vi.fn((token: string) => ({ sub: JSON.parse(token).id, ver: 1 })) };
+  const authService = { validateSessionUser: vi.fn((id: number) => Promise.resolve(id === 1 ? admin : reader)) };
   const scanJobStore = { get: vi.fn(), isRunning: vi.fn() };
-  const scopeRepo = { findGrantedLevel: vi.fn().mockResolvedValue(null) };
+  const findGrantedLevel = vi.fn().mockResolvedValue('viewer');
+  const scopeRepo = {
+    findGrantedLevel,
+    findGrantedLevels: vi.fn(async (userId: number) => {
+      const rows = await Promise.all([1, 2, 3, 4, 5, 6, 7, 8, 9, 88].map(async (id) => ({ id, accessLevel: await findGrantedLevel(userId, id) })));
+      return rows.filter((row) => row.accessLevel !== null);
+    }),
+  };
   const achievementEvents = new AchievementEventsService();
+  const scannerRepo = { findBooksByIds: vi.fn().mockResolvedValue([{ id: 142, libraryId: 7 }]) };
   const appConfiguration = { appUrl: 'http://localhost:6263' };
   const gateway = new ScanGateway(
     new AuthenticatorService(jwtService as never, authService as never) as any,
     scanJobStore as any,
-    {} as any,
+    scannerRepo as any,
     achievementEvents,
     new LibraryScopeService(scopeRepo as any),
     appConfiguration as any,
   );
-  return { gateway, jwtService, authService, scanJobStore, scopeRepo, achievementEvents };
+  return { gateway, jwtService, authService, scanJobStore, scopeRepo, achievementEvents, scannerRepo };
 }
 
 const reader = { id: 42, username: 'reader', isSuperuser: false };
 const admin = { id: 1, username: 'admin', isSuperuser: true };
 
 function subscriber(user?: object) {
-  return { id: 'sock-sub', data: user ? { user } : {}, join: vi.fn().mockResolvedValue(undefined), emit: vi.fn() } as any;
+  return {
+    id: 'sock-sub',
+    handshake: { auth: { token: JSON.stringify(user) } },
+    data: user ? { user } : {},
+    join: vi.fn().mockResolvedValue(undefined),
+    leave: vi.fn(),
+    disconnect: vi.fn(),
+    emit: vi.fn(),
+  } as any;
 }
 
 const runningScan = { jobId: 9, processed: 50, total: 200, added: 10, updated: 5, missing: 2 };
 
 function mockServer() {
   const emit = vi.fn();
-  const to = vi.fn().mockReturnValue({ emit });
-  return { server: { to, emit }, to, emit };
+  const client = subscriber(reader);
+  client.emit = emit;
+  const to = vi.fn().mockReturnValue({ emit, fetchSockets: vi.fn().mockResolvedValue([client]) });
+  return { server: { to, in: to, emit }, to, emit };
 }
 
 // ── book:missing ──────────────────────────────────────────────────────────────
 
 describe('emitBookMissing', () => {
-  it('emits book:missing to the correct library room', () => {
+  it('emits book:missing to the correct library room', async () => {
     const { gateway } = makeGateway();
     const { server, to, emit } = mockServer();
     gateway['server'] = server as any;
 
     const event: BookMissingEvent = { libraryId: 7, bookIds: [1, 2, 3] };
-    gateway.emitBookMissing(event);
+    await gateway.emitBookMissing(event);
 
-    expect(to).toHaveBeenCalledWith('library:7');
+    expect(to).toHaveBeenCalledWith(['library:7']);
     expect(emit).toHaveBeenCalledWith('book:missing', event);
   });
 
-  it('does not throw when server is undefined (application context)', () => {
+  it('does not throw when server is undefined (application context)', async () => {
     const { gateway } = makeGateway();
     gateway['server'] = undefined as any;
 
-    expect(() => gateway.emitBookMissing({ libraryId: 1, bookIds: [1] })).not.toThrow();
+    await expect(gateway.emitBookMissing({ libraryId: 1, bookIds: [1] })).resolves.toBeUndefined();
   });
 });
 
 // ── pre-existing emit methods (regression) ────────────────────────────────────
 
 describe('emitProgress', () => {
-  it('emits scan:progress to the correct room', () => {
+  it('emits scan:progress to the correct room', async () => {
     const { gateway } = makeGateway();
     const { server, to, emit } = mockServer();
     gateway['server'] = server as any;
@@ -79,32 +97,32 @@ describe('emitProgress', () => {
       updated: 2,
       missing: 0,
     };
-    gateway.emitProgress(event);
+    await gateway.emitProgress(event);
 
-    expect(to).toHaveBeenCalledWith('library:4');
+    expect(to).toHaveBeenCalledWith(['library:4']);
     expect(emit).toHaveBeenCalledWith('scan:progress', event);
   });
 
-  it('does not throw when server is undefined', () => {
+  it('does not throw when server is undefined', async () => {
     const { gateway } = makeGateway();
     gateway['server'] = undefined as any;
 
-    expect(() =>
+    await expect(
       gateway.emitProgress({ jobId: 1, libraryId: 1, status: 'running', processed: 0, total: 0, added: 0, updated: 0, missing: 0 }),
-    ).not.toThrow();
+    ).resolves.toBeUndefined();
   });
 });
 
 describe('emitCoverRefreshed', () => {
-  it('emits cover:refreshed to the correct room', () => {
+  it('emits cover:refreshed to the correct room', async () => {
     const { gateway } = makeGateway();
     const { server, to, emit } = mockServer();
     gateway['server'] = server as any;
 
     const event: CoverRefreshedEvent = { bookIds: [9], libraryId: 2 };
-    gateway.emitCoverRefreshed(event);
+    await gateway.emitCoverRefreshed(event);
 
-    expect(to).toHaveBeenCalledWith('library:2');
+    expect(to).toHaveBeenCalledWith(['library:2']);
     expect(emit).toHaveBeenCalledWith('cover:refreshed', event);
   });
 });
@@ -156,8 +174,8 @@ describe('handleConnection', () => {
 });
 
 describe('book progress events', () => {
-  it('forwards progress changes only to the affected user room and removes its listener on destroy', () => {
-    const { gateway, achievementEvents } = makeGateway();
+  it('forwards progress changes only to the affected user room and removes its listener on destroy', async () => {
+    const { gateway, achievementEvents, scannerRepo } = makeGateway();
     const { server, to, emit } = mockServer();
     gateway['server'] = server as any;
     gateway.onModuleInit();
@@ -170,15 +188,17 @@ describe('book progress events', () => {
       source: 'koreader',
     });
 
-    expect(to).toHaveBeenCalledWith('user:42');
-    expect(emit).toHaveBeenCalledWith('book:progress-changed', {
-      bookId: 142,
-      progress: 61.02,
-      source: 'koreader',
+    await vi.waitFor(() => {
+      expect(emit).toHaveBeenCalledWith('book:progress-changed', {
+        bookId: 142,
+        progress: 61.02,
+        source: 'koreader',
+      });
     });
+    expect(to).toHaveBeenCalledWith('user:42');
 
     gateway.onModuleDestroy();
-    to.mockClear();
+    scannerRepo.findBooksByIds.mockClear();
     achievementEvents.emit(ACHIEVEMENT_EVENT_BOOK_PROGRESS_CHANGED, {
       userId: 42,
       bookId: 142,
@@ -186,7 +206,7 @@ describe('book progress events', () => {
       source: 'koreader',
     });
 
-    expect(to).not.toHaveBeenCalled();
+    expect(scannerRepo.findBooksByIds).not.toHaveBeenCalled();
   });
 });
 
@@ -250,14 +270,13 @@ describe('subscribe:library', () => {
     expect(client.emit).not.toHaveBeenCalled();
   });
 
-  it('lets a superuser into any library without an access row', async () => {
+  it('denies a superuser without an explicit access row', async () => {
     const { gateway, scopeRepo } = makeGateway();
+    scopeRepo.findGrantedLevel.mockResolvedValue(null);
     const client = subscriber(admin);
-
     await gateway.handleSubscribeLibrary(client, 5);
-
-    expect(scopeRepo.findGrantedLevel).not.toHaveBeenCalled();
-    expect(client.join).toHaveBeenCalledWith('library:5');
+    expect(scopeRepo.findGrantedLevel).toHaveBeenCalledWith(1, 5);
+    expect(client.join).not.toHaveBeenCalled();
   });
 
   it('keeps a user out of a library they cannot read, so its book cards and scan counts never reach them', async () => {
@@ -335,62 +354,62 @@ describe('subscribe:library', () => {
 });
 
 describe('remaining emit methods', () => {
-  it('emits cover refresh progress and books added events', () => {
+  it('emits cover refresh progress and books added events', async () => {
     const { gateway } = makeGateway();
     const { server, to, emit } = mockServer();
     gateway['server'] = server as any;
 
-    gateway.emitCoverRefreshProgress({ libraryId: 6, processed: 1, total: 3, status: 'running' });
-    gateway.emitBooksAdded({ libraryId: 6, books: [{ id: 10 }] as any });
+    await gateway.emitCoverRefreshProgress({ libraryId: 6, processed: 1, total: 3, status: 'running' });
+    await gateway.emitBooksAdded({ libraryId: 6, books: [{ id: 10 }] as any });
 
-    expect(to).toHaveBeenCalledWith('library:6');
+    expect(to).toHaveBeenCalledWith(['library:6']);
     expect(emit).toHaveBeenCalledWith('cover:refresh:progress', { libraryId: 6, processed: 1, total: 3, status: 'running' });
     expect(emit).toHaveBeenCalledWith('scan:books:added', { libraryId: 6, books: [{ id: 10 }] });
   });
 
-  it('emits restored and moved book notifications to the library room', () => {
+  it('emits restored and moved book notifications to the library room', async () => {
     const { gateway } = makeGateway();
     const { server, to, emit } = mockServer();
     gateway['server'] = server as any;
 
-    gateway.emitBookRestored({ libraryId: 3, bookIds: [2, 4] });
-    gateway.emitBookMoved({ libraryId: 3, bookIds: [2, 4] });
+    await gateway.emitBookRestored({ libraryId: 3, bookIds: [2, 4] });
+    await gateway.emitBookMoved({ libraryId: 3, bookIds: [2, 4] });
 
-    expect(to).toHaveBeenCalledWith('library:3');
+    expect(to).toHaveBeenCalledWith(['library:3']);
     expect(emit).toHaveBeenCalledWith('book:restored', { libraryId: 3, bookIds: [2, 4] });
     expect(emit).toHaveBeenCalledWith('book:moved', { libraryId: 3, bookIds: [2, 4] });
   });
 
-  it('emits transferred book notifications to the source and destination library rooms', () => {
+  it('emits transferred book notifications to the source and destination library rooms', async () => {
     const { gateway } = makeGateway();
     const { server, to, emit } = mockServer();
     gateway['server'] = server as any;
 
     const event: BookTransferredEvent = { fromLibraryId: 3, toLibraryId: 8, bookIds: [2, 4] };
-    gateway.emitBookTransferred(event);
+    await gateway.emitBookTransferred(event);
 
     expect(to).toHaveBeenCalledWith(['library:3', 'library:8']);
     expect(emit).toHaveBeenCalledWith('book:transferred', event);
   });
 
-  it('emits a merge to the destination library room and every library a merged book left', () => {
+  it('emits a merge to the destination library room and every library a merged book left', async () => {
     const { gateway } = makeGateway();
     const { server, to, emit } = mockServer();
     gateway['server'] = server as any;
 
     const event: BookMergedEvent = { libraryId: 3, targetBookId: 2, sourceBookIds: [4, 5], sourceLibraryIds: [8, 3, 9] };
-    gateway.emitBookMerged(event);
+    await gateway.emitBookMerged(event);
 
     expect(to).toHaveBeenCalledWith(['library:3', 'library:8', 'library:9']);
     expect(emit).toHaveBeenCalledWith('book:merged', event);
   });
 
-  it('emits a same-library merge to that library room only', () => {
+  it('emits a same-library merge to that library room only', async () => {
     const { gateway } = makeGateway();
     const { server, to } = mockServer();
     gateway['server'] = server as any;
 
-    gateway.emitBookMerged({ libraryId: 3, targetBookId: 2, sourceBookIds: [4] });
+    await gateway.emitBookMerged({ libraryId: 3, targetBookId: 2, sourceBookIds: [4] });
 
     expect(to).toHaveBeenCalledWith(['library:3']);
   });

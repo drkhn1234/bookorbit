@@ -615,12 +615,12 @@ describe('AuthService', () => {
   });
 
   describe('buildUserResponse', () => {
-    it('returns wildcard permissions for superuser', () => {
+    it('returns the superuser flag and explicit permissions separately', () => {
       const { service } = makeService();
-      const user = makeFullUser({ isSuperuser: true, permissions: [] });
+      const user = makeFullUser({ isSuperuser: true, permissions: ['library_download'] });
 
       const response = service.buildUserResponse(user as never);
-      expect(response.permissions).toEqual(['*']);
+      expect(response).toMatchObject({ isSuperuser: true, permissions: ['*', 'library_download'] });
     });
 
     it('returns flat permission list for non-superuser', () => {

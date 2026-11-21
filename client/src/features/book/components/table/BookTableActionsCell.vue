@@ -79,7 +79,7 @@ async function handleRefresh() {
           <RefreshCw :size="13" class="mr-2" :class="{ 'animate-spin': anyRefreshing }" />
           {{ t('book.table.actions.refreshMetadata') }}
         </DropdownMenuItem>
-        <DropdownMenuItem v-if="hasPermission('library_edit_metadata')" @click="handleAction('add-to-collection')">
+        <DropdownMenuItem v-if="canEditMetadata" @click="handleAction('add-to-collection')">
           <FolderPlus :size="13" class="mr-2" />
           {{ t('book.table.actions.addToCollection') }}
         </DropdownMenuItem>
@@ -87,9 +87,9 @@ async function handleRefresh() {
           <Send :size="13" class="mr-2" />
           {{ t('book.table.actions.sendToDevice') }}
         </DropdownMenuItem>
-        <DropdownMenuSeparator v-if="hasPermission('library_delete_books')" />
+        <DropdownMenuSeparator v-if="hasLibraryPermission('library_delete_books', book?.libraryId)" />
         <DropdownMenuItem
-          v-if="hasPermission('library_delete_books')"
+          v-if="hasLibraryPermission('library_delete_books', book?.libraryId)"
           class="text-destructive focus:text-destructive"
           @click="handleAction('delete')"
         >

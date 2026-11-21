@@ -155,13 +155,14 @@ export class BookDockController {
     @CurrentUser() user: RequestUser,
     @Req() req: MultipartRequest,
     @Query('libraryId', new ParseIntPipe({ optional: true })) libraryId?: number,
+    @Query('scope') scope?: string,
   ) {
     const limitMb = await this.appSettings.getMaxUploadSizeMb();
     const data = await req.file({ limits: { fileSize: limitMb * 1024 * 1024 } });
     if (!data) throw new BadRequestException('No file provided');
 
     // Only the part's headers have been read, so a refused upload moves no bytes (D26).
-    const dock = libraryId === undefined ? undefined : await this.libraryDocks.resolveUploadDock(user, libraryId, data.filename);
+    const dock = libraryId === undefined ? undefined : await this.libraryDocks.resolveUploadDock(user, libraryId, data.filename, scope);
     const fileId = await this.ingestService.ingestUpload(data.filename, data.file as unknown as Readable, user.id, dock);
     return this.service.getFile(fileId, user.id, this.canManageAll(user));
   }
@@ -311,7 +312,7 @@ export class BookDockController {
   }
 
   @Post('finalize/preview')
-  @RequirePermission(Permission.BookDockAccess, Permission.LibraryUpload)
+  @RequirePermission(Permission.BookDockAccess)
   @HttpCode(HttpStatus.OK)
   previewFinalize(@CurrentUser() user: RequestUser, @Body() dto: FinalizeBookDockDto) {
     return this.finalizeService.previewFinalize(
@@ -334,7 +335,7 @@ export class BookDockController {
   }
 
   @Post('finalize/discard-duplicates')
-  @RequirePermission(Permission.BookDockAccess, Permission.LibraryUpload)
+  @RequirePermission(Permission.BookDockAccess)
   @HttpCode(HttpStatus.OK)
   discardFinalizeDuplicates(@CurrentUser() user: RequestUser, @Body() dto: FinalizeBookDockDto) {
     return this.finalizeService.discardDuplicateCandidates(
@@ -357,7 +358,7 @@ export class BookDockController {
   }
 
   @Post('finalize')
-  @RequirePermission(Permission.BookDockAccess, Permission.LibraryUpload)
+  @RequirePermission(Permission.BookDockAccess)
   @Auditable({
     action: AuditAction.BookDockFinalize,
     resource: AuditResource.BookDockFile,

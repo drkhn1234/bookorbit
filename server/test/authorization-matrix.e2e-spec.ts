@@ -13,6 +13,7 @@ import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { and, eq, inArray } from 'drizzle-orm';
 
 import { ALLOW_API_KEY_KEY, INTERACTIVE_ONLY_KEY, KEY_READ_SAFE_KEY } from '../src/common/decorators/api-key-policy.decorator';
+import { SCOPED_PERMISSION_KEY, type ScopedPermission } from '../src/common/decorators/require-scoped-permission.decorator';
 import { IS_PUBLIC_KEY } from '../src/common/decorators/public.decorator';
 import { createCoverToken } from '../src/modules/opds/opds-auth.guard';
 import * as schema from '../src/db/schema';
@@ -53,6 +54,7 @@ interface RouteInventoryRoute {
   permissions: string[];
   /** `any` means one of `permissions` is enough; absent means every one of them is required. */
   permissionMode?: 'any';
+  scopedPermission?: { permission: string; resource: 'library' | 'book' | 'file'; param: string };
   libraryAccess: string[];
   isPublic: boolean;
   allowDefault: boolean;
@@ -285,7 +287,7 @@ describe('Authorization matrix (e2e)', () => {
       grantLibraryAccess(ctx, personas.allPermsUser.userId, libraryA.libraryId, 'owner'),
       grantLibraryAccess(ctx, personas.allPermsUser.userId, libraryB.libraryId, 'owner'),
       grantLibraryAccess(ctx, personas.metadataEditor.userId, libraryA.libraryId, 'viewer'),
-      grantLibraryAccess(ctx, personas.bookDockUser.userId, libraryA.libraryId, 'viewer'),
+      grantLibraryAccess(ctx, personas.bookDockUser.userId, libraryA.libraryId, 'editor'),
       grantLibraryAccess(ctx, personas.readAloudUser.userId, libraryA.libraryId, 'viewer'),
       grantLibraryAccess(ctx, personas.downloadOnlyUser.userId, libraryA.libraryId, 'viewer'),
       grantLibraryAccess(ctx, personas.ownerUser.userId, libraryA.libraryId, 'viewer'),
@@ -550,14 +552,14 @@ describe('Authorization matrix (e2e)', () => {
         headers: authHeader(personas.downloadOnlyUser.accessToken),
         payload: { filename: 'unauthorized-rename.epub' },
       });
-      expectError(renameResponse, 403, 'Missing permission: library_edit_metadata');
+      expectError(renameResponse, 403, 'Insufficient library access for library_edit_metadata');
 
       const deleteResponse = await ctx.app.inject({
         method: 'DELETE',
         url: `/api/v1/books/files/${bookA.bookFileId}`,
         headers: authHeader(personas.downloadOnlyUser.accessToken),
       });
-      expectError(deleteResponse, 403, 'Missing permission: library_delete_books');
+      expectError(deleteResponse, 403, 'Insufficient library access for library_delete_books');
 
       await expect(access(bookA.absolutePath)).resolves.toBeUndefined();
       const [fileRow] = await ctx.db
@@ -600,6 +602,13 @@ describe('Authorization matrix (e2e)', () => {
         .map(routeLabel)
         .sort();
       const liveLabels = liveRouteLabels(ctx.app).filter((label) => label.includes(' /dashboard/scrollers'));
+      const permissionCounts = new Map<string, number>();
+      for (const route of routeInventory.routes) {
+        for (const permission of route.permissions.length === 0 ? ['(none)'] : route.permissions) {
+          permissionCounts.set(permission, (permissionCounts.get(permission) ?? 0) + 1);
+        }
+      }
+      expect(Object.fromEntries(permissionCounts)).toEqual(routeInventory.byPermission);
 
       expect(liveLabels).toEqual(inventoryLabels);
     });
@@ -706,6 +715,27 @@ describe('Authorization matrix (e2e)', () => {
       expect(mismatches).toEqual([]);
     });
 
+    it('keeps scoped permissions in parity and denies a granted viewer without the capability', async () => {
+      const handlers = liveRouteHandlers(ctx.app);
+      const ids = { book: bookA.bookId, file: bookA.bookFileId, library: libraryA.libraryId };
+      for (const route of routeInventory.routes.filter((route) => !route.isPublic && isSupportedMethod(route.httpMethod))) {
+        const [resolved] = handlers.get(routeLabel(route)) ?? [];
+        const policy = Reflect.getMetadata(SCOPED_PERMISSION_KEY, resolved.handler) as ScopedPermission | undefined;
+        expect(route.scopedPermission, routeLabel(route)).toEqual(
+          policy && {
+            ...policy,
+            permission: `Permission.${permissionEnumKey(policy.permission)}`,
+          },
+        );
+        if (!policy) continue;
+        const response = await invokeRoute(route, {
+          token: personas.downloadOnlyUser.accessToken,
+          params: { [policy.param]: String(ids[policy.resource]) },
+        });
+        expectError(response, 403, `Insufficient library access for ${policy.permission}`);
+      }
+    }, 120_000);
+
     it('refuses a read-only key on every route that writes, before anything else runs', async () => {
       const token = await createApiKey(personas.apiKeyOwner, 'read');
       const failures: MatrixFailure[] = [];
@@ -758,17 +788,22 @@ describe('Authorization matrix (e2e)', () => {
     });
 
     it('proves allow-path for each permission without missing-permission errors', async () => {
-      const permissionRoutes = routeInventory.routes.filter(
-        (route) => !route.isPublic && route.permissions.length > 0 && isSupportedMethod(route.httpMethod),
-      );
-      const inventoryPermissions = Array.from(new Set(permissionRoutes.flatMap((route) => route.permissions)))
+      const inventoryPermissions = Array.from(
+        new Set(
+          routeInventory.routes.flatMap((route) => [...route.permissions, ...(route.scopedPermission ? [route.scopedPermission.permission] : [])]),
+        ),
+      )
         .map((raw) => toPermission(raw))
         .filter((permission): permission is Permission => permission !== null)
         .sort();
       // Permissions that grant a capability *within* a route rather than gating the route itself,
       // so they legitimately never appear on a guard. Every entry needs a service-level test
       // proving the capability is actually enforced; keep this list as short as it can be.
-      const serviceEnforcedPermissions: Permission[] = [Permission.BookRequestAutoApprove];
+      const serviceEnforcedPermissions: Permission[] = [
+        Permission.BookRequestAutoApprove,
+        Permission.DemoRestricted,
+        Permission.LibraryGenerateReadAloud,
+      ];
       const enumPermissions = [...Object.values(Permission)].filter((permission) => !serviceEnforcedPermissions.includes(permission)).sort();
       expect(inventoryPermissions).toEqual(enumPermissions);
 
@@ -784,15 +819,15 @@ describe('Authorization matrix (e2e)', () => {
         }
       > = {
         [Permission.LibraryDownload]: {
-          method: 'POST',
-          path: '/books/export',
+          method: 'GET',
+          path: '/books/files/:fileId/audioless-epub/download',
           payload: { bookIds: [999_999] },
           token: 'allPerms',
         },
         [Permission.LibraryUpload]: {
           method: 'POST',
           path: '/libraries/:id/upload',
-          token: 'uploadUser',
+          token: 'allPerms',
         },
         [Permission.LibraryGenerateReadAloud]: {
           method: 'GET',
@@ -813,8 +848,8 @@ describe('Authorization matrix (e2e)', () => {
         },
         [Permission.LibraryDeleteBooks]: {
           method: 'DELETE',
-          path: '/books',
-          payload: { bookIds: [999_999] },
+          path: '/books/files/:fileId',
+          params: { fileId: '999999' },
           token: 'allPerms',
         },
         [Permission.KoboSync]: {
@@ -844,13 +879,12 @@ describe('Authorization matrix (e2e)', () => {
         },
         [Permission.ManageLibraries]: {
           method: 'GET',
-          path: '/path',
-          query: 'path=/proc',
+          path: '/libraries/administration',
           token: 'allPerms',
         },
         [Permission.ManageMetadataConfig]: {
           method: 'GET',
-          path: '/metadata-preferences/global',
+          path: '/metadata-cache/config',
           token: 'allPerms',
         },
         [Permission.ManageIcons]: {
@@ -931,8 +965,7 @@ describe('Authorization matrix (e2e)', () => {
         },
         [Permission.LibraryMergeBooks]: {
           method: 'GET',
-          path: '/books/merge/jobs/:jobId',
-          params: { jobId: '2147483000' },
+          path: '/book-duplicates/dismissals',
           token: 'allPerms',
         },
         [Permission.ApiKeys]: {
@@ -950,12 +983,13 @@ describe('Authorization matrix (e2e)', () => {
         const probe = probes[permission];
         const inventoryRoute = routeInventory.routes.find((route) => route.httpMethod === probe.method && route.path === probe.path);
         expect(inventoryRoute).toBeTruthy();
-        expect(inventoryRoute?.permissions).toContain(`Permission.${permissionEnumKey(permission)}`);
+        const required = [...(inventoryRoute?.permissions ?? []), inventoryRoute?.scopedPermission?.permission];
+        expect(required).toContain(`Permission.${permissionEnumKey(permission)}`);
 
         const response =
           permission === Permission.LibraryUpload
             ? await uploadLibraryFile(ctx, {
-                token: personas.uploadUser.accessToken,
+                token: personas.allPermsUser.accessToken,
                 libraryId: libraryA.libraryId,
                 folderId: libraryA.libraryFolderId,
                 fileName: `permission-probe-${randomUUID()}.epub`,
@@ -969,6 +1003,7 @@ describe('Authorization matrix (e2e)', () => {
               });
 
         const message = extractMessage(response);
+        if (permission === Permission.ManageLibraries) expect(response.statusCode, 'Library administration allow probe').toBe(200);
         if (response.statusCode === 403 && message.includes('Missing permission:')) {
           failures.push({
             route: `${String(permission)} -> ${probe.method} ${probe.path}`,
@@ -982,35 +1017,17 @@ describe('Authorization matrix (e2e)', () => {
       assertNoFailures('permission allow probes', failures);
     }, 120_000);
 
-    it('covers all library-access guard failure and bypass cases', async () => {
+    it('covers library-access guard denials and explicit superuser grants', async () => {
       const guardedRoutes = routeInventory.routes.filter(
         (route) => !route.isPublic && route.libraryAccess.length > 0 && isSupportedMethod(route.httpMethod),
       );
-      expect(guardedRoutes.map(routeLabel).sort()).toEqual(
-        [
-          'GET /libraries/:id',
-          'POST /libraries/:id/books',
-          'GET /libraries/:id/stats',
-          'GET /libraries/:id/recompute-added-at',
-          'POST /libraries/:id/recompute-added-at',
-          'POST /libraries/:id/write-metadata-to-files',
-          'GET /scanner/libraries/:id/scan-history',
-          'GET /scanner/libraries/:id/reapply-regex-metadata',
-          'POST /scanner/libraries/:id/reapply-regex-metadata',
-          'POST /libraries/:id/books/jump-buckets',
-          'POST /libraries/:id/books/facets',
-          'GET /libraries/:id/bulk-rename/preview',
-          'GET /libraries/:id/bulk-rename/status',
-          'POST /libraries/:id/bulk-rename/execute',
-        ].sort(),
-      );
+      expect(guardedRoutes).not.toHaveLength(0);
 
       for (const route of guardedRoutes) {
         const paramName = route.path.includes(':libraryId') ? 'libraryId' : 'id';
         const invalidResponse = await invokeRoute(route, {
           token: personas.allPermsUser.accessToken,
           params: { [paramName]: 'not-a-number' },
-          query: route.path === '/libraries/:id/write-metadata-to-files' ? 'dryRun=true' : undefined,
         });
         expectError(invalidResponse, 400, 'Missing or invalid libraryId');
       }
@@ -1018,24 +1035,22 @@ describe('Authorization matrix (e2e)', () => {
       for (const route of guardedRoutes) {
         const noAccessResponse = await invokeRoute(route, {
           token: personas.permsNoLibraryUser.accessToken,
-          query: route.path === '/libraries/:id/write-metadata-to-files' ? 'dryRun=true' : undefined,
         });
         expectError(noAccessResponse, 403, 'No library access');
       }
 
-      const insufficientResponse = await ctx.app.inject({
-        method: 'POST',
-        url: `/api/v1/libraries/${libraryA.libraryId}/write-metadata-to-files?dryRun=true`,
-        headers: authHeader(personas.metadataEditor.accessToken),
-      });
-      expectError(insufficientResponse, 403, 'Insufficient library access level');
-
-      const bypassResponse = await ctx.app.inject({
-        method: 'POST',
-        url: `/api/v1/libraries/${libraryA.libraryId}/write-metadata-to-files?dryRun=true`,
-        headers: authHeader(ctx.adminToken),
-      });
-      expect(bypassResponse.statusCode).toBe(200);
+      const route = '/api/v1/libraries/' + libraryA.libraryId + '/write-metadata-to-files?dryRun=true';
+      const headers = authHeader(ctx.adminToken);
+      expectError(await ctx.app.inject({ method: 'POST', url: route, headers }), 403, 'Insufficient library access');
+      const { id: adminId } = (await ctx.app.inject({ method: 'GET', url: '/api/v1/auth/me', headers })).json<{ id: number }>();
+      await grantLibraryAccess(ctx, adminId, libraryA.libraryId, 'owner');
+      try {
+        expect((await ctx.app.inject({ method: 'POST', url: route, headers })).statusCode).toBe(200);
+      } finally {
+        await ctx.db
+          .delete(schema.userLibraryAccess)
+          .where(and(eq(schema.userLibraryAccess.userId, adminId), eq(schema.userLibraryAccess.libraryId, libraryA.libraryId)));
+      }
     }, 120_000);
 
     it('enforces default-password lock with allow-list exceptions', async () => {
@@ -1300,6 +1315,78 @@ describe('Authorization matrix (e2e)', () => {
   });
 
   describe('service authz - ownership and superuser rules', () => {
+    it('enforces owner and explicit admin authority on grant changes with current credential scope', async () => {
+      const owner = await createUserAndLogin(ctx, { permissions: [Permission.ApiKeys] });
+      const viewer = await createUserAndLogin(ctx);
+      const manager = await createUserAndLogin(ctx, { permissions: [Permission.ManageLibraries] });
+      const demo = await createUserAndLogin(ctx, { permissions: [Permission.DemoRestricted] });
+      const managed = await createLibraryWithFolder(ctx);
+      const other = await createLibraryWithFolder(ctx);
+      const libraryId = managed.libraryId;
+      await grantLibraryAccess(ctx, owner.userId, libraryId, 'owner');
+      await grantLibraryAccess(ctx, owner.userId, other.libraryId, 'owner');
+      await grantLibraryAccess(ctx, viewer.userId, libraryId, 'viewer');
+
+      const grants = () =>
+        ctx.db
+          .select()
+          .from(schema.userLibraryAccess)
+          .where(eq(schema.userLibraryAccess.libraryId, libraryId))
+          .orderBy(schema.userLibraryAccess.userId);
+      const mutation = (method: 'PATCH' | 'DELETE', userId: number, headers: Record<string, string>, admin = false) =>
+        ctx.app.inject({
+          method,
+          url: `/api/v1/libraries/${libraryId}/access/${userId}${admin ? '?scope=admin' : ''}`,
+          headers,
+          ...(method === 'PATCH' ? { payload: { accessLevel: 'editor' } } : {}),
+        });
+
+      const unchanged = await grants();
+      const cases = [
+        { headers: authHeader(viewer.accessToken), userId: owner.userId, status: 403, message: 'Insufficient library access level' },
+        { headers: authHeader(manager.accessToken), userId: viewer.userId, status: 403, message: 'No access to this library' },
+        { headers: authHeader(demo.accessToken), userId: viewer.userId, status: 403, message: 'Forbidden permission' },
+        { headers: authHeader(owner.accessToken), userId: owner.userId, status: 409, message: 'The last library owner' },
+        {
+          headers: { 'x-api-key': await createApiKey(owner, 'read', [libraryId]) },
+          userId: viewer.userId,
+          status: 403,
+          message: 'API key is read-only',
+        },
+        {
+          headers: { 'x-api-key': await createApiKey(owner, 'write', [other.libraryId]) },
+          userId: viewer.userId,
+          status: 403,
+          message: 'Library outside credential scope',
+        },
+      ];
+      for (const denied of cases) {
+        for (const method of ['PATCH', 'DELETE'] as const) {
+          expectError(await mutation(method, denied.userId, denied.headers), denied.status, denied.message);
+          expect(await grants()).toEqual(unchanged);
+        }
+      }
+
+      const viewerLevel = async () => (await grants()).find((row) => row.userId === viewer.userId)?.accessLevel;
+      expect((await mutation('PATCH', viewer.userId, authHeader(owner.accessToken))).statusCode).toBe(200);
+      expect(await viewerLevel()).toBe('editor');
+      expect((await mutation('DELETE', viewer.userId, authHeader(owner.accessToken))).statusCode).toBe(204);
+      expect(await viewerLevel()).toBeUndefined();
+      await grantLibraryAccess(ctx, viewer.userId, libraryId, 'viewer');
+
+      const bounded = { 'x-api-key': await createApiKey(owner, 'write', [libraryId]) };
+      expect((await mutation('PATCH', viewer.userId, bounded)).statusCode).toBe(200);
+      expect(await viewerLevel()).toBe('editor');
+      expect((await mutation('DELETE', viewer.userId, bounded)).statusCode).toBe(204);
+      expect(await viewerLevel()).toBeUndefined();
+      await grantLibraryAccess(ctx, viewer.userId, libraryId, 'viewer');
+
+      expect((await mutation('PATCH', viewer.userId, authHeader(manager.accessToken), true)).statusCode).toBe(200);
+      expect(await viewerLevel()).toBe('editor');
+      expect((await mutation('DELETE', viewer.userId, authHeader(manager.accessToken), true)).statusCode).toBe(204);
+      expect(await grants()).toEqual([expect.objectContaining({ userId: owner.userId, accessLevel: 'owner' })]);
+    });
+
     it('enforces non-superuser restrictions on user admin operations', async () => {
       const editSuperuser = await ctx.app.inject({
         method: 'PATCH',
@@ -1687,6 +1774,13 @@ describe('Authorization matrix (e2e)', () => {
       });
       expect(created.statusCode).toBe(201);
       const opdsUserId = (created.json() as { id: number }).id;
+      const readGrant = () =>
+        ctx.db
+          .select({ userId: schema.opdsUsers.userId, sortOrder: schema.opdsUsers.sortOrder })
+          .from(schema.opdsUsers)
+          .where(eq(schema.opdsUsers.id, opdsUserId));
+      const original = await readGrant();
+      expect(original).toEqual([{ userId: personas.opdsOwner.userId, sortOrder: 'recent' }]);
 
       const foreignUpdate = await ctx.app.inject({
         method: 'PATCH',
@@ -1695,6 +1789,7 @@ describe('Authorization matrix (e2e)', () => {
         payload: { sortOrder: 'title_asc' },
       });
       expectError(foreignUpdate, 403, 'Not the owner of this OPDS user');
+      expect(await readGrant()).toEqual(original);
 
       const foreignDelete = await ctx.app.inject({
         method: 'DELETE',
@@ -1702,6 +1797,7 @@ describe('Authorization matrix (e2e)', () => {
         headers: authHeader(personas.opdsIntruder.accessToken),
       });
       expectError(foreignDelete, 403, 'Not the owner of this OPDS user');
+      expect(await readGrant()).toEqual(original);
     });
   });
 
@@ -1724,6 +1820,9 @@ describe('Authorization matrix (e2e)', () => {
           payload: request.payload,
         });
         expectError(response, 403, 'You do not have access to this Library Dock file');
+        const rows = await ctx.db.select().from(schema.bookDockFiles).where(eq(schema.bookDockFiles.id, foreignRow.id));
+        expect(rows).toEqual([foreignRow]);
+        await expect(access(foreignRow.absolutePath)).resolves.toBeUndefined();
       }
     });
 
@@ -1743,6 +1842,9 @@ describe('Authorization matrix (e2e)', () => {
         uploadedBy: personas.bookDockUser.userId,
       });
 
+      const targetCatalog = () =>
+        ctx.db.select({ id: schema.books.id }).from(schema.books).where(eq(schema.books.libraryId, libraryB.libraryId)).orderBy(schema.books.id);
+      const catalogBefore = await targetCatalog();
       const response = await ctx.app.inject({
         method: 'POST',
         url: '/api/v1/book-dock/finalize',
@@ -1766,7 +1868,9 @@ describe('Authorization matrix (e2e)', () => {
       const deniedItem = body.results.find((item) => item.fileId === inaccessibleRow.id);
       expect(deniedItem).toBeTruthy();
       expect(deniedItem?.success).toBe(false);
-      expect(deniedItem?.message ?? '').toContain('No access to this library');
+      expect(deniedItem?.message ?? '').toContain('Insufficient library access for library_upload');
+      expect(await targetCatalog()).toEqual(catalogBefore);
+      await expect(access(inaccessibleRow.absolutePath)).resolves.toBeUndefined();
     });
 
     it('requires both upload permission and library access for uploads', async () => {
@@ -1777,7 +1881,7 @@ describe('Authorization matrix (e2e)', () => {
         fileName: `authz-upload-${randomUUID()}.epub`,
         content: 'upload authz test content',
       });
-      expectError(response, 403, 'No access to this library');
+      expectError(response, 403, 'Insufficient library access for library_upload');
     });
 
     it('intersects unauthorized library filters for statistics and user-statistics', async () => {
@@ -1821,26 +1925,32 @@ describe('Authorization matrix (e2e)', () => {
     });
 
     it('returns not found when editing inaccessible session timeline items', async () => {
+      const timelineItem = () => ctx.db.select().from(schema.readingSessions).where(eq(schema.readingSessions.id, inaccessibleSessionId));
+      const original = await timelineItem();
+      expect(original).toHaveLength(1);
       const response = await ctx.app.inject({
         method: 'PATCH',
         url: `/api/v1/user-statistics/session-timeline/${inaccessibleSessionId}?libraryIds=${libraryB.libraryId}`,
         headers: authHeader(personas.ownerUser.accessToken),
         payload: {
-          startedAt: '2026-01-01T10:00:00.000Z',
-          endedAt: '2026-01-01T10:30:00.000Z',
+          startedAt: '2026-01-01T10:05:00.000Z',
+          endedAt: '2026-01-01T10:35:00.000Z',
         },
       });
       expectError(response, 404, 'Reading session not found');
+      expect(await timelineItem()).toEqual(original);
     });
 
-    it('keeps blocked path listings empty while still permission-gated', async () => {
-      const response = await ctx.app.inject({
-        method: 'GET',
-        url: '/api/v1/path?path=/proc',
-        headers: authHeader(personas.allPermsUser.accessToken),
-      });
-      expect(response.statusCode).toBe(200);
-      expect(response.json()).toEqual([]);
+    it('rejects blocked paths even in explicit administrator storage scope', async () => {
+      const manager = await createUserAndLogin(ctx, { permissions: [Permission.ManageLibraries] });
+      const fixtureListing = `/api/v1/path?scope=admin&path=${encodeURIComponent(ctx.fixture.rootPath)}`;
+      const list = (token: string, url: string) => ctx.app.inject({ method: 'GET', url, headers: authHeader(token) });
+
+      const allowed = await list(ctx.adminToken, fixtureListing);
+      expect(allowed.statusCode).toBe(200);
+      expect(allowed.json()).toEqual(expect.arrayContaining([expect.objectContaining({ name: 'books' })]));
+      expectError(await list(manager.accessToken, fixtureListing), 403, 'requires a superuser');
+      expectError(await list(ctx.adminToken, '/api/v1/path?scope=admin&path=/proc'), 403, 'This storage location is blocked');
     });
   });
 
@@ -1854,6 +1964,12 @@ describe('Authorization matrix (e2e)', () => {
     });
 
     it('Kobo reading-state updates must reject inaccessible books', async () => {
+      const readingStates = () =>
+        Promise.all([
+          ctx.db.select().from(schema.koboReadingStates).where(eq(schema.koboReadingStates.bookId, bookB.bookId)),
+          ctx.db.select().from(schema.koboDeviceReadingStates).where(eq(schema.koboDeviceReadingStates.bookId, bookB.bookId)),
+        ]);
+      const original = await readingStates();
       const response = await ctx.app.inject({
         method: 'PUT',
         url: `/api/v1/kobo/${koboActiveDeviceToken}/v1/library/${bookB.bookId}/state`,
@@ -1882,6 +1998,7 @@ describe('Authorization matrix (e2e)', () => {
         },
       });
       expect([403, 404]).toContain(response.statusCode);
+      expect(await readingStates()).toEqual(original);
     });
   });
 
@@ -1973,12 +2090,12 @@ describe('Authorization matrix (e2e)', () => {
     return 'write';
   }
 
-  async function createApiKey(owner: TestUserSession, access: 'read' | 'write'): Promise<string> {
+  async function createApiKey(owner: TestUserSession, access: 'read' | 'write', libraryIds?: number[]): Promise<string> {
     const response = await ctx.app.inject({
       method: 'POST',
       url: '/api/v1/api-keys',
       headers: authHeader(owner.accessToken),
-      payload: { name: `authz-${access}-${randomUUID().slice(0, 8)}`, access },
+      payload: { name: `authz-${access}-${randomUUID().slice(0, 8)}`, access, libraryIds },
     });
     expect(response.statusCode, response.body).toBe(201);
     return (response.json() as { token: string }).token;

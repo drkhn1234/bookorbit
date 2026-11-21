@@ -1,3 +1,5 @@
+import { UseGuards } from '@nestjs/common';
+import { LibraryAdministratorModeGuard } from '../../common/library-scope/library-settings-scope';
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseIntPipe, Patch, Post, Query } from '@nestjs/common';
 import { AuditAction, AuditResource, Permission } from '@bookorbit/types';
 import type { MetadataHttpProviderView } from '@bookorbit/types';
@@ -22,6 +24,7 @@ function providerName(res: unknown): string {
 
 /** External metadata providers: admins register them by URL, everyone else only sees them in searches. */
 @Controller('metadata-http-providers')
+@UseGuards(LibraryAdministratorModeGuard)
 @RequirePermission(Permission.ManageMetadataConfig)
 export class MetadataHttpProviderController {
   constructor(

@@ -192,6 +192,7 @@ function onGripBlur(id: number) {
       :cap="cap"
       :can-change-cap="total > 0"
       :can-reorder="canEnterReorder && !isFiltering"
+      :reorder-label="sectionId === 'libraries' ? 'Reorder libraries as administrator' : undefined"
       :is-reordering="isReordering"
       :collapsible="!alwaysOpen"
       @toggle="handleToggle"

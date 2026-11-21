@@ -96,9 +96,9 @@ describe('ReadAlongJobSource', () => {
   it("lets anyone who may generate see their own jobs, and managers everyone's", () => {
     const { source } = makeSource();
     expect(source.access(requester)).toEqual({ own: true, all: false });
-    expect(source.access(manager)).toEqual({ own: false, all: true });
+    expect(source.access(manager)).toEqual({ own: true, all: true });
     expect(source.access(admin)).toEqual({ own: true, all: true });
-    expect(source.access(user(9))).toEqual({ own: false, all: false });
+    expect(source.access(user(9))).toEqual({ own: true, all: false });
   });
 
   it('maps each stored state to one Jobs status', async () => {
@@ -136,7 +136,7 @@ describe('ReadAlongJobSource', () => {
   it('names the book only where the viewer still reaches it', async () => {
     const { source, subjects } = makeSource();
     const subjectsFor = await source.describe([rowOf({})], viewerOf(requester));
-    expect(subjects.describe).toHaveBeenCalledWith([12], { user: requester, manages: false });
+    expect(subjects.describe).toHaveBeenCalledWith([12], requester);
     expect(subjectsFor.get(JOB_ID)).toMatchObject({ label: 'Dune', url: '/book/12/files' });
     subjects.describe.mockResolvedValue(new Map());
     expect((await source.describe([rowOf({})], viewerOf(requester))).size).toBe(0);

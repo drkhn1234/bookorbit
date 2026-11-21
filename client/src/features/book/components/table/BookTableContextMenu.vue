@@ -214,7 +214,7 @@ onBeforeUnmount(() => {
         {{ t('book.table.actions.sendToDevice') }}
       </button>
       <button
-        v-if="hasPermission('library_delete_books')"
+        v-if="hasLibraryPermission('library_delete_books', book?.libraryId)"
         class="flex w-full items-center gap-2 rounded-xs px-2 py-1.5 text-left text-sm text-destructive hover:bg-accent"
         @click="emitAction('delete')"
       >

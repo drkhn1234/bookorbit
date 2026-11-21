@@ -1,3 +1,4 @@
+import { mapWithConcurrency } from '../../common/utils/batch.utils';
 import { LibraryScopeService } from '../../common/library-scope/library-scope.service';
 import { Inject, Logger, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
 import type { ConfigType } from '@nestjs/config';
@@ -39,10 +40,10 @@ export class ScanGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   private readonly logger = new Logger(ScanGateway.name);
   private readonly clientOrigin: string;
   private readonly handleBookProgressChanged = (payload: BookProgressChangedPayload): void => {
-    this.emitBookProgressChanged(payload);
+    void this.emitBookProgressChanged(payload);
   };
   private readonly handleCoverChanged = (event: CoverRefreshedEvent): void => {
-    this.emitCoverRefreshed(event);
+    void this.emitCoverRefreshed(event);
   };
 
   constructor(
@@ -106,8 +107,9 @@ export class ScanGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
    */
   @SubscribeMessage('subscribe:library')
   async handleSubscribeLibrary(client: Socket, libraryId: number): Promise<void> {
-    const user = await resolveSocketUser(client);
-    if (!user || !Number.isSafeInteger(libraryId) || libraryId <= 0) return;
+    if (!Number.isSafeInteger(libraryId) || libraryId <= 0 || !(await resolveSocketUser(client))) return;
+    const user = await this.currentUser(client);
+    if (!user) return;
     if (!(await this.libraryScope.canSee(user, libraryId))) {
       this.logger.debug(`[scanner.ws_subscribe] [fail] userId=${user.id} libraryId=${libraryId} socketId=${client.id} - no library access`);
       return;
@@ -130,74 +132,121 @@ export class ScanGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     }
   }
 
-  // Called by services — not WS message handlers. Guards against script/test
-  // contexts where no HTTP adapter starts and this.server is never populated.
-  emitProgress(event: ScanProgressEvent): void {
-    this.server?.to(`library:${event.libraryId}`).emit('scan:progress', event);
+  private async currentUser(client: Socket): Promise<RequestUser | null> {
+    try {
+      const user = await this.authenticator.authenticateSocket(client);
+      client.data.user = user;
+      return user;
+    } catch (error) {
+      rejectSocketConnection(client, error);
+      return null;
+    }
   }
 
-  emitCoverRefreshProgress(event: CoverRefreshProgressEvent): void {
-    this.server?.to(`library:${event.libraryId}`).emit('cover:refresh:progress', event);
+  private async emitLibraryEvent(libraryIds: number[], name: string, event: unknown): Promise<void> {
+    if (!this.server) return;
+    const ids = [...new Set(libraryIds)];
+    try {
+      const clients = await this.server.in(ids.map((id) => `library:${id}`)).fetchSockets();
+      await mapWithConcurrency(clients, 8, async (client) => {
+        const user = await this.currentUser(client as unknown as Socket);
+        if (!user) return;
+        const visible = await this.libraryScope.filterVisible(user, ids);
+        for (const id of ids) {
+          if (!visible.includes(id)) client.leave(`library:${id}`);
+        }
+        if (visible.length === 0) return;
+        // A transfer/merge can cross a private boundary. Refresh the visible side without naming it.
+        if (visible.length !== ids.length) client.emit('library:changed', { libraryIds: visible });
+        else client.emit(name, event);
+      });
+    } catch (error) {
+      this.logger.warn(
+        `[scanner.ws_emit] [fail] event="${sanitizeLogValue(name)}" error="${sanitizeLogValue(error instanceof Error ? error.message : String(error))}" - library event delivery failed`,
+      );
+    }
   }
 
-  emitCoverRefreshed(event: CoverRefreshedEvent): void {
-    if (event.libraryId === undefined) return;
-    this.server?.to(`library:${event.libraryId}`).emit('cover:refreshed', event);
+  emitProgress(event: ScanProgressEvent): Promise<void> {
+    return this.emitLibraryEvent([event.libraryId], 'scan:progress', event);
   }
 
-  emitBookMissing(event: BookMissingEvent): void {
-    this.logger.debug(`[scanner.ws_emit] [book:missing] libraryId=${event.libraryId} bookCount=${event.bookIds.length}`);
-    this.server?.to(`library:${event.libraryId}`).emit('book:missing', event);
+  emitCoverRefreshProgress(event: CoverRefreshProgressEvent): Promise<void> {
+    return this.emitLibraryEvent([event.libraryId], 'cover:refresh:progress', event);
   }
 
-  emitBookRestored(event: BookRestoredEvent): void {
-    this.logger.debug(`[scanner.ws_emit] [book:restored] libraryId=${event.libraryId} bookCount=${event.bookIds.length}`);
-    this.server?.to(`library:${event.libraryId}`).emit('book:restored', event);
+  emitCoverRefreshed(event: CoverRefreshedEvent): Promise<void> {
+    if (event.libraryId === undefined) return Promise.resolve();
+    return this.emitLibraryEvent([event.libraryId], 'cover:refreshed', event);
   }
 
-  emitBookMoved(event: BookMovedEvent): void {
-    this.logger.debug(`[scanner.ws_emit] [book:moved] libraryId=${event.libraryId} bookCount=${event.bookIds.length}`);
-    this.server?.to(`library:${event.libraryId}`).emit('book:moved', event);
+  emitBookMissing(event: BookMissingEvent): Promise<void> {
+    return this.emitLibraryEvent([event.libraryId], 'book:missing', event);
   }
 
-  emitBookTransferred(event: BookTransferredEvent): void {
-    this.logger.debug(
-      `[scanner.ws_emit] [book:transferred] fromLibraryId=${event.fromLibraryId} toLibraryId=${event.toLibraryId} bookCount=${event.bookIds.length}`,
-    );
-    this.server?.to([`library:${event.fromLibraryId}`, `library:${event.toLibraryId}`]).emit('book:transferred', event);
+  emitBookRestored(event: BookRestoredEvent): Promise<void> {
+    return this.emitLibraryEvent([event.libraryId], 'book:restored', event);
   }
 
-  /** To the room of every library the merge touched: viewers of a library the books left must drop them too. */
-  emitBookMerged(event: BookMergedEvent): void {
-    const libraryIds = [...new Set([event.libraryId, ...(event.sourceLibraryIds ?? [])])];
-    this.logger.debug(
-      `[scanner.ws_emit] [book:merged] libraryId=${event.libraryId} libraryIds=${libraryIds.join(',')} targetBookId=${event.targetBookId} sourceCount=${event.sourceBookIds.length}`,
-    );
-    this.server?.to(libraryIds.map((id) => `library:${id}`)).emit('book:merged', event);
+  emitBookMoved(event: BookMovedEvent): Promise<void> {
+    return this.emitLibraryEvent([event.libraryId], 'book:moved', event);
   }
 
-  emitBookMergeJob(userId: number, phase: 'progress' | 'finished', event: BookMergeJobEvent): void {
-    this.server?.to(`user:${userId}`).emit(`book-merge:${phase}`, event);
+  emitBookTransferred(event: BookTransferredEvent): Promise<void> {
+    return this.emitLibraryEvent([event.fromLibraryId, event.toLibraryId], 'book:transferred', event);
   }
 
-  emitDuplicateResolution(userId: number, phase: 'progress' | 'finished', event: BookDuplicateResolutionEvent): void {
-    this.server?.to(`user:${userId}`).emit(`book-duplicates:resolution-${phase}`, event);
+  emitBookMerged(event: BookMergedEvent): Promise<void> {
+    return this.emitLibraryEvent([event.libraryId, ...(event.sourceLibraryIds ?? [])], 'book:merged', event);
   }
 
-  emitBookLinksChanged(event: BookLinksChangedEvent): void {
-    this.server?.to(`library:${event.libraryId}`).emit('book:links-changed', event);
+  emitBookMergeJob(userId: number, phase: 'progress' | 'finished', event: BookMergeJobEvent, libraryIds: number[]): Promise<void> {
+    return this.emitUserLibraryEvent(userId, `book-merge:${phase}`, event, libraryIds);
   }
 
-  emitBookProgressChanged(payload: BookProgressChangedPayload): void {
+  emitDuplicateResolution(userId: number, phase: 'progress' | 'finished', event: BookDuplicateResolutionEvent, libraryIds: number[]): Promise<void> {
+    return this.emitUserLibraryEvent(userId, `book-duplicates:resolution-${phase}`, event, libraryIds);
+  }
+
+  emitBookLinksChanged(event: BookLinksChangedEvent): Promise<void> {
+    return this.emitLibraryEvent([event.libraryId], 'book:links-changed', event);
+  }
+
+  async emitBookProgressChanged(payload: BookProgressChangedPayload): Promise<void> {
+    if (!this.server) return;
     const event: BookProgressChangedEvent = {
       bookId: payload.bookId,
       progress: payload.progress,
       source: payload.source,
     };
-    this.server?.to(`user:${payload.userId}`).emit('book:progress-changed', event);
+    try {
+      const [book] = await this.scannerRepository.findBooksByIds([payload.bookId]);
+      if (book) await this.emitUserLibraryEvent(payload.userId, 'book:progress-changed', event, [book.libraryId]);
+    } catch (error) {
+      this.logger.warn(
+        `[scanner.ws_emit] [fail] bookId=${payload.bookId} error="${sanitizeLogValue(error instanceof Error ? error.message : String(error))}" - book progress delivery failed`,
+      );
+    }
   }
 
-  emitBooksAdded(event: ScanBooksAddedEvent): void {
-    this.server?.to(`library:${event.libraryId}`).emit('scan:books:added', event);
+  private async emitUserLibraryEvent(userId: number, name: string, event: unknown, libraryIds: number[]): Promise<void> {
+    if (!this.server) return;
+    try {
+      const clients = await this.server.in(`user:${userId}`).fetchSockets();
+      await mapWithConcurrency(clients, 8, async (client) => {
+        const user = await this.currentUser(client as unknown as Socket);
+        if (user?.id !== userId) return;
+        const visible = await this.libraryScope.filterVisible(user, libraryIds);
+        if (visible.length === libraryIds.length) client.emit(name, event);
+      });
+    } catch (error) {
+      this.logger.warn(
+        `[scanner.ws_emit] [fail] event="${sanitizeLogValue(name)}" error="${sanitizeLogValue(error instanceof Error ? error.message : String(error))}" - user library event delivery failed`,
+      );
+    }
+  }
+
+  emitBooksAdded(event: ScanBooksAddedEvent): Promise<void> {
+    return this.emitLibraryEvent([event.libraryId], 'scan:books:added', event);
   }
 }

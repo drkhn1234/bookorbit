@@ -10,6 +10,7 @@ import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { DEFAULT_FORMAT_PRIORITY } from '@bookorbit/types';
 import type { BookWriteAndRenameResult, BulkRenamePreviewPage, BulkRenameProgressEvent, BulkRenameStatus } from '@bookorbit/types';
 
+import { triggerLibraryScan } from '../app-harness';
 import { AppModule } from '../../../src/app.module';
 import { DB } from '../../../src/db';
 import * as schema from '../../../src/db/schema';
@@ -144,20 +145,8 @@ export async function createLibrary(
 }
 
 export async function triggerAndWaitForScan(ctx: FileRenameE2EContext, libraryId: number, timeoutMs = 30_000): Promise<void> {
-  const response = await ctx.app.inject({
-    method: 'POST',
-    url: `/api/v1/scanner/libraries/${libraryId}/scan`,
-    headers: authHeader(ctx.adminToken),
-  });
-
-  if (response.statusCode !== 202) {
-    throw new Error(`Scan endpoint returned ${response.statusCode}: ${response.body}`);
-  }
-
-  const body = response.json() as { jobId?: number };
-  if (!body.jobId) throw new Error(`Scan returned no jobId: ${response.body}`);
-
-  await waitForScanJob(ctx.db, body.jobId, timeoutMs);
+  const jobId = await triggerLibraryScan(ctx, libraryId);
+  await waitForScanJob(ctx.db, jobId, timeoutMs);
 }
 
 async function waitForScanJob(db: Db, jobId: number, timeoutMs: number): Promise<void> {

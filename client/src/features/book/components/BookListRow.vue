@@ -499,9 +499,9 @@ function handleRowAuxClick(event: MouseEvent) {
             <Send class="size-4 mr-2" />
             {{ t('book.actions.sendViaEmail') }}
           </DropdownMenuItem>
-          <DropdownMenuSeparator v-if="hasPermission('library_delete_books')" />
+          <DropdownMenuSeparator v-if="hasLibraryPermission('library_delete_books', book?.libraryId)" />
           <DropdownMenuItem
-            v-if="hasPermission('library_delete_books')"
+            v-if="hasLibraryPermission('library_delete_books', book?.libraryId)"
             class="text-destructive focus:text-destructive"
             @click="emit('action', 'delete')"
           >

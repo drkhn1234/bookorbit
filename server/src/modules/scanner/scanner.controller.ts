@@ -2,10 +2,10 @@ import { AuditAction, AuditResource, Permission } from '@bookorbit/types';
 import { Controller, DefaultValuePipe, Get, HttpCode, HttpStatus, Param, ParseIntPipe, Post, Query } from '@nestjs/common';
 
 import { Auditable } from '../../common/decorators/auditable.decorator';
-import { RequireLibraryAccess } from '../../common/decorators/require-library-access.decorator';
-import { RequirePermission } from '../../common/decorators/require-permission.decorator';
+import { RequireScopedPermission } from '../../common/decorators/require-scoped-permission.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import type { RequestUser } from '../../common/types/request-user';
+import { apiKeyCredentialOf, type RequestUser } from '../../common/types/request-user';
+import { LibraryScopeService } from '../../common/library-scope/library-scope.service';
 import { RegexMetadataReapplyService } from './regex-metadata-reapply.service';
 import { ScannerService } from './scanner.service';
 
@@ -14,12 +14,18 @@ export class ScannerController {
   constructor(
     private readonly scannerService: ScannerService,
     private readonly regexReapply: RegexMetadataReapplyService,
+    private readonly libraries: LibraryScopeService,
   ) {}
 
   @Post('libraries/:id/scan')
-  @RequirePermission(Permission.ManageLibraries)
   @HttpCode(HttpStatus.ACCEPTED)
-  scan(@Param('id', ParseIntPipe) libraryId: number) {
+  async scan(@Param('id', ParseIntPipe) libraryId: number, @CurrentUser() user: RequestUser, @Query('scope') scope?: string) {
+    const personalOwner =
+      scope !== 'admin' &&
+      !apiKeyCredentialOf(user) &&
+      !user.permissions.includes(Permission.DemoRestricted) &&
+      (await this.libraries.levelFor(user, libraryId)) === 'owner';
+    if (!personalOwner) await this.libraries.assertPermission(user, libraryId, Permission.ManageLibraries, scope);
     return this.scannerService.startScan(libraryId, 'manual');
   }
 
@@ -28,23 +34,20 @@ export class ScannerController {
    * global permission to manage libraries.
    */
   @Get('libraries/:id/scan-history')
-  @RequirePermission(Permission.ManageLibraries)
-  @RequireLibraryAccess('viewer')
+  @RequireScopedPermission(Permission.ManageLibraries, 'library')
   scanHistory(@Param('id', ParseIntPipe) libraryId: number, @Query('limit', new DefaultValuePipe(5), ParseIntPipe) limit: number) {
     return this.scannerService.getScanHistory(libraryId, limit);
   }
 
   @Get('libraries/:id/reapply-regex-metadata')
-  @RequirePermission(Permission.ManageLibraries)
-  @RequireLibraryAccess('editor')
-  getRegexReapply(@Param('id', ParseIntPipe) libraryId: number, @CurrentUser() user: RequestUser) {
-    return this.regexReapply.get(libraryId, user);
+  @RequireScopedPermission(Permission.ManageLibraries, 'library')
+  getRegexReapply(@Param('id', ParseIntPipe) libraryId: number, @CurrentUser() user: RequestUser, @Query('scope') scope?: string) {
+    return this.regexReapply.get(libraryId, user, scope);
   }
 
   /** Writes only the fields the saved rules decide, so it is safe to run on a library with fetched metadata. */
   @Post('libraries/:id/reapply-regex-metadata')
-  @RequirePermission(Permission.ManageLibraries)
-  @RequireLibraryAccess('editor')
+  @RequireScopedPermission(Permission.ManageLibraries, 'library')
   @HttpCode(HttpStatus.ACCEPTED)
   @Auditable({
     action: AuditAction.LibraryReapplyRegexMetadata,
@@ -57,7 +60,7 @@ export class ScannerController {
   }
 
   @Post('libraries/:id/refresh-covers')
-  @RequirePermission(Permission.ManageLibraries)
+  @RequireScopedPermission(Permission.ManageLibraries, 'library')
   @HttpCode(HttpStatus.ACCEPTED)
   refreshCovers(@Param('id', ParseIntPipe) libraryId: number) {
     return this.scannerService.refreshCovers(libraryId);

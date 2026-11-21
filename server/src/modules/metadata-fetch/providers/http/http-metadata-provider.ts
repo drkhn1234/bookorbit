@@ -9,6 +9,7 @@ import type {
   MetadataSeriesMembership,
 } from '@bookorbit/types';
 
+import { metadataOperationScope } from '../../../../common/provider-cache/metadata-operation-scope';
 import { markProviderDegraded } from '../../../../common/provider-cache/provider-call-context';
 import type { ProviderCacheSpec } from '../../../../common/provider-cache/provider-cache-spec';
 import { splitMetadataIsbn } from '../../../../common/text-match/isbn-normalize';
@@ -103,13 +104,15 @@ export class HttpMetadataProvider implements MetadataProvider {
       version: cacheVersion(info),
       trustEmpty: false,
       authoritativeLookupStatuses: [404],
-      context: () =>
-        Promise.resolve(
+      context: () => {
+        const { baseUrl, authorization } = this.target();
+        return Promise.resolve(
           providerCacheContext(true, {
-            baseUrl: provider.target.baseUrl,
-            authorization: provider.target.authorization ? createHash('sha256').update(provider.target.authorization).digest('hex') : null,
+            baseUrl,
+            authorization: authorization ? createHash('sha256').update(authorization).digest('hex') : null,
           }),
-        ),
+        );
+      },
       describeSearch: (params) => ({ inputs: Object.fromEntries(this.searchQuery(params)) }),
       describeLookup: (providerId) => ({ inputs: { id: providerId } }),
     };
@@ -123,7 +126,7 @@ export class HttpMetadataProvider implements MetadataProvider {
     if (!params.title && !params.isbn) return [];
     const query = this.searchQuery(params);
     if (!query.has('query') && !query.has('isbn')) return [];
-    const body = (await this.call('search', () => this.client.search(this.provider.target, query, params.signal))) as {
+    const body = (await this.call('search', () => this.client.search(this.target(), query, params.signal))) as {
       matches?: unknown;
       partial?: unknown;
     } | null;
@@ -139,8 +142,14 @@ export class HttpMetadataProvider implements MetadataProvider {
 
   async lookupById(providerId: string, signal?: AbortSignal): Promise<MetadataCandidate | null> {
     if (!this.provider.info.lookup || !providerId || providerId.length > this.provider.info.idMaxLength) return null;
-    const body = await this.call('lookup', () => this.client.lookup(this.provider.target, providerId, signal));
+    const body = await this.call('lookup', () => this.client.lookup(this.target(), providerId, signal));
     return body ? this.toCandidate(body as SpecBookMetadata) : null;
+  }
+
+  private target() {
+    const target = this.provider.target;
+    const personal = metadataOperationScope.getStore()?.externalAuthorization.get(this.provider.id);
+    return personal?.baseUrl === target.baseUrl ? { ...target, authorization: personal.authorization } : target;
   }
 
   private searchQuery(params: MetadataSearchParams): URLSearchParams {

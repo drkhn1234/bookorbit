@@ -28,8 +28,8 @@ export class AuthenticatorService {
     private readonly apiKeys: ApiKeyAuthenticator,
   ) {}
 
-  authenticateApiKey(token: string, address: string | null): Promise<RequestUser> {
-    return this.apiKeys.authenticate(token, address);
+  authenticateApiKey(token: string, address: string | null, recordUsage = true): Promise<RequestUser> {
+    return recordUsage ? this.apiKeys.authenticate(token, address) : this.apiKeys.authenticate(token, address, false);
   }
 
   /**

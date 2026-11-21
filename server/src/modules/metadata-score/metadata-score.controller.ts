@@ -1,3 +1,5 @@
+import { UseGuards } from '@nestjs/common';
+import { LibraryAdministratorModeGuard } from '../../common/library-scope/library-settings-scope';
 import { Body, Controller, Get, HttpCode, HttpStatus, Patch, Post } from '@nestjs/common';
 import { Permission } from '@bookorbit/types';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
@@ -14,12 +16,14 @@ export class MetadataScoreController {
   }
 
   @Patch('weights')
+  @UseGuards(LibraryAdministratorModeGuard)
   @RequirePermission(Permission.ManageAppSettings)
   updateWeights(@Body() dto: UpdateWeightsDto) {
     return this.service.updateWeights(dto);
   }
 
   @Post('recalculate')
+  @UseGuards(LibraryAdministratorModeGuard)
   @HttpCode(HttpStatus.ACCEPTED)
   @RequirePermission(Permission.ManageAppSettings)
   recalculate() {
@@ -32,6 +36,7 @@ export class MetadataScoreController {
   }
 
   @Get('recalculate/status')
+  @UseGuards(LibraryAdministratorModeGuard)
   @RequirePermission(Permission.ManageAppSettings)
   getRecalculationStatus() {
     return this.service.getRecalculationStatus();

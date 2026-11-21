@@ -8,7 +8,11 @@ const permissions = ref<string[]>([Permission.LibraryEditMetadata])
 const isSuperuser = ref(false)
 vi.mock('@/features/library/composables/useLibraries', () => ({ useLibraries: () => ({ libraries }) }))
 vi.mock('@/features/auth/composables/usePermissions', () => ({
-  usePermissions: () => ({ hasPermission: (permission: string) => isSuperuser.value || permissions.value.includes(permission), isSuperuser }),
+  usePermissions: () => ({
+    hasExplicitPermission: (permission: string) => permissions.value.includes(permission),
+    isDemoRestrictedAccount: ref(false),
+    isSuperuser,
+  }),
 }))
 const { useBookSelectionPermissions } = await import('../useBookSelectionPermissions')
 
@@ -190,9 +194,11 @@ describe('link availability for bulk selections', () => {
     permissions.value = [Permission.LibraryMergeBooks]
   })
 
-  it('hides Link without the merge permission it shares', () => {
+  it('derives Link for owners and denies a mixed selection without editor permission', () => {
     permissions.value = [Permission.LibraryEditMetadata]
-    expect(linkContext([1, 2]).linkSelection.value).toBeNull()
+    expect(linkContext([1, 2]).linkSelection.value).toEqual({ disabledReason: 'notEditable' })
+    expect(linkContext([1, 100]).linkSelection.value).toBeNull()
+    expect(linkContext([2]).linkSelection.value).toEqual({ disabledReason: 'tooFew' })
   })
 
   it('hides Link when every selected book sits in a library the user only views', () => {
@@ -225,8 +231,8 @@ describe('link availability for bulk selections', () => {
     expect(ctx.linkSelection.value).toBeNull()
   })
 
-  it('lets a superuser link any selection', () => {
+  it('still denies linking a viewer selection for a superuser', () => {
     isSuperuser.value = true
-    expect(linkContext([1, 3]).linkSelection.value).toEqual({ disabledReason: null })
+    expect(linkContext([1, 3]).linkSelection.value).toEqual({ disabledReason: 'notEditable' })
   })
 })

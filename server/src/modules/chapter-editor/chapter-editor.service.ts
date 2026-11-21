@@ -369,9 +369,9 @@ export class ChapterEditorService {
   private async canRunLookup(bookId: number, userId: number | null): Promise<boolean> {
     if (userId === null) return false;
     const user = await this.userService.findByIdWithPermissions(userId);
-    if (!user?.active || (!user.isSuperuser && !user.permissions.includes(Permission.LibraryEditMetadata))) return false;
+    if (!user?.active) return false;
     try {
-      await this.bookService.verifyBookAccess(bookId, user, 'editor');
+      await this.bookService.verifyBookPermission(bookId, user, Permission.LibraryEditMetadata);
       return true;
     } catch (error) {
       if (error instanceof NotFoundException || error instanceof ForbiddenException) return false;

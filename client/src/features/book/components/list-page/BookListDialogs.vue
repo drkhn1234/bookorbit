@@ -37,6 +37,8 @@ function handleRemoveFromCollection() {
 
   <SelectionActionBar
     :metadata-editable="page.canEditSelectionMetadata"
+    :downloadable="page.canDownloadSelection"
+    :deletable="page.canDeleteSelection"
     :visible="page.selectionMode"
     :count="page.selectedCount"
     :in-flight="page.inFlight"

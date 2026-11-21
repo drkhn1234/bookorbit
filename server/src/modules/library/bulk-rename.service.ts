@@ -236,8 +236,8 @@ export class BulkRenameService {
     const pattern =
       settings.fileNamingPattern ??
       (settings.organizationMode === 'book_per_folder'
-        ? await this.appSettings.getUploadPatternBookPerFolder()
-        : await this.appSettings.getUploadPattern());
+        ? await this.appSettings.getUploadPatternBookPerFolder(libraryId)
+        : await this.appSettings.getUploadPattern(libraryId));
 
     const sanitizeForCrossPlatform = await this.appSettings.isCrossPlatformPathSanitizationEnabled();
 

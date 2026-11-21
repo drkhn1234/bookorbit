@@ -2,7 +2,6 @@
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { BookOpen, ExternalLink, Eye, Folder, FolderPlus, Headphones, Pencil, Star, Trash2, X } from '@lucide/vue'
-import { usePermissions } from '@/features/auth/composables/usePermissions'
 import { useLibraryPermissions } from '@/features/library/composables/useLibraryPermissions'
 import { Sheet, SheetContent, SheetTitle, SheetDescription } from '@/components/ui/sheet'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -27,7 +26,6 @@ import { useI18n } from 'vue-i18n'
 const { t } = useI18n()
 
 const props = defineProps<{ bookId: number | null; open: boolean }>()
-const { hasPermission } = usePermissions()
 const { hasLibraryPermission } = useLibraryPermissions()
 const canEditMetadata = computed(() => hasLibraryPermission('library_edit_metadata', detail.value?.libraryId, 'editor'))
 const emit = defineEmits<{
@@ -444,7 +442,7 @@ function handleDelete() {
               </TooltipTrigger>
               <TooltipContent>{{ t('book.actions.addToCollection') }}</TooltipContent>
             </Tooltip>
-            <Tooltip v-if="hasPermission('library_delete_books')">
+            <Tooltip v-if="hasLibraryPermission('library_delete_books', detail?.libraryId)">
               <TooltipTrigger as-child>
                 <button
                   data-testid="quick-view-action-delete"

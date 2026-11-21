@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { CommonModule } from '../../common/common.module';
 
 import { JobChangesService } from './job-changes.service';
 import { JobSourceRegistry } from './job-source.registry';
@@ -12,6 +13,7 @@ import { JobsService } from './jobs.service';
  * through `JobChangesService`.
  */
 @Module({
+  imports: [CommonModule],
   controllers: [JobsController],
   providers: [JobChangesService, JobSourceRegistry, JobsGateway, JobsService],
   exports: [JobChangesService, JobSourceRegistry],

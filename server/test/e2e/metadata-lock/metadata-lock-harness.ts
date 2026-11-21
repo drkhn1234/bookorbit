@@ -67,6 +67,7 @@ interface StaticCoverServer {
 export interface MetadataLockE2EContext {
   app: NestFastifyApplication;
   db: Db;
+  adminId: number;
   adminToken: string;
   fixture: MetadataLockFixtureRoot;
   envSnapshot: EnvSnapshot;
@@ -156,10 +157,13 @@ export async function createMetadataLockE2EContext(): Promise<MetadataLockE2ECon
 
   const db = app.get<Db>(DB);
   const adminToken = await getAdminToken(app, db);
+  const me = await app.inject({ method: 'GET', url: '/api/v1/auth/me', headers: authHeader(adminToken) });
+  if (me.statusCode !== 200) throw new Error('Could not resolve metadata fixture administrator');
 
   return {
     app,
     db,
+    adminId: me.json<{ id: number }>().id,
     adminToken,
     fixture,
     envSnapshot,
@@ -202,6 +206,7 @@ export async function createLibraryWithFolder(
       path: folderPath,
     })
     .returning({ id: libraryFolders.id });
+  await ctx.db.insert(schema.userLibraryAccess).values({ userId: ctx.adminId, libraryId: library.id, accessLevel: 'owner' });
 
   return {
     libraryId: library.id,

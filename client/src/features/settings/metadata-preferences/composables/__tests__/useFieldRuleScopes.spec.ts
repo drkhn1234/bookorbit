@@ -22,13 +22,15 @@ function makePrefs(providers: MetadataProviderKey[] = [key('goodreads'), key('go
 }
 
 const LIBRARIES = [
-  { id: 1, name: 'Novels' },
-  { id: 2, name: 'Comics' },
+  { id: 1, name: 'Novels', accessLevel: 'owner' },
+  { id: 2, name: 'Comics', accessLevel: 'owner' },
+  { id: 3, name: 'Shared View', accessLevel: 'viewer' },
 ]
 
 const requests: { url: string; method: string; body: unknown }[] = []
 
 vi.mock('@/lib/api', () => ({
+  setOnAuthFailure: vi.fn(),
   api: vi.fn<(url: string, init?: RequestInit) => Promise<unknown>>((url, init) => {
     const method = init?.method ?? 'GET'
     requests.push({ url, method, body: init?.body ? JSON.parse(String(init.body)) : undefined })
@@ -46,6 +48,7 @@ vi.mock('@/lib/api', () => ({
             libraryId,
             // Comics already overrides `cover`; Novels inherits everything.
             overrides: libraryId === 2 ? { cover: { enabled: true, providers: [key('amazon')], mergeStrategy: 'overwrite' } } : {},
+            inherited: makePrefs(),
             effective: makePrefs(),
           }),
       })
@@ -87,10 +90,10 @@ afterEach(() => {
 })
 
 describe('useFieldRuleScopes', () => {
-  it('starts on the global scope and lists every library after it', async () => {
+  it('starts on personal defaults and lists only owned libraries', async () => {
     const { api } = await setup()
     expect(api.activeScopeId.value).toBe(GLOBAL_SCOPE)
-    expect(api.scopes.value.map((scope) => scope.name)).toEqual(['Global defaults', 'Novels', 'Comics'])
+    expect(api.scopes.value.map((scope) => scope.name)).toEqual(['Personal defaults', 'Novels', 'Comics'])
     expect(api.isGlobalScope.value).toBe(true)
   })
 

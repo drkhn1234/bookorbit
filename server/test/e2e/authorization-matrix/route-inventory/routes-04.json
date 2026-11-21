@@ -5,7 +5,9 @@
     "methodName": "findOne",
     "httpMethod": "GET",
     "path": "/email/templates/:id",
-    "permissions": ["Permission.EmailSend"],
+    "permissions": [
+      "Permission.EmailSend"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -18,7 +20,9 @@
     "methodName": "create",
     "httpMethod": "POST",
     "path": "/email/templates",
-    "permissions": ["Permission.EmailSend"],
+    "permissions": [
+      "Permission.EmailSend"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -31,7 +35,9 @@
     "methodName": "update",
     "httpMethod": "PUT",
     "path": "/email/templates/:id",
-    "permissions": ["Permission.EmailSend"],
+    "permissions": [
+      "Permission.EmailSend"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -44,7 +50,9 @@
     "methodName": "remove",
     "httpMethod": "DELETE",
     "path": "/email/templates/:id",
-    "permissions": ["Permission.EmailSend"],
+    "permissions": [
+      "Permission.EmailSend"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -57,7 +65,9 @@
     "methodName": "setDefault",
     "httpMethod": "PATCH",
     "path": "/email/templates/:id/default",
-    "permissions": ["Permission.EmailSend"],
+    "permissions": [
+      "Permission.EmailSend"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -70,7 +80,9 @@
     "methodName": "previewText",
     "httpMethod": "POST",
     "path": "/email/templates/preview",
-    "permissions": ["Permission.EmailSend"],
+    "permissions": [
+      "Permission.EmailSend"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -83,7 +95,9 @@
     "methodName": "preview",
     "httpMethod": "POST",
     "path": "/email/templates/:id/preview",
-    "permissions": ["Permission.EmailSend"],
+    "permissions": [
+      "Permission.EmailSend"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -113,7 +127,9 @@
     "libraryAccess": [],
     "isPublic": true,
     "allowDefault": false,
-    "useGuards": ["KoboTokenGuard"],
+    "useGuards": [
+      "KoboTokenGuard"
+    ],
     "apiKey": "public"
   },
   {
@@ -126,7 +142,9 @@
     "libraryAccess": [],
     "isPublic": true,
     "allowDefault": false,
-    "useGuards": ["KoboTokenGuard"],
+    "useGuards": [
+      "KoboTokenGuard"
+    ],
     "apiKey": "public"
   },
   {
@@ -139,7 +157,9 @@
     "libraryAccess": [],
     "isPublic": true,
     "allowDefault": false,
-    "useGuards": ["KoboTokenGuard"],
+    "useGuards": [
+      "KoboTokenGuard"
+    ],
     "apiKey": "public"
   },
   {
@@ -152,7 +172,9 @@
     "libraryAccess": [],
     "isPublic": true,
     "allowDefault": false,
-    "useGuards": ["KoboTokenGuard"],
+    "useGuards": [
+      "KoboTokenGuard"
+    ],
     "apiKey": "public"
   },
   {
@@ -165,7 +187,9 @@
     "libraryAccess": [],
     "isPublic": true,
     "allowDefault": false,
-    "useGuards": ["KoboTokenGuard"],
+    "useGuards": [
+      "KoboTokenGuard"
+    ],
     "apiKey": "public"
   },
   {
@@ -178,7 +202,9 @@
     "libraryAccess": [],
     "isPublic": true,
     "allowDefault": false,
-    "useGuards": ["KoboTokenGuard"],
+    "useGuards": [
+      "KoboTokenGuard"
+    ],
     "apiKey": "public"
   },
   {
@@ -191,7 +217,9 @@
     "libraryAccess": [],
     "isPublic": true,
     "allowDefault": false,
-    "useGuards": ["KoboTokenGuard"],
+    "useGuards": [
+      "KoboTokenGuard"
+    ],
     "apiKey": "public"
   },
   {
@@ -204,7 +232,9 @@
     "libraryAccess": [],
     "isPublic": true,
     "allowDefault": false,
-    "useGuards": ["KoboTokenGuard"],
+    "useGuards": [
+      "KoboTokenGuard"
+    ],
     "apiKey": "public"
   },
   {
@@ -217,7 +247,9 @@
     "libraryAccess": [],
     "isPublic": true,
     "allowDefault": false,
-    "useGuards": ["KoboTokenGuard"],
+    "useGuards": [
+      "KoboTokenGuard"
+    ],
     "apiKey": "public"
   },
   {
@@ -230,7 +262,9 @@
     "libraryAccess": [],
     "isPublic": true,
     "allowDefault": false,
-    "useGuards": ["KoboTokenGuard"],
+    "useGuards": [
+      "KoboTokenGuard"
+    ],
     "apiKey": "public"
   },
   {
@@ -243,7 +277,9 @@
     "libraryAccess": [],
     "isPublic": true,
     "allowDefault": false,
-    "useGuards": ["KoboTokenGuard"],
+    "useGuards": [
+      "KoboTokenGuard"
+    ],
     "apiKey": "public"
   },
   {
@@ -256,7 +292,9 @@
     "libraryAccess": [],
     "isPublic": true,
     "allowDefault": false,
-    "useGuards": ["KoboTokenGuard"],
+    "useGuards": [
+      "KoboTokenGuard"
+    ],
     "apiKey": "public"
   },
   {
@@ -269,7 +307,9 @@
     "libraryAccess": [],
     "isPublic": true,
     "allowDefault": false,
-    "useGuards": ["KoboTokenGuard"],
+    "useGuards": [
+      "KoboTokenGuard"
+    ],
     "apiKey": "public"
   },
   {
@@ -282,7 +322,9 @@
     "libraryAccess": [],
     "isPublic": true,
     "allowDefault": false,
-    "useGuards": ["KoboTokenGuard"],
+    "useGuards": [
+      "KoboTokenGuard"
+    ],
     "apiKey": "public"
   },
   {
@@ -295,7 +337,9 @@
     "libraryAccess": [],
     "isPublic": true,
     "allowDefault": false,
-    "useGuards": ["KoboTokenGuard"],
+    "useGuards": [
+      "KoboTokenGuard"
+    ],
     "apiKey": "public"
   },
   {
@@ -308,7 +352,9 @@
     "libraryAccess": [],
     "isPublic": true,
     "allowDefault": false,
-    "useGuards": ["KoboTokenGuard"],
+    "useGuards": [
+      "KoboTokenGuard"
+    ],
     "apiKey": "public"
   },
   {
@@ -321,7 +367,9 @@
     "libraryAccess": [],
     "isPublic": true,
     "allowDefault": false,
-    "useGuards": ["KoboTokenGuard"],
+    "useGuards": [
+      "KoboTokenGuard"
+    ],
     "apiKey": "public"
   },
   {
@@ -334,7 +382,9 @@
     "libraryAccess": [],
     "isPublic": true,
     "allowDefault": false,
-    "useGuards": ["KoboTokenGuard"],
+    "useGuards": [
+      "KoboTokenGuard"
+    ],
     "apiKey": "public"
   },
   {
@@ -347,7 +397,9 @@
     "libraryAccess": [],
     "isPublic": true,
     "allowDefault": false,
-    "useGuards": ["KoboTokenGuard"],
+    "useGuards": [
+      "KoboTokenGuard"
+    ],
     "apiKey": "public"
   },
   {
@@ -356,7 +408,9 @@
     "methodName": "listDevices",
     "httpMethod": "GET",
     "path": "/kobo/devices",
-    "permissions": ["Permission.KoboSync"],
+    "permissions": [
+      "Permission.KoboSync"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -369,7 +423,9 @@
     "methodName": "createDevice",
     "httpMethod": "POST",
     "path": "/kobo/devices",
-    "permissions": ["Permission.KoboSync"],
+    "permissions": [
+      "Permission.KoboSync"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -382,7 +438,9 @@
     "methodName": "renameDevice",
     "httpMethod": "PATCH",
     "path": "/kobo/devices/:id",
-    "permissions": ["Permission.KoboSync"],
+    "permissions": [
+      "Permission.KoboSync"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -395,7 +453,9 @@
     "methodName": "revokeDevice",
     "httpMethod": "DELETE",
     "path": "/kobo/devices/:id",
-    "permissions": ["Permission.KoboSync"],
+    "permissions": [
+      "Permission.KoboSync"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -408,7 +468,9 @@
     "methodName": "getSettings",
     "httpMethod": "GET",
     "path": "/kobo/settings",
-    "permissions": ["Permission.KoboSync"],
+    "permissions": [
+      "Permission.KoboSync"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -421,7 +483,9 @@
     "methodName": "updateSettings",
     "httpMethod": "PATCH",
     "path": "/kobo/settings",
-    "permissions": ["Permission.KoboSync"],
+    "permissions": [
+      "Permission.KoboSync"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -516,7 +580,9 @@
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "AppAttestGuard"
+    ],
     "apiKey": "read"
   },
   {
@@ -538,7 +604,9 @@
     "methodName": "getOverview",
     "httpMethod": "GET",
     "path": "/libraries/overview",
-    "permissions": ["Permission.ManageLibraries"],
+    "permissions": [
+      "Permission.ManageLibraries"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -551,7 +619,9 @@
     "methodName": "validateRegexMetadata",
     "httpMethod": "POST",
     "path": "/libraries/regex-metadata/validate",
-    "permissions": ["Permission.ManageLibraries"],
+    "permissions": [
+      "Permission.ManageLibraries"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -564,7 +634,9 @@
     "methodName": "previewRegexMetadata",
     "httpMethod": "POST",
     "path": "/libraries/regex-metadata/preview",
-    "permissions": ["Permission.ManageLibraries"],
+    "permissions": [
+      "Permission.ManageLibraries"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -578,7 +650,9 @@
     "httpMethod": "GET",
     "path": "/libraries/:id",
     "permissions": [],
-    "libraryAccess": ["'viewer'"],
+    "libraryAccess": [
+      "'viewer'"
+    ],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
@@ -591,7 +665,9 @@
     "httpMethod": "POST",
     "path": "/libraries/:id/books",
     "permissions": [],
-    "libraryAccess": ["'viewer'"],
+    "libraryAccess": [
+      "'viewer'"
+    ],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
@@ -603,7 +679,9 @@
     "methodName": "create",
     "httpMethod": "POST",
     "path": "/libraries",
-    "permissions": ["Permission.ManageLibraries"],
+    "permissions": [
+      "Permission.ManageLibraries"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -616,7 +694,7 @@
     "methodName": "update",
     "httpMethod": "PATCH",
     "path": "/libraries/:id",
-    "permissions": ["Permission.ManageLibraries"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -629,7 +707,7 @@
     "methodName": "remove",
     "httpMethod": "DELETE",
     "path": "/libraries/:id",
-    "permissions": ["Permission.ManageLibraries"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -642,12 +720,12 @@
     "methodName": "prescan",
     "httpMethod": "POST",
     "path": "/libraries/prescan",
-    "permissions": ["Permission.ManageLibraries"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
-    "apiKey": "write"
+    "apiKey": "read"
   },
   {
     "file": "server/src/modules/library/library.controller.ts",
@@ -655,11 +733,15 @@
     "methodName": "reorder",
     "httpMethod": "POST",
     "path": "/libraries/reorder",
-    "permissions": ["Permission.ManageLibraries"],
+    "permissions": [
+      "Permission.ManageLibraries"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "LibraryAdministratorModeGuard"
+    ],
     "apiKey": "write"
   },
   {
@@ -669,7 +751,9 @@
     "httpMethod": "GET",
     "path": "/libraries/:id/stats",
     "permissions": [],
-    "libraryAccess": ["'viewer'"],
+    "libraryAccess": [
+      "'viewer'"
+    ],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
@@ -681,12 +765,17 @@
     "methodName": "getAddedAtRecompute",
     "httpMethod": "GET",
     "path": "/libraries/:id/recompute-added-at",
-    "permissions": ["Permission.ManageLibraries"],
-    "libraryAccess": ["'editor'"],
+    "permissions": [],
+    "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
-    "apiKey": "read"
+    "apiKey": "read",
+    "scopedPermission": {
+      "permission": "Permission.ManageLibraries",
+      "resource": "library",
+      "param": "id"
+    }
   },
   {
     "file": "server/src/modules/library/library.controller.ts",
@@ -694,12 +783,17 @@
     "methodName": "recomputeAddedAt",
     "httpMethod": "POST",
     "path": "/libraries/:id/recompute-added-at",
-    "permissions": ["Permission.ManageLibraries"],
-    "libraryAccess": ["'editor'"],
+    "permissions": [],
+    "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
-    "apiKey": "write"
+    "apiKey": "write",
+    "scopedPermission": {
+      "permission": "Permission.ManageLibraries",
+      "resource": "library",
+      "param": "id"
+    }
   },
   {
     "file": "server/src/modules/library/library.controller.ts",
@@ -707,12 +801,17 @@
     "methodName": "writeMetadataToFiles",
     "httpMethod": "POST",
     "path": "/libraries/:id/write-metadata-to-files",
-    "permissions": ["Permission.LibraryEditMetadata"],
-    "libraryAccess": ["'editor'"],
+    "permissions": [],
+    "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
-    "apiKey": "write"
+    "apiKey": "write",
+    "scopedPermission": {
+      "permission": "Permission.LibraryEditMetadata",
+      "resource": "library",
+      "param": "id"
+    }
   },
   {
     "file": "server/src/modules/library/library.controller.ts",
@@ -720,7 +819,7 @@
     "methodName": "getAccess",
     "httpMethod": "GET",
     "path": "/libraries/:libraryId/access",
-    "permissions": ["Permission.ManageLibraries"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -733,7 +832,7 @@
     "methodName": "grantAccess",
     "httpMethod": "POST",
     "path": "/libraries/:libraryId/access",
-    "permissions": ["Permission.ManageLibraries"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -746,7 +845,9 @@
     "methodName": "prepareReplacement",
     "httpMethod": "POST",
     "path": "/kobo/devices/:id/books/:bookId/replacement",
-    "permissions": ["Permission.KoboSync"],
+    "permissions": [
+      "Permission.KoboSync"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -759,7 +860,9 @@
     "methodName": "offerReplacement",
     "httpMethod": "POST",
     "path": "/kobo/devices/:id/replacements/:deliveryId/offer",
-    "permissions": ["Permission.KoboSync"],
+    "permissions": [
+      "Permission.KoboSync"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -772,7 +875,9 @@
     "methodName": "confirmReplacement",
     "httpMethod": "POST",
     "path": "/kobo/devices/:id/replacements/:deliveryId/confirm",
-    "permissions": ["Permission.KoboSync"],
+    "permissions": [
+      "Permission.KoboSync"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -785,7 +890,9 @@
     "methodName": "cancelReplacement",
     "httpMethod": "POST",
     "path": "/kobo/devices/:id/replacements/:deliveryId/cancel",
-    "permissions": ["Permission.KoboSync"],
+    "permissions": [
+      "Permission.KoboSync"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -798,7 +905,9 @@
     "methodName": "getReplacement",
     "httpMethod": "GET",
     "path": "/kobo/devices/:id/replacements/:deliveryId",
-    "permissions": ["Permission.KoboSync"],
+    "permissions": [
+      "Permission.KoboSync"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -811,7 +920,9 @@
     "methodName": "getDelivery",
     "httpMethod": "GET",
     "path": "/kobo/devices/:id/books/:bookId/delivery",
-    "permissions": ["Permission.KoboSync"],
+    "permissions": [
+      "Permission.KoboSync"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -828,7 +939,9 @@
     "libraryAccess": [],
     "isPublic": true,
     "allowDefault": false,
-    "useGuards": ["KoreaderAuthGuard"],
+    "useGuards": [
+      "KoreaderAuthGuard"
+    ],
     "apiKey": "public"
   },
   {
@@ -841,7 +954,9 @@
     "libraryAccess": [],
     "isPublic": true,
     "allowDefault": false,
-    "useGuards": ["KoreaderAuthGuard"],
+    "useGuards": [
+      "KoreaderAuthGuard"
+    ],
     "apiKey": "public"
   },
   {
@@ -850,11 +965,110 @@
     "methodName": "updateSettings",
     "httpMethod": "PATCH",
     "path": "/koreader/devices/:deviceId/delivery-settings",
-    "permissions": ["Permission.KoreaderSync"],
+    "permissions": [
+      "Permission.KoreaderSync"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
     "apiKey": "write"
+  },
+  {
+    "file": "server/src/modules/library/library.controller.ts",
+    "className": "LibraryController",
+    "methodName": "createPersonal",
+    "httpMethod": "POST",
+    "path": "/libraries/personal",
+    "permissions": [],
+    "libraryAccess": [],
+    "isPublic": false,
+    "allowDefault": false,
+    "useGuards": [],
+    "apiKey": "write"
+  },
+  {
+    "file": "server/src/modules/library/library.controller.ts",
+    "className": "LibraryController",
+    "methodName": "administration",
+    "httpMethod": "GET",
+    "path": "/libraries/administration",
+    "permissions": [
+      "Permission.ManageLibraries"
+    ],
+    "libraryAccess": [],
+    "isPublic": false,
+    "allowDefault": false,
+    "useGuards": [],
+    "apiKey": "read"
+  },
+  {
+    "file": "server/src/modules/library/library.controller.ts",
+    "className": "LibraryController",
+    "methodName": "assignableUsers",
+    "httpMethod": "GET",
+    "path": "/libraries/:id/assignable-users",
+    "permissions": [],
+    "libraryAccess": [],
+    "isPublic": false,
+    "allowDefault": false,
+    "useGuards": [],
+    "apiKey": "read"
+  },
+  {
+    "file": "server/src/modules/library/library.controller.ts",
+    "className": "LibraryController",
+    "methodName": "capabilities",
+    "httpMethod": "GET",
+    "path": "/libraries/capabilities",
+    "permissions": [],
+    "libraryAccess": [],
+    "isPublic": false,
+    "allowDefault": false,
+    "useGuards": [],
+    "apiKey": "read"
+  },
+  {
+    "file": "server/src/modules/library/library.controller.ts",
+    "className": "LibraryController",
+    "methodName": "getAdministrativeSettings",
+    "httpMethod": "GET",
+    "path": "/libraries/:id/settings",
+    "permissions": [],
+    "libraryAccess": [],
+    "isPublic": false,
+    "allowDefault": false,
+    "useGuards": [
+      "LibraryAdministratorModeGuard"
+    ],
+    "apiKey": "read"
+  },
+  {
+    "file": "server/src/modules/library/library.controller.ts",
+    "className": "LibraryController",
+    "methodName": "creationAssignableUsers",
+    "httpMethod": "GET",
+    "path": "/libraries/assignable-users",
+    "permissions": [],
+    "libraryAccess": [],
+    "isPublic": false,
+    "allowDefault": false,
+    "useGuards": [],
+    "apiKey": "read"
+  },
+  {
+    "file": "server/src/modules/library/library.controller.ts",
+    "className": "LibraryController",
+    "methodName": "settingsInventory",
+    "httpMethod": "GET",
+    "path": "/libraries/settings-inventory",
+    "permissions": [],
+    "libraryAccess": [],
+    "isPublic": false,
+    "allowDefault": false,
+    "useGuards": [
+      "LibraryAdministratorModeGuard"
+    ],
+    "apiKey": "read"
   }
 ]

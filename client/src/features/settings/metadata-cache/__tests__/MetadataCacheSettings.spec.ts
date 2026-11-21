@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
   permissions: new Set<string>(),
 }))
 
-vi.mock('@/lib/api', () => ({ api: mocks.api }))
+vi.mock('@/lib/api', () => ({ setOnAuthFailure: vi.fn(), api: mocks.api }))
 vi.mock('vue-sonner', () => ({ toast: { success: vi.fn<(message: string) => void>(), error: vi.fn<(message: string) => void>() } }))
 vi.mock('@/features/auth/composables/usePermissions', () => ({
   usePermissions: () => ({ hasPermission: (name: string) => mocks.permissions.has(name) }),

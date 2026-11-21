@@ -78,7 +78,14 @@ describe('AchievementService', () => {
     registry = makeRegistry();
     notificationService = makeNotificationService();
     userService = makeUserService();
-    service = new AchievementService(repo as never, events, registry as never, notificationService as never, userService as never);
+    service = new AchievementService(
+      repo as never,
+      events,
+      registry as never,
+      notificationService as never,
+      userService as never,
+      { visibleIds: vi.fn().mockResolvedValue([100]) } as never,
+    );
   });
 
   describe('onModuleInit', () => {

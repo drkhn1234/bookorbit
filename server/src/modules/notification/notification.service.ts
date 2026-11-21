@@ -6,6 +6,7 @@ import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
 import { NotificationGateway } from './notification.gateway';
 import { NotificationRepository } from './notification.repository';
 import type { NewNotification } from '../../db/schema';
+import { apiKeyCredentialOf, type RequestUser } from '../../common/types/request-user';
 
 export type NotificationScope =
   | { kind: 'library'; libraryId: number }
@@ -80,7 +81,7 @@ export class NotificationService {
         title: payload.title,
         message: payload.message ?? null,
         actionUrl: payload.actionUrl ?? null,
-        meta: payload.meta ?? null,
+        meta: payload.scope.kind === 'library' ? { ...payload.meta, libraryId: payload.scope.libraryId } : (payload.meta ?? null),
         groupKey,
       }));
       const persisted = await this.repo.insertOrCollapse(rows);
@@ -90,10 +91,10 @@ export class NotificationService {
       for (const notification of persisted) {
         if (notification.count === 1) {
           insertedCount++;
-          this.gateway.emitNew(notification.userId, this.toItem(notification));
+          void this.gateway.emitNew(notification.userId, this.toItem(notification));
         } else {
           collapsedCount++;
-          this.gateway.emitUpdated(notification.userId, this.toItem(notification));
+          void this.gateway.emitUpdated(notification.userId, this.toItem(notification));
         }
       }
 
@@ -110,46 +111,41 @@ export class NotificationService {
     }
   }
 
-  async list(userId: number, limit: number, offset: number) {
-    const { items, total } = await this.repo.findByUser(userId, limit, offset);
+  async list(user: RequestUser, limit: number, offset: number) {
+    const { items, total } = await this.repo.findByUser(user.id, limit, offset, apiKeyCredentialOf(user)?.libraryIds);
     return { items: items.map((n) => this.toItem(n)), total };
   }
 
-  async markAsRead(userId: number, id: number): Promise<boolean> {
-    const updated = await this.repo.setRead(id, userId);
+  async markAsRead(user: RequestUser, id: number): Promise<boolean> {
+    const updated = await this.repo.setRead(id, user.id, apiKeyCredentialOf(user)?.libraryIds);
     if (updated) {
-      this.gateway.emitRead(userId, id);
-      const count = await this.repo.countUnread(userId);
-      this.gateway.emitCountUpdate(userId, count);
+      void this.gateway.emitRead(user.id, updated);
+      void this.gateway.emitCountUpdate(user.id, updated);
     }
-    return updated;
+    return updated !== undefined;
   }
 
-  async markAllAsRead(userId: number): Promise<void> {
-    await this.repo.setAllRead(userId);
-    const count = await this.repo.countUnread(userId);
-    this.gateway.emitCountUpdate(userId, count);
-    this.gateway.emitAllRead(userId);
+  async markAllAsRead(user: RequestUser): Promise<void> {
+    const scopes = await this.repo.setAllRead(user.id, apiKeyCredentialOf(user)?.libraryIds);
+    void this.gateway.emitRefresh(user.id, scopes);
   }
 
-  async dismiss(userId: number, id: number): Promise<boolean> {
-    const deleted = await this.repo.deleteOne(id, userId);
+  async dismiss(user: RequestUser, id: number): Promise<boolean> {
+    const deleted = await this.repo.deleteOne(id, user.id, apiKeyCredentialOf(user)?.libraryIds);
     if (deleted) {
-      this.gateway.emitDismissed(userId, id);
-      const count = await this.repo.countUnread(userId);
-      this.gateway.emitCountUpdate(userId, count);
+      void this.gateway.emitDismissed(user.id, deleted);
+      void this.gateway.emitCountUpdate(user.id, deleted);
     }
-    return deleted;
+    return deleted !== undefined;
   }
 
-  async clearAll(userId: number): Promise<void> {
-    await this.repo.deleteAllForUser(userId);
-    this.gateway.emitCountUpdate(userId, 0);
-    this.gateway.emitCleared(userId);
+  async clearAll(user: RequestUser): Promise<void> {
+    const scopes = await this.repo.deleteAllForUser(user.id, apiKeyCredentialOf(user)?.libraryIds);
+    void this.gateway.emitRefresh(user.id, scopes);
   }
 
-  async getUnreadCount(userId: number): Promise<number> {
-    return this.repo.countUnread(userId);
+  async getUnreadCount(user: RequestUser): Promise<number> {
+    return this.repo.countUnread(user.id, apiKeyCredentialOf(user)?.libraryIds);
   }
 
   async runRetentionCleanup(days: number = NOTIFICATION_RETENTION_DAYS): Promise<number> {
@@ -159,8 +155,15 @@ export class NotificationService {
     this.logger.log(`[${event}] [start] retentionDays=${days} - notification retention cleanup started`);
 
     try {
-      const { deleted, userIds } = await this.repo.deleteOlderThan(cutoff);
-      for (const userId of userIds) this.gateway.emitRefresh(userId);
+      const deleted = await this.repo.deleteOlderThan(cutoff, (rows) => {
+        const scopesByUser = new Map<number, unknown[]>();
+        for (const { userId, scope } of rows) {
+          const scopes = scopesByUser.get(userId);
+          if (scopes) scopes.push(scope);
+          else scopesByUser.set(userId, [scope]);
+        }
+        for (const [userId, scopes] of scopesByUser) void this.gateway.emitRefresh(userId, scopes);
+      });
       this.logger.log(
         `[${event}] [end] retentionDays=${days} deleted=${deleted} durationMs=${Date.now() - startedAt} - notification retention cleanup completed`,
       );

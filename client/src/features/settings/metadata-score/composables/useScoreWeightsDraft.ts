@@ -8,7 +8,7 @@ import {
   type MetadataScoreGroup,
   type MetadataScoreWeights,
 } from '@bookorbit/types'
-import { api } from '@/lib/api'
+import { useLibrarySettingsApi } from '@/features/settings/composables/useLibrarySettingsMode'
 import { useMetadataScoreWeights } from '@/features/metadata-score/composables/useMetadataScoreWeights'
 import { changedFields, fieldsInGroup, normalizeWeight, normalizeWeights, scoringFieldCount } from '../lib/score-weights'
 
@@ -19,6 +19,7 @@ import { changedFields, fieldsInGroup, normalizeWeight, normalizeWeights, scorin
 type GroupMemory = Partial<Record<MetadataScoreGroup, Partial<Record<MetadataScoreField, number>>>>
 
 export function useScoreWeightsDraft() {
+  const api = useLibrarySettingsApi()
   const { t } = useI18n()
   const { resetFetchCache } = useMetadataScoreWeights()
 

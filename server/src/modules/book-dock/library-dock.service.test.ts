@@ -152,12 +152,13 @@ describe('LibraryDockService', () => {
 
   const libraryService = {
     verifyAccess: vi.fn().mockResolvedValue(undefined),
+    verifyPermission: vi.fn().mockResolvedValue(undefined),
     findOne: vi.fn((id: number) => {
       const library = libraries.find((candidate) => candidate.id === id);
       return library ? Promise.resolve(library) : Promise.reject(new NotFoundException('Library not found'));
     }),
     findAll: vi.fn(() => Promise.resolve(libraries)),
-    findAccessibleLibraryIds: vi.fn().mockResolvedValue([10, 20]),
+    findLibrariesWithPermission: vi.fn().mockResolvedValue([10, 20]),
   };
 
   function movePaths(from: string, to: string): number {
@@ -550,12 +551,12 @@ describe('LibraryDockService', () => {
         folderId: 101,
         folderName: 'Fiction',
       });
-      expect(libraryService.verifyAccess).toHaveBeenCalledWith(user, 10);
+      expect(libraryService.verifyPermission).toHaveBeenCalledWith(user, 10, 'library_upload', undefined);
     });
 
     it('refuses a library the user cannot see before saying anything about its dock', async () => {
       await service.updateDock(user, 10, { enabled: true });
-      libraryService.verifyAccess.mockRejectedValueOnce(new ForbiddenException('No access to this library'));
+      libraryService.verifyPermission.mockRejectedValueOnce(new ForbiddenException('No access to this library'));
 
       await expect(service.resolveUploadDock(user, 10, 'Dune.epub')).rejects.toBeInstanceOf(ForbiddenException);
     });

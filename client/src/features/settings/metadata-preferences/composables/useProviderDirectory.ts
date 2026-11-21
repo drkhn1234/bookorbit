@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 import type { MetadataProviderDirectory, MetadataProviderDirectoryEntry } from '@bookorbit/types'
-import { api } from '@/lib/api'
+import { useLibrarySettingsApi } from '@/features/settings/composables/useLibrarySettingsMode'
 
 /**
  * The Compose service for one ready-made provider, indented to sit under `services:`. The service
@@ -16,6 +16,7 @@ export function composeAddressFor(entry: MetadataProviderDirectoryEntry): string
 }
 
 export function useProviderDirectory() {
+  const api = useLibrarySettingsApi()
   const directory = ref<MetadataProviderDirectory | null>(null)
   const failed = ref(false)
 

@@ -186,7 +186,7 @@ describe('BookUploadModal library dock (D23)', () => {
     expect(wrapper.find('[data-testid="library-upload-mode"]').exists()).toBe(true)
     await dockButton()!.trigger('click')
 
-    expect(startDockUpload).toHaveBeenCalledExactlyOnceWith(3)
+    expect(startDockUpload).toHaveBeenCalledExactlyOnceWith(3, false)
     expect(startUpload).not.toHaveBeenCalled()
     expect(localStorage.getItem('bookorbit:library-upload-mode:12:3')).toBe('review')
   })

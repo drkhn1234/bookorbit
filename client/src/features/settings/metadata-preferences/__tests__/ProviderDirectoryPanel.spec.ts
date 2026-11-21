@@ -9,7 +9,7 @@ const copyToClipboard = vi.hoisted(() => vi.fn<(text: string) => Promise<boolean
 const toastSuccess = vi.hoisted(() => vi.fn<(message: string) => void>())
 const toastError = vi.hoisted(() => vi.fn<(message: string) => void>())
 
-vi.mock('@/lib/api', () => ({ api }))
+vi.mock('@/lib/api', () => ({ setOnAuthFailure: vi.fn(), api }))
 vi.mock('@/lib/clipboard', () => ({ copyToClipboard }))
 vi.mock('vue-sonner', () => ({ toast: { success: toastSuccess, error: toastError } }))
 

@@ -6,13 +6,14 @@ import { RefreshCw, Save } from '@lucide/vue'
 import { toast } from 'vue-sonner'
 import ToggleSwitch from '@/components/ui/ToggleSwitch.vue'
 import type { AuthorAutoEnrichmentConfig } from '@bookorbit/types'
-import { api } from '@/lib/api'
+import { useLibrarySettingsApi } from '@/features/settings/composables/useLibrarySettingsMode'
 import { useAuthorEligibleCountPreview } from './composables/useAuthorEligibleCountPreview'
 import { useAuthorEnrichmentActions } from './composables/useAuthorEnrichmentActions'
 import AuthorMetadataPreferences from './components/AuthorMetadataPreferences.vue'
 import IgnoreCacheCheckbox from '@/features/metadata-cache/components/IgnoreCacheCheckbox.vue'
 
 const { t } = useI18n()
+const api = useLibrarySettingsApi()
 
 const DEFAULT_CONFIG: AuthorAutoEnrichmentConfig = {
   enabled: false,

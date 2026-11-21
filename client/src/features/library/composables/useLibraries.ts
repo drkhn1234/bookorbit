@@ -49,7 +49,7 @@ export function useLibraries() {
   }
 
   async function reorderLibraries(order: { id: number; displayOrder: number }[]): Promise<void> {
-    const res = await api('/api/v1/libraries/reorder', {
+    const res = await api('/api/v1/libraries/reorder?scope=admin', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ order }),

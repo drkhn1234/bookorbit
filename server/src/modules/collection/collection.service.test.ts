@@ -186,15 +186,14 @@ describe('CollectionService', () => {
       await expect(service.findOne(10, makeUser())).rejects.toThrow(ForbiddenException);
     });
 
-    it('allows superuser access to another user collection', async () => {
+    it('denies superuser access to another user private collection', async () => {
       const { service, collectionRepo } = makeService();
       const collection = makeCollection({ userId: 99 });
       collectionRepo.findById.mockResolvedValue([collection]);
       collectionRepo.findByIdForViewer.mockResolvedValue([collection]);
 
-      const result = await service.findOne(10, makeUser({ isSuperuser: true }));
-
-      expect(result).toEqual({ ...collection, isOwner: false });
+      await expect(service.findOne(10, makeUser({ isSuperuser: true }))).rejects.toThrow(ForbiddenException);
+      expect(collectionRepo.findByIdForViewer).not.toHaveBeenCalled();
     });
 
     it('allows a non-owner to read a public collection and preserves viewer-filtered counts', async () => {
@@ -459,15 +458,15 @@ describe('CollectionService', () => {
       expect(collectionRepo.addBooks).not.toHaveBeenCalled();
     });
 
-    it('skips per-library access lookups for superusers', async () => {
+    it('denies superuser membership changes on another user collection', async () => {
       const { service, collectionRepo, bookService, libraryService } = makeService();
       collectionRepo.findById.mockResolvedValueOnce([makeCollection({ userId: 88 })]).mockResolvedValueOnce([makeCollection({ bookCount: 2 })]);
       bookService.resolveSelectionToIds.mockResolvedValue([7, 8]);
 
-      await service.addBooks(10, { bookIds: [7, 8] }, makeUser({ id: 42, isSuperuser: true }));
-
+      await expect(service.addBooks(10, { bookIds: [7, 8] }, makeUser({ id: 42, isSuperuser: true }))).rejects.toThrow(ForbiddenException);
       expect(libraryService.verifyAccess).not.toHaveBeenCalled();
-      expect(collectionRepo.addBooks).toHaveBeenCalledWith(10, [7, 8]);
+      expect(bookService.resolveSelectionToIds).not.toHaveBeenCalled();
+      expect(collectionRepo.addBooks).not.toHaveBeenCalled();
     });
 
     it('propagates selection access errors and does not write membership rows', async () => {
@@ -511,7 +510,7 @@ describe('CollectionService', () => {
         timeZone: 'UTC',
         contentFilters: EMPTY_CONTENT_FILTER_RULES,
       });
-      expect(collectionRepo.buildReadableMembershipWhere).toHaveBeenCalledWith(10, user.id, user.isSuperuser);
+      expect(collectionRepo.buildReadableMembershipWhere).toHaveBeenCalledWith(10, user.id);
       expect(bookService.executeBooksQuery).toHaveBeenCalledWith(
         1,
         expect.anything(),
@@ -604,7 +603,7 @@ describe('CollectionService', () => {
       const user = makeUser();
       await service.queryJumpBuckets(10, user, query as never);
 
-      expect(collectionRepo.buildReadableMembershipWhere).toHaveBeenCalledWith(10, user.id, user.isSuperuser);
+      expect(collectionRepo.buildReadableMembershipWhere).toHaveBeenCalledWith(10, user.id);
       expect(bookService.executeJumpBucketsQuery).toHaveBeenCalledWith(1, expect.anything(), query, 'UTC');
     });
 
@@ -737,7 +736,7 @@ describe('CollectionService', () => {
       expect(collectionRepo.removeBooks).not.toHaveBeenCalled();
     });
 
-    it('allows superusers to remove books from collections they do not own', async () => {
+    it('denies superusers removal of books from collections they do not own', async () => {
       const { service, collectionRepo, bookService } = makeService();
       collectionRepo.findById
         .mockResolvedValueOnce([makeCollection({ userId: 88 })])
@@ -746,10 +745,9 @@ describe('CollectionService', () => {
       bookService.resolveSelectionToIds.mockResolvedValue([7]);
       collectionRepo.removeBooks.mockResolvedValue([{ collectionId: 10, bookId: 7 }]);
 
-      const result = await service.removeBooks(10, { bookIds: [7] }, makeUser({ id: 1, isSuperuser: true }));
-
-      expect(collectionRepo.removeBooks).toHaveBeenCalledWith(10, [7]);
-      expect(result).toEqual(expect.objectContaining({ userId: 88, bookCount: 0 }));
+      await expect(service.removeBooks(10, { bookIds: [7] }, makeUser({ id: 1, isSuperuser: true }))).rejects.toThrow(ForbiddenException);
+      expect(collectionRepo.removeBooks).not.toHaveBeenCalled();
+      expect(bookService.resolveSelectionToIds).not.toHaveBeenCalled();
     });
 
     it('throws NotFoundException when removing books from a missing collection', async () => {

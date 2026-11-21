@@ -16,38 +16,38 @@ export class NotificationController {
 
   @Get()
   list(@CurrentUser() user: RequestUser, @Query() dto: ListNotificationsDto) {
-    return this.notificationService.list(user.id, dto.limit ?? 20, dto.offset ?? 0);
+    return this.notificationService.list(user, dto.limit ?? 20, dto.offset ?? 0);
   }
 
   @Get('unread-count')
   async getUnreadCount(@CurrentUser() user: RequestUser) {
-    const count = await this.notificationService.getUnreadCount(user.id);
+    const count = await this.notificationService.getUnreadCount(user);
     return { count };
   }
 
   @Patch('read-all')
   @HttpCode(HttpStatus.NO_CONTENT)
   async markAllAsRead(@CurrentUser() user: RequestUser) {
-    await this.notificationService.markAllAsRead(user.id);
+    await this.notificationService.markAllAsRead(user);
   }
 
   @Patch(':id/read')
   @HttpCode(HttpStatus.NO_CONTENT)
   async markAsRead(@CurrentUser() user: RequestUser, @Param('id', ParseIntPipe) id: number) {
-    const updated = await this.notificationService.markAsRead(user.id, id);
+    const updated = await this.notificationService.markAsRead(user, id);
     if (!updated) throw new NotFoundException('Notification not found');
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   async dismiss(@CurrentUser() user: RequestUser, @Param('id', ParseIntPipe) id: number) {
-    const deleted = await this.notificationService.dismiss(user.id, id);
+    const deleted = await this.notificationService.dismiss(user, id);
     if (!deleted) throw new NotFoundException('Notification not found');
   }
 
   @Delete()
   @HttpCode(HttpStatus.NO_CONTENT)
   async clearAll(@CurrentUser() user: RequestUser) {
-    await this.notificationService.clearAll(user.id);
+    await this.notificationService.clearAll(user);
   }
 }

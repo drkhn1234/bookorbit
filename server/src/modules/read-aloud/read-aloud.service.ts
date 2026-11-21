@@ -40,7 +40,7 @@ import { ReadAloudActivityService } from './read-aloud-activity.service';
 import { errorMessage, publicationErrorCode, ReadAloudJobError } from './read-aloud-errors';
 import { ReadAloudJobRepository, type ReadAloudJobPayload } from './read-aloud-job.repository';
 import { ReadAloudNotifier } from './read-aloud-notifier.service';
-import { canManageReadAloudJob, canReplaceReadAlong, ReadAloudPresenter, type ReadAloudViewer } from './read-aloud-presenter.service';
+import { canManageReadAloudJob, ReadAloudPresenter, type ReadAloudViewer } from './read-aloud-presenter.service';
 import { ReadAloudPublisher } from './read-aloud-publisher.service';
 import { assessCoverage, parseAlignmentReport } from './read-aloud-report';
 import { ReadAloudWorkerClientService, type WorkerHealthState } from './read-aloud-worker-client.service';
@@ -89,6 +89,7 @@ export class ReadAloudService {
 
   async capability(bookId: number, user: RequestUser): Promise<ReadAloudCapability> {
     const book = await this.books.getDetail(bookId, user);
+    await this.libraries.verifyPermission(user, book.libraryId, Permission.LibraryGenerateReadAloud);
     const [library, placement, readAlongs, health] = await Promise.all([
       this.libraries.findOne(book.libraryId),
       this.jobs.findBookPlacement(bookId),
@@ -136,6 +137,7 @@ export class ReadAloudService {
 
   async create(bookId: number, dto: CreateReadAloudJobDto, user: RequestUser): Promise<ReadAloudJob> {
     const book = await this.books.getDetail(bookId, user);
+    await this.libraries.verifyPermission(user, book.libraryId, Permission.LibraryGenerateReadAloud);
     const [library, placement, health] = await Promise.all([
       this.libraries.findOne(book.libraryId),
       this.jobs.findBookPlacement(bookId),
@@ -168,7 +170,7 @@ export class ReadAloudService {
     }
     let replaceFileId: number | null = null;
     if (dto.replaceFileId !== undefined) {
-      if (!canReplaceReadAlong(user)) throw new ForbiddenException('Replacing a read-along needs permission to delete books');
+      await this.libraries.verifyPermission(user, book.libraryId, Permission.LibraryDeleteBooks);
       const readAlongs = await this.jobs.findReadAlongFiles(bookId);
       if (!readAlongs.some((file) => file.fileId === dto.replaceFileId))
         throw new BadRequestException('The file to replace is not a read-along on this book');
@@ -375,10 +377,7 @@ export class ReadAloudService {
   async resolveProcessingContext(row: ReadAloudJobRow): Promise<ReadAloudProcessingContext> {
     const user = row.requestedByUserId == null ? null : await this.users.findByIdWithPermissions(row.requestedByUserId);
     if (!user || !user.active) throw new ReadAloudJobError('source_missing', 'The requesting account is no longer active');
-    if (!user.isSuperuser && !user.permissions.includes(Permission.LibraryGenerateReadAloud)) {
-      throw new ReadAloudJobError('source_missing', 'The requesting account no longer has read-aloud permission');
-    }
-    await this.books.verifyBookAccess(row.bookId, user).catch((error: unknown) => {
+    await this.books.verifyBookPermission(row.bookId, user, Permission.LibraryGenerateReadAloud).catch((error: unknown) => {
       // A denial is permanent for this job; an HTTP exception would otherwise read as a retryable unknown failure.
       if (error instanceof NotFoundException || error instanceof ForbiddenException) {
         throw new ReadAloudJobError('source_missing', 'The requesting account can no longer reach this book');
@@ -526,7 +525,7 @@ export class ReadAloudService {
   private async findAccessible(jobId: string, user: RequestUser): Promise<ReadAloudJobRow> {
     const row = await this.jobs.findById(jobId);
     if (!row) throw new NotFoundException('Read-aloud job not found');
-    await this.books.verifyBookAccess(row.bookId, user);
+    await this.books.verifyBookPermission(row.bookId, user, Permission.LibraryGenerateReadAloud);
     return row;
   }
 

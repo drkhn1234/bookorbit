@@ -104,9 +104,8 @@ export class ReadAloudNotifier {
 
   private async maySee(user: RequestUser | null, bookId: number): Promise<boolean> {
     if (!user?.active) return false;
-    if (!user.isSuperuser && !user.permissions.includes(Permission.LibraryGenerateReadAloud)) return false;
     try {
-      await this.books.verifyBookAccess(bookId, user);
+      await this.books.verifyBookPermission(bookId, user, Permission.LibraryGenerateReadAloud);
       return true;
     } catch (error) {
       if (error instanceof NotFoundException || error instanceof ForbiddenException) return false;

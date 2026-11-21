@@ -1,15 +1,17 @@
 import { flushPromises, mount } from '@vue/test-utils'
-import { ref } from 'vue'
+import { defineComponent, h, ref } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BookMetadataFetchBreakdown, BookMetadataFetchConfig, BookMetadataFetchLibraryConfigEntry } from '@bookorbit/types'
 import BookMetadataFetchSettings from '../BookMetadataFetchSettings.vue'
+import { provideLibrarySettingsMode } from '../../composables/useLibrarySettingsMode'
 
 const apiMock = vi.hoisted(() => vi.fn<(path: string, init?: RequestInit) => Promise<{ ok: boolean; json: () => Promise<unknown> }>>())
 const toastMock = vi.hoisted(() => ({ success: vi.fn<(message: string) => void>(), error: vi.fn<(message: string) => void>() }))
 
-vi.mock('@/lib/api', () => ({ api: (path: string, init?: RequestInit) => apiMock(path, init) }))
+vi.mock('@/lib/api', () => ({ setOnAuthFailure: vi.fn(), api: (path: string, init?: RequestInit) => apiMock(path, init) }))
+vi.mock('@/features/auth/composables/useAuth', () => ({ useAuth: () => ({ user: ref({ id: 42, isSuperuser: true }) }) }))
 vi.mock('vue-sonner', () => ({ toast: toastMock }))
-vi.mock('@vueuse/core', () => ({ useMediaQuery: () => ref(false) }))
+vi.mock('@vueuse/core', async (importOriginal) => ({ ...(await importOriginal<typeof import('@vueuse/core')>()), useMediaQuery: () => ref(false) }))
 vi.mock('../components/AutoFetchQueueBand.vue', () => ({ default: { template: '<div data-testid="queue-band" />' } }))
 vi.mock('../components/AutoFetchPreviewList.vue', () => ({
   default: {
@@ -74,12 +76,21 @@ function ok(data: unknown) {
 let libraries: BookMetadataFetchLibraryConfigEntry[]
 
 function lastCall(path: string, method: string) {
-  const calls = apiMock.mock.calls.filter(([p, init]) => p === path && (init?.method ?? 'GET') === method)
+  const calls = apiMock.mock.calls.filter(([p, init]) => p.split('?')[0] === path && (init?.method ?? 'GET') === method)
   return calls[calls.length - 1]
 }
 
 async function mountPage() {
-  const wrapper = mount(BookMetadataFetchSettings, { global: { stubs: { RouterLink: true } } })
+  const wrapper = mount(
+    defineComponent({
+      setup() {
+        const mode = provideLibrarySettingsMode(ref(true))
+        mode.toggleAdministratorMode()
+        return () => h(BookMetadataFetchSettings)
+      },
+    }),
+    { global: { stubs: { RouterLink: true } } },
+  )
   await flushPromises()
   await vi.advanceTimersByTimeAsync(300)
   await flushPromises()
@@ -98,6 +109,8 @@ describe('BookMetadataFetchSettings', () => {
     toastMock.error.mockReset()
     libraries = [entry(2, 'Audiobooks'), entry(6, 'Comics', { conditions: { scoreThreshold: { enabled: true, threshold: 75 } } })]
     apiMock.mockImplementation(async (path, init) => {
+      expect(new URL(path, 'https://fixture.invalid').searchParams.get('scope')).toBe('admin')
+      path = path.split('?')[0]!
       const method = init?.method ?? 'GET'
       if (path === '/api/v1/book-metadata-fetch/config' && method === 'GET') return ok(global)
       if (path === '/api/v1/book-metadata-fetch/config' && method === 'PUT') return ok(JSON.parse(String(init!.body)))
@@ -120,7 +133,7 @@ describe('BookMetadataFetchSettings', () => {
   it('opens on the global rule with a tab per library and counts for the libraries that follow it', async () => {
     const wrapper = await mountPage()
 
-    expect(wrapper.findAll('[role="tab"]').map((item) => item.text())).toEqual(['Global defaults', 'Audiobooks', 'Comics1'])
+    expect(wrapper.findAll('[role="tab"]').map((item) => item.text())).toEqual(['Instance defaults', 'Audiobooks', 'Comics1'])
     expect(wrapper.text()).toContain('Applies to 1 library, 480 books.')
     expect(wrapper.text()).toContain('Comics has its own rule.')
     const scope = JSON.parse(String(lastCall('/api/v1/book-metadata-fetch/preview-breakdown', 'POST')![1]!.body))

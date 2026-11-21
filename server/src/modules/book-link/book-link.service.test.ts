@@ -19,7 +19,7 @@ function makeService() {
     deleteGroup: vi.fn().mockResolvedValue(undefined),
   };
   const bookService = {
-    verifyBookAccess: vi.fn().mockResolvedValue(undefined),
+    verifyBookPermission: vi.fn().mockResolvedValue(undefined),
     findLinkGroupMembers: vi.fn().mockResolvedValue([]),
   };
   const gateway = { emitBookLinksChanged: vi.fn() };

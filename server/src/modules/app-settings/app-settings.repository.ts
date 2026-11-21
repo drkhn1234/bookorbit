@@ -1,10 +1,12 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { eq, inArray, ne, sql } from 'drizzle-orm';
+import { and, eq, inArray, notInArray, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 
 import { DB } from '../../db';
 import * as schema from '../../db/schema';
 import { APP_SETTING_KEYS } from '../../common/constants/app-settings.constants';
+
+import { BUILTIN_PROVIDER_CONFIG_KEY, PERSONAL_LIBRARY_SETTING_PREFIX } from '../../common/library-scope/library-defaults.service';
 
 type Db = NodePgDatabase<typeof schema>;
 
@@ -13,7 +15,16 @@ export class AppSettingsRepository {
   constructor(@Inject(DB) private readonly db: Db) {}
 
   listPublic() {
-    return this.db.select().from(schema.appSettings).where(ne(schema.appSettings.key, APP_SETTING_KEYS.OIDC_CONFIG)).orderBy(schema.appSettings.key);
+    return this.db
+      .select()
+      .from(schema.appSettings)
+      .where(
+        and(
+          notInArray(schema.appSettings.key, [APP_SETTING_KEYS.OIDC_CONFIG, BUILTIN_PROVIDER_CONFIG_KEY]),
+          sql`not starts_with(${schema.appSettings.key}, ${PERSONAL_LIBRARY_SETTING_PREFIX})`,
+        ),
+      )
+      .orderBy(schema.appSettings.key);
   }
 
   findByKey(key: string) {

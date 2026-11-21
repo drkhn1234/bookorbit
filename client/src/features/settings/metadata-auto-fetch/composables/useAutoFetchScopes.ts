@@ -7,7 +7,7 @@ import type {
   BookMetadataFetchLibraryConfig,
   BookMetadataFetchLibraryConfigEntry,
 } from '@bookorbit/types'
-import { api } from '@/lib/api'
+import { useLibrarySettingsApi, useLibrarySettingsMode } from '@/features/settings/composables/useLibrarySettingsMode'
 import { GLOBAL_SCOPE, type FieldRuleScope } from '@/features/settings/metadata-preferences/composables/useFieldRuleScopes'
 import {
   clearOverrideKey,
@@ -41,6 +41,8 @@ function clone<T>(value: T): T {
 
 /** Drafts for the global rule and every library's own rule, saved one scope at a time like Field Rules. */
 export function useAutoFetchScopes() {
+  const api = useLibrarySettingsApi()
+  const administratorMode = useLibrarySettingsMode()
   const { t } = useI18n()
   const loading = ref(true)
   const loadFailed = ref(false)
@@ -71,7 +73,8 @@ export function useAutoFetchScopes() {
         lastRunAt: entry.lastRunAt,
         lastQueuedCount: entry.lastQueuedCount,
       }))
-      if (activeId.value !== GLOBAL_SCOPE && !libraries.value.some((library) => library.id === activeId.value)) activeId.value = GLOBAL_SCOPE
+      if (!administratorMode.value) activeId.value = libraries.value[0]?.id ?? GLOBAL_SCOPE
+      else if (activeId.value !== GLOBAL_SCOPE && !libraries.value.some((library) => library.id === activeId.value)) activeId.value = GLOBAL_SCOPE
     } catch {
       loadFailed.value = true
     } finally {
@@ -115,14 +118,18 @@ export function useAutoFetchScopes() {
   const runBlocked = computed(() => (activeLibrary.value ? globalUnsaved.value > 0 || libraryUnsaved(activeLibrary.value) > 0 : anyUnsaved.value))
 
   const scopes = computed<FieldRuleScope[]>(() => [
-    {
-      id: GLOBAL_SCOPE,
-      name: t('settings.metadata.fieldRules.scope.global'),
-      isGlobal: true,
-      overrideCount: 0,
-      unsavedCount: globalUnsaved.value,
-      loaded: true,
-    },
+    ...(administratorMode.value
+      ? [
+          {
+            id: GLOBAL_SCOPE as AutoFetchScopeId,
+            name: 'Instance defaults',
+            isGlobal: true,
+            overrideCount: 0,
+            unsavedCount: globalUnsaved.value,
+            loaded: true,
+          },
+        ]
+      : []),
     ...libraries.value.map((library) => ({
       id: library.id,
       name: library.name,

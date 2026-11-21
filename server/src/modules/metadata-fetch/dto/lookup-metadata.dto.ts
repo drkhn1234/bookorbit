@@ -1,4 +1,5 @@
-import { IsIn, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+import { Type } from 'class-transformer';
+import { IsIn, IsInt, Min, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
 
 import { METADATA_CACHE_REQUEST_POLICIES, type MetadataProviderKey } from '@bookorbit/types';
 
@@ -14,6 +15,12 @@ export class LookupMetadataDto {
   // External providers may use ids up to 512 characters.
   @MaxLength(512)
   id: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  bookId?: number;
 
   /** `refresh` asks the provider live instead of answering from the metadata cache. */
   @IsOptional()

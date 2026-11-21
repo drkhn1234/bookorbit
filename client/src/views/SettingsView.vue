@@ -3,6 +3,8 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import { ChevronRight, Settings } from '@lucide/vue'
+import { Button } from '@/components/ui/button'
+import { provideLibrarySettingsMode } from '@/features/settings/composables/useLibrarySettingsMode'
 import PageTitleRow from '@/components/page-header/PageTitleRow.vue'
 import { findSettingsNavItem } from '@/features/settings/lib/settings-nav'
 
@@ -13,6 +15,15 @@ const contentScroll = ref<HTMLElement | null>(null)
 
 const maxWidth = computed(() => (route.meta.maxWidth as string | undefined) ?? 'max-w-3xl')
 const match = computed(() => findSettingsNavItem(typeof route.name === 'string' ? route.name : ''))
+const isLibraryPage = computed(() => match.value?.group.id === 'library')
+const { user, administratorMode, toggleAdministratorMode } = provideLibrarySettingsMode(isLibraryPage)
+const instancePages = new Set([
+  'settings-metadata-custom-fields',
+  'settings-metadata-score',
+  'settings-metadata-authors',
+  'settings-metadata-search-cache',
+])
+const requiresAdministratorMode = computed(() => instancePages.has(String(route.name)))
 const pageTitle = computed(() => (match.value ? t(match.value.item.titleKey ?? match.value.item.labelKey) : t('settings.nav.title')))
 const pageIcon = computed(() => match.value?.item.icon ?? Settings)
 /**
@@ -76,8 +87,19 @@ watch(
 
     <div ref="contentScroll" class="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
       <div data-testid="settings-page-content" class="px-4 pb-6 pt-4 md:px-6 md:pt-5" :class="maxWidth">
-        <router-view v-slot="{ Component, route: childRoute }">
-          <div :key="childRoute.path">
+        <div v-if="isLibraryPage" class="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-md border border-border p-3">
+          <p role="status" class="text-sm font-medium">
+            {{ administratorMode ? 'Administrator Mode · Instance settings' : 'Personal library settings' }}
+          </p>
+          <Button v-if="user?.isSuperuser" size="sm" :variant="administratorMode ? 'secondary' : 'outline'" @click="toggleAdministratorMode">
+            {{ administratorMode ? 'Disable Administrator Mode' : 'Enable Administrator Mode' }}
+          </Button>
+        </div>
+        <p v-if="requiresAdministratorMode && !administratorMode" class="text-sm text-muted-foreground">
+          These settings apply to the instance. An eligible superuser can manage them in Administrator Mode.
+        </p>
+        <router-view v-else v-slot="{ Component, route: childRoute }">
+          <div :key="isLibraryPage ? `${childRoute.path}:${user?.id}:${administratorMode}` : childRoute.path">
             <component :is="Component" />
           </div>
         </router-view>

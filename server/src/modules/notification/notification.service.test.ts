@@ -1,5 +1,6 @@
 import { NotificationType, Permission } from '@bookorbit/types';
 
+import type { RequestUser } from '../../common/types/request-user';
 import type { NotifyPayload } from './notification.service';
 import { NotificationService } from './notification.service';
 
@@ -26,8 +27,6 @@ describe('NotificationService', () => {
     emitCountUpdate: ReturnType<typeof vi.fn>;
     emitRead: ReturnType<typeof vi.fn>;
     emitDismissed: ReturnType<typeof vi.fn>;
-    emitAllRead: ReturnType<typeof vi.fn>;
-    emitCleared: ReturnType<typeof vi.fn>;
   };
 
   beforeEach(() => {
@@ -52,8 +51,6 @@ describe('NotificationService', () => {
       emitCountUpdate: vi.fn(),
       emitRead: vi.fn(),
       emitDismissed: vi.fn(),
-      emitAllRead: vi.fn(),
-      emitCleared: vi.fn(),
     };
     service = new NotificationService(repo as never, gateway as never);
   });
@@ -366,9 +363,9 @@ describe('NotificationService', () => {
       };
       repo.findByUser.mockResolvedValue({ items: [dbRow], total: 1 });
 
-      const result = await service.list(42, 20, 0);
+      const result = await service.list({ id: 42 } as never, 20, 0);
 
-      expect(repo.findByUser).toHaveBeenCalledWith(42, 20, 0);
+      expect(repo.findByUser).toHaveBeenCalledWith(42, 20, 0, undefined);
       expect(result.total).toBe(1);
       expect(result.items[0]).toEqual({
         id: 1,
@@ -385,89 +382,50 @@ describe('NotificationService', () => {
     });
   });
 
-  // ---------- markAsRead() ----------
+  const user = { id: 42 } as RequestUser;
 
-  describe('markAsRead()', () => {
-    it('marks as read and emits events when notification exists', async () => {
-      repo.setRead.mockResolvedValue(true);
-      repo.countUnread.mockResolvedValue(3);
-
-      const result = await service.markAsRead(42, 7);
-
-      expect(result).toBe(true);
-      expect(repo.setRead).toHaveBeenCalledWith(7, 42);
-      expect(gateway.emitRead).toHaveBeenCalledWith(42, 7);
-      expect(repo.countUnread).toHaveBeenCalledWith(42);
-      expect(gateway.emitCountUpdate).toHaveBeenCalledWith(42, 3);
-    });
-
-    it('returns false and does not emit events when notification not found', async () => {
-      repo.setRead.mockResolvedValue(false);
-
-      const result = await service.markAsRead(42, 999);
-
-      expect(result).toBe(false);
-      expect(gateway.emitRead).not.toHaveBeenCalled();
-      expect(gateway.emitCountUpdate).not.toHaveBeenCalled();
-    });
+  it('emits the read event with stored notification scope and requests a count refresh', async () => {
+    const row = { id: 7, meta: { libraryId: 19 } };
+    repo.setRead.mockResolvedValue(row);
+    expect(await service.markAsRead(user, 7)).toBe(true);
+    expect(gateway.emitRead).toHaveBeenCalledWith(42, row);
+    expect(gateway.emitCountUpdate).toHaveBeenCalledWith(42, row);
   });
 
-  // ---------- markAllAsRead() ----------
-
-  describe('markAllAsRead()', () => {
-    it('marks all as read and emits count update + all-read', async () => {
-      repo.setAllRead.mockResolvedValue(undefined);
-      repo.countUnread.mockResolvedValue(0);
-
-      await service.markAllAsRead(42);
-
-      expect(repo.setAllRead).toHaveBeenCalledWith(42);
-      expect(repo.countUnread).toHaveBeenCalledWith(42);
-      expect(gateway.emitCountUpdate).toHaveBeenCalledWith(42, 0);
-      expect(gateway.emitAllRead).toHaveBeenCalledWith(42);
-      expect(gateway.emitCleared).not.toHaveBeenCalled();
-    });
+  it('does not emit a read event for an inaccessible or missing notification', async () => {
+    expect(await service.markAsRead(user, 999)).toBe(false);
+    expect(gateway.emitRead).not.toHaveBeenCalled();
+    expect(gateway.emitCountUpdate).not.toHaveBeenCalled();
   });
 
-  // ---------- dismiss() ----------
-
-  describe('dismiss()', () => {
-    it('deletes and emits events when notification exists', async () => {
-      repo.deleteOne.mockResolvedValue(true);
-      repo.countUnread.mockResolvedValue(2);
-
-      const result = await service.dismiss(42, 7);
-
-      expect(result).toBe(true);
-      expect(repo.deleteOne).toHaveBeenCalledWith(7, 42);
-      expect(gateway.emitDismissed).toHaveBeenCalledWith(42, 7);
-      expect(repo.countUnread).toHaveBeenCalledWith(42);
-      expect(gateway.emitCountUpdate).toHaveBeenCalledWith(42, 2);
-    });
-
-    it('returns false and does not emit events when notification not found', async () => {
-      repo.deleteOne.mockResolvedValue(false);
-
-      const result = await service.dismiss(42, 999);
-
-      expect(result).toBe(false);
-      expect(gateway.emitDismissed).not.toHaveBeenCalled();
-      expect(gateway.emitCountUpdate).not.toHaveBeenCalled();
-    });
+  it('refreshes notification state after marking the current scope read', async () => {
+    const scopes = [{ libraryId: 19 }];
+    repo.setAllRead.mockResolvedValue(scopes);
+    await service.markAllAsRead(user);
+    expect(repo.setAllRead).toHaveBeenCalledWith(42, undefined);
+    expect(gateway.emitRefresh).toHaveBeenCalledWith(42, scopes);
   });
 
-  // ---------- clearAll() ----------
+  it('emits the dismissal with the deleted notification scope and requests a count refresh', async () => {
+    const row = { id: 7, meta: { libraryId: 19 } };
+    repo.deleteOne.mockResolvedValue(row);
+    expect(await service.dismiss(user, 7)).toBe(true);
+    expect(gateway.emitDismissed).toHaveBeenCalledWith(42, row);
+    expect(gateway.emitCountUpdate).toHaveBeenCalledWith(42, row);
+  });
 
-  describe('clearAll()', () => {
-    it('deletes all and emits count=0 + cleared', async () => {
-      repo.deleteAllForUser.mockResolvedValue(undefined);
+  it('does not emit a dismissal for an inaccessible or missing notification', async () => {
+    expect(await service.dismiss(user, 999)).toBe(false);
+    expect(gateway.emitDismissed).not.toHaveBeenCalled();
+    expect(gateway.emitCountUpdate).not.toHaveBeenCalled();
+  });
 
-      await service.clearAll(42);
-
-      expect(repo.deleteAllForUser).toHaveBeenCalledWith(42);
-      expect(gateway.emitCountUpdate).toHaveBeenCalledWith(42, 0);
-      expect(gateway.emitCleared).toHaveBeenCalledWith(42);
-    });
+  it('refreshes notification state after clearing the current scope', async () => {
+    const scopes = [{ libraryId: 19 }];
+    repo.deleteAllForUser.mockResolvedValue(scopes);
+    await service.clearAll(user);
+    expect(repo.deleteAllForUser).toHaveBeenCalledWith(42, undefined);
+    expect(gateway.emitRefresh).toHaveBeenCalledWith(42, scopes);
   });
 
   // ---------- getUnreadCount() ----------
@@ -476,10 +434,10 @@ describe('NotificationService', () => {
     it('returns count from repo', async () => {
       repo.countUnread.mockResolvedValue(5);
 
-      const result = await service.getUnreadCount(42);
+      const result = await service.getUnreadCount({ id: 42 } as never);
 
       expect(result).toBe(5);
-      expect(repo.countUnread).toHaveBeenCalledWith(42);
+      expect(repo.countUnread).toHaveBeenCalledWith(42, undefined);
     });
   });
 
@@ -487,18 +445,24 @@ describe('NotificationService', () => {
 
   describe('deleteOlderThan()', () => {
     it('calls repo with calculated cutoff date', async () => {
-      repo.deleteOlderThan.mockResolvedValue({ deleted: 10, userIds: [3, 7] });
+      repo.deleteOlderThan.mockImplementation((_date, onBatchDeleted) => {
+        onBatchDeleted([
+          { userId: 3, scope: null },
+          { userId: 7, scope: { libraryId: 19 } },
+        ]);
+        return 2;
+      });
       const now = new Date('2024-06-15T00:00:00Z');
       vi.setSystemTime(now);
 
       const result = await service.runRetentionCleanup(30);
 
-      expect(result).toBe(10);
+      expect(result).toBe(2);
       const cutoffArg = repo.deleteOlderThan.mock.calls[0][0] as Date;
       const expectedCutoff = new Date('2024-05-16T00:00:00Z');
       expect(cutoffArg.getTime()).toBe(expectedCutoff.getTime());
-      expect(gateway.emitRefresh).toHaveBeenCalledWith(3);
-      expect(gateway.emitRefresh).toHaveBeenCalledWith(7);
+      expect(gateway.emitRefresh).toHaveBeenCalledWith(3, [null]);
+      expect(gateway.emitRefresh).toHaveBeenCalledWith(7, [{ libraryId: 19 }]);
 
       vi.useRealTimers();
     });

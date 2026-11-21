@@ -2,7 +2,7 @@ import { ref, shallowRef } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { toast } from 'vue-sonner'
 import type { MetadataCacheClearRequest, MetadataCacheClearResponse, MetadataCacheStats } from '@bookorbit/types'
-import { api } from '@/lib/api'
+import { useLibrarySettingsApi } from '@/features/settings/composables/useLibrarySettingsMode'
 
 export const CACHE_CLEAR_SCOPES = ['all', 'book', 'author', 'empty'] as const
 export type CacheClearScope = (typeof CACHE_CLEAR_SCOPES)[number]
@@ -26,6 +26,7 @@ export function cacheClearUrl(scope: CacheClearScope): string {
 
 /** Usage numbers for the metadata cache and the actions that empty it. */
 export function useMetadataCacheMaintenance() {
+  const api = useLibrarySettingsApi()
   const { t } = useI18n()
 
   const stats = shallowRef<MetadataCacheStats | null>(null)
