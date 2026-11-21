@@ -38,29 +38,40 @@ const route = useRoute()
 const router = useRouter()
 const { isSuperuser } = usePermissions()
 const administratorMode = useLibrarySettingsMode()
-const showingOtherLibraries = ref(false)
-const otherLibraries = ref<{ id: number; name: string; owners?: string[] }[]>([])
-const otherLibrariesLoading = ref(false)
+const { libraries, error: librariesError, fetchLibraries, refreshLibraries } = useLibraries()
+const inventory = ref<{ id: number; name: string; owners: string[] }[]>([])
+const otherLibraries = computed(() => {
+  const accessibleIds = new Set(libraries.value.map((library) => library.id))
+  return inventory.value.filter((entry) => !accessibleIds.has(entry.id))
+})
+const inventoryLoading = ref(false)
+const inventoryFailed = ref(false)
 
-async function toggleOtherLibraries() {
-  showingOtherLibraries.value = !showingOtherLibraries.value
-  if (!showingOtherLibraries.value) {
-    otherLibraries.value = []
-    return
-  }
-  otherLibrariesLoading.value = true
-  try {
-    const res = await api('/api/v1/libraries/settings-inventory?scope=admin')
-    if (!res.ok) throw new Error('Administrative inventory unavailable')
-    const inventory: typeof otherLibraries.value = await res.json()
-    if (showingOtherLibraries.value) otherLibraries.value = inventory.filter((entry) => !libraries.value.some((library) => library.id === entry.id))
-  } catch {
-    showingOtherLibraries.value = false
-    toast.error('Unable to load other libraries')
-  } finally {
-    otherLibrariesLoading.value = false
-  }
-}
+watch(
+  administratorMode,
+  async (enabled, _, onCleanup) => {
+    inventory.value = []
+    inventoryFailed.value = false
+    inventoryLoading.value = enabled
+    if (!enabled) return
+
+    const controller = new AbortController()
+    onCleanup(() => controller.abort())
+    try {
+      const res = await api('/api/v1/libraries/settings-inventory?scope=admin', { signal: controller.signal })
+      if (!res.ok) throw new Error('Administrative inventory unavailable')
+      const entries: typeof inventory.value = await res.json()
+      await fetchLibraries()
+      if (librariesError.value) throw new Error('Library list unavailable')
+      if (!controller.signal.aborted) inventory.value = entries
+    } catch {
+      if (!controller.signal.aborted) inventoryFailed.value = true
+    } finally {
+      if (!controller.signal.aborted) inventoryLoading.value = false
+    }
+  },
+  { immediate: true },
+)
 
 async function editOtherLibrary(id: number) {
   if (!administratorMode.value) return
@@ -69,10 +80,10 @@ async function editOtherLibrary(id: number) {
     toast.error('Unable to load library settings')
     return
   }
-  if (administratorMode.value) openEdit(await res.json())
+  const library = await res.json()
+  if (administratorMode.value) openEdit(library)
 }
 
-const { libraries, fetchLibraries, refreshLibraries } = useLibraries()
 const { handleLibraryCreated } = useLibraryCreationRedirect()
 const { subscribeLibrary, getProgress, isScanning, progressMap, isRefreshingCovers } = useScanProgress()
 const { scanLibrary, startScanRequest } = useLibraryScan()
@@ -501,26 +512,17 @@ async function confirmDelete() {
         </Button>
       </Teleport>
 
-      <Button
-        v-if="isSuperuser"
-        type="button"
-        size="sm"
-        variant="outline"
-        :aria-expanded="showingOtherLibraries"
-        :disabled="otherLibrariesLoading"
-        @click="toggleOtherLibraries"
-      >
-        {{ showingOtherLibraries ? 'Hide other users’ libraries' : 'Show other users’ libraries' }}
-      </Button>
-      <section v-if="showingOtherLibraries" class="space-y-2 rounded-md border border-border p-3">
-        <h3 class="text-sm font-semibold">Other users’ libraries</h3>
-        <p v-if="!otherLibraries.length && !otherLibrariesLoading" class="text-sm text-muted-foreground">No other libraries.</p>
+      <section v-if="administratorMode" class="space-y-2 rounded-md border border-border p-3" aria-labelledby="other-libraries-heading">
+        <h3 id="other-libraries-heading" class="text-sm font-semibold">Other users’ libraries</h3>
+        <p v-if="inventoryLoading" role="status" class="text-sm text-muted-foreground">Loading other libraries…</p>
+        <p v-else-if="inventoryFailed" role="alert" class="text-sm text-muted-foreground">Unable to load other libraries.</p>
+        <p v-else-if="!otherLibraries.length" class="text-sm text-muted-foreground">No other libraries.</p>
         <div v-for="library in otherLibraries" :key="library.id" class="flex items-center justify-between gap-2">
-          <div>
+          <div class="min-w-0 wrap-anywhere">
             <p class="text-sm">{{ library.name }} · #{{ library.id }}</p>
-            <p class="text-xs text-muted-foreground">{{ library.owners?.join(', ') || 'No owners' }}</p>
+            <p class="text-xs text-muted-foreground">{{ library.owners.join(', ') || 'No owners' }}</p>
           </div>
-          <Button v-if="administratorMode" type="button" size="sm" variant="outline" @click="editOtherLibrary(library.id)">Edit settings</Button>
+          <Button type="button" size="sm" variant="outline" @click="editOtherLibrary(library.id)">Edit settings</Button>
         </div>
       </section>
 

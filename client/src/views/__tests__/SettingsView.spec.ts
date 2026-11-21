@@ -28,16 +28,44 @@ function mountView(routeName: string, meta: Record<string, unknown> = {}) {
 }
 
 describe('SettingsView shell', () => {
-  it('keeps Administrator Mode deliberate and clears it when the account or section changes', async () => {
+  it('omits the scope ribbon and Administrator Mode action for ordinary users', () => {
+    settingsUser.value = { id: 1, isSuperuser: false }
+    const wrapper = mountView('settings-libraries')
+    expect(wrapper.get('[data-testid="settings-page-content"]').text()).toBe('')
+    expect(wrapper.find('button[aria-pressed]').exists()).toBe(false)
+    wrapper.unmount()
+    settingsUser.value = null
+  })
+
+  it('puts Administrator Mode after the existing header actions and keeps it synchronized across Library settings', async () => {
     settingsUser.value = { id: 1, isSuperuser: true }
-    const wrapper = mountView('settings-metadata-field-rules')
-    const button = () => wrapper.findAll('button').find((item) => item.text().endsWith('Administrator Mode'))!
+    const wrapper = mountView('settings-libraries')
+    const header = wrapper.get('[data-testid="settings-page-header"]')
+    const button = () => header.get('button[aria-pressed]')
+    expect(header.get('#settings-header-actions').element.nextElementSibling).toBe(button().element)
+    expect(wrapper.get('[data-testid="settings-page-content"]').text()).toBe('')
     expect(button().text()).toBe('Enable Administrator Mode')
+    expect(button().attributes('aria-pressed')).toBe('false')
     await button().trigger('click')
-    expect(button().text()).toBe('Disable Administrator Mode')
+    for (const page of ['settings-metadata-providers', 'settings-metadata-field-rules', 'settings-file-naming', 'settings-maintenance']) {
+      routeState.name = page
+      await wrapper.vm.$nextTick()
+      expect(button().text()).toBe('Disable Administrator Mode')
+      expect(button().attributes('aria-pressed')).toBe('true')
+    }
+
     settingsUser.value = { id: 2, isSuperuser: true }
     await wrapper.vm.$nextTick()
     expect(button().text()).toBe('Enable Administrator Mode')
+
+    await button().trigger('click')
+    settingsUser.value = { id: 2, isSuperuser: false }
+    await wrapper.vm.$nextTick()
+    expect(header.find('button[aria-pressed]').exists()).toBe(false)
+    settingsUser.value = { id: 2, isSuperuser: true }
+    await wrapper.vm.$nextTick()
+    expect(button().text()).toBe('Enable Administrator Mode')
+
     await button().trigger('click')
     routeState.name = 'settings-appearance-layout'
     await wrapper.vm.$nextTick()

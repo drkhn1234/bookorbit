@@ -17,6 +17,7 @@ const maxWidth = computed(() => (route.meta.maxWidth as string | undefined) ?? '
 const match = computed(() => findSettingsNavItem(typeof route.name === 'string' ? route.name : ''))
 const isLibraryPage = computed(() => match.value?.group.id === 'library')
 const { user, administratorMode, toggleAdministratorMode } = provideLibrarySettingsMode(isLibraryPage)
+const showAdministratorMode = computed(() => isLibraryPage.value && user.value?.isSuperuser === true)
 const instancePages = new Set([
   'settings-metadata-custom-fields',
   'settings-metadata-score',
@@ -55,8 +56,8 @@ watch(
 
 <template>
   <div class="flex h-full flex-col overflow-hidden rounded-lg border border-border/70 bg-card/40 shadow-sm">
-    <div class="shrink-0 border-b border-border/70 bg-card/60 px-4 py-2.5 md:px-6" data-testid="settings-page-header">
-      <PageTitleRow heading-tag="h2" heading-test-id="settings-page-title" :title="pageTitle" :icon="pageIcon">
+    <div class="@container shrink-0 border-b border-border/70 bg-card/60 px-4 py-2.5 md:px-6" data-testid="settings-page-header">
+      <PageTitleRow heading-tag="h2" heading-test-id="settings-page-title" :title="pageTitle" :icon="pageIcon" :wrap-actions="showAdministratorMode">
         <template #titleLead>
           <!-- The trail gives way before the title does; phones keep only the nearest crumb. -->
           <nav v-if="breadcrumb.length" :aria-label="t('settings.nav.breadcrumbLabel')" class="min-w-0 shrink-[999]">
@@ -80,21 +81,28 @@ watch(
         <template #actions>
           <!-- Pages teleport their primary action here so it sits beside the title
                instead of being wedged into the page body. -->
-          <div id="settings-header-actions" class="flex shrink-0 items-center gap-2" />
+          <div
+            id="settings-header-actions"
+            class="flex items-center gap-2 empty:hidden"
+            :class="showAdministratorMode ? 'min-w-0 flex-wrap justify-end' : 'shrink-0'"
+          />
+          <Button
+            v-if="showAdministratorMode"
+            type="button"
+            size="sm"
+            class="h-auto min-h-8 max-w-full whitespace-normal"
+            :variant="administratorMode ? 'default' : 'outline'"
+            :aria-pressed="administratorMode"
+            @click="toggleAdministratorMode"
+          >
+            {{ t(administratorMode ? 'library.personal.disableAdministrator' : 'library.personal.enableAdministrator') }}
+          </Button>
         </template>
       </PageTitleRow>
     </div>
 
     <div ref="contentScroll" class="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
       <div data-testid="settings-page-content" class="px-4 pb-6 pt-4 md:px-6 md:pt-5" :class="maxWidth">
-        <div v-if="isLibraryPage" class="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-md border border-border p-3">
-          <p role="status" class="text-sm font-medium">
-            {{ administratorMode ? 'Administrator Mode · Instance settings' : 'Personal library settings' }}
-          </p>
-          <Button v-if="user?.isSuperuser" size="sm" :variant="administratorMode ? 'secondary' : 'outline'" @click="toggleAdministratorMode">
-            {{ administratorMode ? 'Disable Administrator Mode' : 'Enable Administrator Mode' }}
-          </Button>
-        </div>
         <p v-if="requiresAdministratorMode && !administratorMode" class="text-sm text-muted-foreground">
           These settings apply to the instance. An eligible superuser can manage them in Administrator Mode.
         </p>

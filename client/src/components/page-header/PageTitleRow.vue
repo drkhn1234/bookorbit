@@ -22,8 +22,10 @@ withDefaults(
     headingTestId?: string
     /** Let the inline slot take the row's free width, for filters that end in their own search field. */
     inlineGrow?: boolean
+    /** Wrap a longer action group based on the surrounding container's width. */
+    wrapActions?: boolean
   }>(),
-  { eyebrow: '', title: '', icon: null, fallbackIcon: undefined, headingTag: 'h1', headingTestId: undefined, inlineGrow: false },
+  { eyebrow: '', title: '', icon: null, fallbackIcon: undefined, headingTag: 'h1', headingTestId: undefined, inlineGrow: false, wrapActions: false },
 )
 
 const slots = defineSlots<{
@@ -46,7 +48,11 @@ function handleSearch() {
 </script>
 
 <template>
-  <div class="flex min-h-11 items-center gap-3 max-sm:flex-wrap max-sm:gap-y-2 sm:gap-3.5" data-testid="page-title-row">
+  <div
+    class="flex min-h-11 items-center gap-3 max-sm:flex-wrap max-sm:gap-y-2 sm:gap-3.5"
+    :class="{ '@max-[43rem]:flex-wrap': wrapActions }"
+    data-testid="page-title-row"
+  >
     <PageMenuButton class="-ms-1 size-9" />
     <span
       class="grid size-9 shrink-0 place-items-center rounded-[9px] border border-primary/30 bg-primary/12 text-primary max-md:hidden sm:size-11 sm:rounded-[10px]"
@@ -92,7 +98,11 @@ function handleSearch() {
     >
       <Search :size="17" aria-hidden="true" />
     </button>
-    <div v-if="slots.actions" class="flex shrink-0 items-center gap-2">
+    <div
+      v-if="slots.actions"
+      class="flex shrink-0 items-center gap-2"
+      :class="{ 'max-w-full flex-wrap justify-end @max-[43rem]:basis-full': wrapActions }"
+    >
       <slot name="actions" />
     </div>
   </div>

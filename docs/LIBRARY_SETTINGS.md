@@ -1,8 +1,8 @@
 # Library settings and provider credentials
 
-Settings → Library opens in personal mode. The Libraries page shows libraries you have access to. Your role determines which settings and maintenance actions are available. An eligible superuser can enable Administrator Mode for instance settings. Switching accounts or leaving the Library settings section resets the mode.
+Settings → Library opens in personal mode. The Libraries page shows libraries you have access to. Your role determines which settings and maintenance actions are available. An eligible superuser can enable Administrator Mode from the header of any Library settings page. Switching accounts or leaving the Library settings section resets the mode.
 
-A superuser can explicitly show other users’ libraries from the Libraries page. This inventory includes library names and owners. It does not add a content grant. Editing a library through the inventory requires Administrator Mode.
+Administrator Mode shows other users’ libraries in a separate section of the Libraries page. The inventory lists names and owners and allows administrators to open library settings. Reading library content still requires its own access grant.
 
 ## Configuration ownership
 
@@ -49,7 +49,7 @@ Owners can switch between their personal defaults and a library they own. In Adm
 
 ### Administrative library discovery
 
-An administrator can reveal the separate inventory. The unshared library appears there while ordinary library access still requires a grant.
+When Administrator Mode is active, the Libraries page shows the separate inventory automatically. Disable Administrator Mode from the same header to return to the personal and shared library list.
 
 ![The other users’ libraries inventory shows a synthetic unshared library separately](assets/personal-library-settings/administrator-inventory.png)
 
