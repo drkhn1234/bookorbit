@@ -7,8 +7,7 @@ import { dirname, join, resolve, sep } from 'path';
 import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
 import { isPrimaryFormat } from '../scanner/lib/classify';
 import { isBlockedPath, isInsideOrAt, isListableDirectory, mapLimit, realTarget, SYSTEM_FOLDERS, walkFolder, type WalkOutcome } from './folder-walk';
-import { PathPolicyService } from './path-policy.service';
-import { PathRepository } from './path.repository';
+import { PathPolicyService, type PathAccess, type PathRequest } from './path-policy.service';
 import { PathService } from './path.service';
 
 const CACHE_TTL_MS = 10 * 60_000;
@@ -96,27 +95,33 @@ export class FolderInsightService {
   constructor(
     private readonly pathPolicy: PathPolicyService,
     private readonly pathService: PathService,
-    private readonly pathRepository: PathRepository,
   ) {}
 
-  async summarize(paths: string[], budgetMs = SUMMARY_BATCH_BUDGET_MS): Promise<FolderSummary[]> {
+  async summarize(request: PathRequest, paths: string[], budgetMs = SUMMARY_BATCH_BUDGET_MS): Promise<FolderSummary[]> {
+    const access = await this.pathPolicy.access(request);
     const startedAt = Date.now();
     const deadline = startedAt + budgetMs;
     let walked = 0;
     const generation = this.generation;
     const results = await mapLimit(paths, 4, async (path): Promise<FolderSummary> => {
-      const resolved = await this.resolveOrNull(path);
+      const resolved = await this.resolveOrNull(path, access);
       // Walked with symlinks followed, so every folder below is checked against the blocked list by its real path.
       const target = resolved && (await realTarget(resolved));
       if (!resolved || !target || isBlockedPath(resolved) || isBlockedPath(target)) return emptySummary(path, 'blocked');
-      const cached = this.summaries.get(target);
+      const key = `${access.cacheKey}\0${target}`;
+      const cached = this.summaries.get(key);
       if (cached) return { ...cached, path };
       // Folders the batch had no time left for are not reported as empty: the client asks again.
       if (Date.now() > deadline) return emptySummary(path, 'pending');
       walked += 1;
-      const outcome = await walkFolder(target, { maxEntries: SUMMARY_MAX_ENTRIES, deadline });
+      const outcome = await walkFolder(target, {
+        maxEntries: SUMMARY_MAX_ENTRIES,
+        deadline,
+        canVisit: (path) => this.pathPolicy.canVisit(access, path),
+        visible: (path) => this.pathPolicy.isVisiblePath(access, path),
+      });
       const summary = toSummary(path, outcome);
-      if (this.cacheable(outcome, deadline, generation)) this.summaries.set(target, summary);
+      if (this.cacheable(outcome, deadline, generation)) this.summaries.set(key, summary);
       return summary;
     });
     if (walked > 0) {
@@ -127,17 +132,26 @@ export class FolderInsightService {
     return results;
   }
 
-  async inspect(path: string): Promise<FolderInspection> {
-    const resolved = await this.pathPolicy.resolveBrowsePath(path);
+  async inspect(request: PathRequest, path: string): Promise<FolderInspection> {
+    const access = await this.pathPolicy.access(request);
+    const resolved = await this.pathPolicy.resolveScopedPath(path, access);
     const target = await realTarget(resolved);
     if (isBlockedPath(resolved) || isBlockedPath(target)) return { ...emptySummary(resolved, 'blocked'), bytes: 0, samples: [] };
-    const cached = this.inspections.get(target);
+    const key = `${access.cacheKey}\0${target}`;
+    const cached = this.inspections.get(key);
     if (cached) return { ...cached, path: resolved };
     const generation = this.generation;
     const deadline = Date.now() + INSPECT_BUDGET_MS;
-    const outcome = await walkFolder(target, { maxEntries: INSPECT_MAX_ENTRIES, deadline, withSizes: true, samples: 2 });
+    const outcome = await walkFolder(target, {
+      maxEntries: INSPECT_MAX_ENTRIES,
+      deadline,
+      withSizes: true,
+      samples: 2,
+      canVisit: (path) => this.pathPolicy.canVisit(access, path),
+      visible: (path) => this.pathPolicy.isVisiblePath(access, path),
+    });
     const inspection: FolderInspection = { ...toSummary(resolved, outcome), bytes: outcome.bytes, samples: outcome.samples };
-    if (this.cacheable(outcome, deadline, generation)) this.inspections.set(target, inspection);
+    if (this.cacheable(outcome, deadline, generation)) this.inspections.set(key, inspection);
     return inspection;
   }
 
@@ -163,14 +177,15 @@ export class FolderInsightService {
    * like a library (one folder per book, loose files, or series folders) rather than listing every
    * author folder below it.
    */
-  async unclaimed(): Promise<UnclaimedFolders> {
-    const claimed = [...new Set((await this.pathRepository.findLibraryFolders()).map((row) => resolve(row.path)))].sort();
-    const claimedKey = claimed.join('\0');
+  async unclaimed(request: PathRequest): Promise<UnclaimedFolders> {
+    const access = await this.pathPolicy.access(request);
+    const claimed = [...new Set(access.libraries.map((row) => resolve(row.path)))].sort();
+    const claimedKey = access.cacheKey + '\0' + claimed.join('\0');
     if (this.unclaimedCache?.claimedKey === claimedKey && this.unclaimedCache.expires > Date.now()) return this.unclaimedCache.value;
     // Pickers opened together share one scan rather than walking the mounts once each.
     let run = this.unclaimedRun;
     if (run?.claimedKey !== claimedKey) {
-      const started = { claimedKey, promise: this.scanUnclaimed(claimed, claimedKey) };
+      const started = { claimedKey, promise: this.scanUnclaimed(access, claimed, claimedKey) };
       this.unclaimedRun = run = started;
       started.promise
         .finally(() => {
@@ -181,17 +196,22 @@ export class FolderInsightService {
     return run.promise;
   }
 
-  private async scanUnclaimed(claimed: string[], claimedKey: string): Promise<UnclaimedFolders> {
+  private async scanUnclaimed(access: PathAccess, claimed: string[], claimedKey: string): Promise<UnclaimedFolders> {
     const startedAt = Date.now();
     const generation = this.generation;
-    const places = await this.pathService.getPlaces();
+    const places = await this.pathService.getPlacesForAccess(access);
     const rawAppData = this.pathPolicy.getAppDataPath();
     const appDataPath = await this.pathPolicy.getCanonicalAppDataPath();
     // Paths are compared as typed and with symlinks followed: the data folder may be reached through a link.
     const inAppData = (path: string, real: string) =>
       (!!rawAppData && isInsideOrAt(path, rawAppData)) || (!!appDataPath && (isInsideOrAt(path, appDataPath) || isInsideOrAt(real, appDataPath)));
     // Without separate mounts (everything on one filesystem), look around the folders libraries already read.
-    const starts = places.mounts.length > 0 ? places.mounts : [...new Set(claimed.map((folder) => dirname(folder)))];
+    const starts =
+      access.request.scope !== 'admin'
+        ? [access.root]
+        : places.mounts.length > 0
+          ? places.mounts
+          : [...new Set(claimed.map((folder) => dirname(folder)))];
     const reals = new Map(await Promise.all(starts.map(async (root) => [root, await realpath(root).catch(() => root)] as const)));
     const roots = starts.filter((root) => !inAppData(root, reals.get(root)!) && !starts.some((other) => other !== root && isInsideOrAt(root, other)));
     this.logger.log(`[path.unclaimed] [start] roots=${roots.length} claimed=${claimed.length} - unclaimed folder scan started`);
@@ -208,12 +228,14 @@ export class FolderInsightService {
           break;
         }
         const { dir, real, depth } = queue.shift()!;
+        if (!(await this.pathPolicy.canVisit(access, dir))) continue;
         let dirents: Dirent[];
         try {
           dirents = await readdir(dir, { withFileTypes: true });
         } catch {
           continue;
         }
+        dirents = dirents.filter((entry) => this.pathPolicy.isVisiblePath(access, join(dir, entry.name)));
         entries += dirents.length;
         const node: ScanNode = { own: 0, formats: {}, children: [] };
         for (const entry of dirents) {
@@ -256,12 +278,13 @@ export class FolderInsightService {
         const sum = total(dir);
         if (sum.files === 0) return false;
         const holdsLibrary = claimed.some((folder) => folder !== dir && isInsideOrAt(folder, dir));
-        if (!holdsLibrary && libraryShaped(dir, nodes)) {
+        const canPick = access.request.scope === 'admin' || dir !== access.root;
+        if (canPick && !holdsLibrary && libraryShaped(dir, nodes)) {
           found.push({ path: dir, files: sum.files, formats: sum.formats });
           return true;
         }
         const below = (nodes.get(dir)?.children ?? []).map(pick).some(Boolean);
-        if (!below && !holdsLibrary) {
+        if (canPick && !below && !holdsLibrary) {
           found.push({ path: dir, files: sum.files, formats: sum.formats });
           return true;
         }
@@ -283,9 +306,9 @@ export class FolderInsightService {
     }
   }
 
-  private async resolveOrNull(path: string): Promise<string | null> {
+  private async resolveOrNull(path: string, access: PathAccess): Promise<string | null> {
     try {
-      return await this.pathPolicy.resolveBrowsePath(path);
+      return await this.pathPolicy.resolveScopedPath(path, access);
     } catch {
       return null;
     }

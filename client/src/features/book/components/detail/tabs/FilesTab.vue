@@ -31,7 +31,7 @@ const { t } = useI18n()
 const router = useRouter()
 const route = useRoute()
 const { downloadFile: downloadBookFile } = useBookDownload()
-const { hasPermission, isDemoRestrictedAccount } = usePermissions()
+const { isDemoRestrictedAccount } = usePermissions()
 const { hasLibraryPermission } = useLibraryPermissions()
 const canEditMetadata = computed(() => hasLibraryPermission('library_edit_metadata', props.book?.libraryId, 'editor'))
 const { user } = useAuth()
@@ -53,12 +53,14 @@ const {
   toggleSort,
 } = useBookFileTree(book)
 
-const canUpload = computed(() => hasPermission(Permission.LibraryUpload))
-const canDownload = computed(() => hasPermission('library_download'))
+const canUpload = computed(() => hasLibraryPermission(Permission.LibraryUpload, props.book?.libraryId))
+const canDownload = computed(() => hasLibraryPermission('library_download', props.book?.libraryId))
 const canEdit = canEditMetadata
-const canDelete = computed(() => hasPermission('library_delete_books'))
+const canDelete = computed(() => hasLibraryPermission('library_delete_books', props.book?.libraryId))
 /** Demo accounts are refused by every read-aloud route, so they never see the entry or probe for it. */
-const canGenerateReadAloud = computed(() => hasPermission(Permission.LibraryGenerateReadAloud) && !isDemoRestrictedAccount.value)
+const canGenerateReadAloud = computed(
+  () => hasLibraryPermission(Permission.LibraryGenerateReadAloud, props.book?.libraryId) && !isDemoRestrictedAccount.value,
+)
 const readAloudBookId = computed(() => props.book.id)
 const readAloudFileIds = computed(() => props.book.files.map((file) => file.id))
 const viewerId = computed(() => user.value?.id ?? null)
@@ -507,6 +509,7 @@ async function confirmDelete() {
     <p v-if="copiedPathFileId != null" role="status" class="sr-only">{{ t('book.detail.files.pathCopied') }}</p>
 
     <ReadAloudDialog
+      :can-delete-books="canDelete"
       v-if="readAloud.capability.value"
       :open="readAloudDialogOpen"
       :capability="readAloud.capability.value"

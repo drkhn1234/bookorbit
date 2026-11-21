@@ -1,7 +1,7 @@
 import { BadRequestException, Controller, HttpCode, HttpStatus, Param, ParseIntPipe, Post, Req } from '@nestjs/common';
 import { Permission } from '@bookorbit/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { RequirePermission } from '../../common/decorators/require-permission.decorator';
+import { RequireScopedPermission } from '../../common/decorators/require-scoped-permission.decorator';
 import type { MultipartRequest } from '../../common/types/multipart-request';
 import type { RequestUser } from '../../common/types/request-user';
 import { AppSettingsService } from '../app-settings/app-settings.service';
@@ -16,7 +16,7 @@ export class BookFileUploadController {
 
   @Post(':id/files')
   @HttpCode(HttpStatus.CREATED)
-  @RequirePermission(Permission.LibraryUpload)
+  @RequireScopedPermission(Permission.LibraryUpload, 'book')
   async addFileToBook(@Param('id', ParseIntPipe) bookId: number, @CurrentUser() user: RequestUser, @Req() req: MultipartRequest) {
     const limitMb = await this.appSettings.getMaxUploadSizeMb();
     const data = await req.file({ limits: { fileSize: limitMb * 1024 * 1024 } });
@@ -26,7 +26,7 @@ export class BookFileUploadController {
 
   @Post(':id/rename-files')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @RequirePermission(Permission.LibraryEditMetadata)
+  @RequireScopedPermission(Permission.LibraryEditMetadata, 'book')
   async renameBookFiles(@Param('id', ParseIntPipe) bookId: number, @CurrentUser() user: RequestUser): Promise<void> {
     await this.uploadService.renameBookFiles(bookId, user);
   }

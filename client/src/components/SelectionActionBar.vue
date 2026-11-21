@@ -78,6 +78,8 @@ const props = withDefaults(
     // Selection is query-scoped (all matching across pages), so individual ids aren't enumerable.
     queryScoped?: boolean
     metadataEditable?: boolean
+    downloadable?: boolean
+    deletable?: boolean
     /** Present when the user may merge books here; its reason says why this selection cannot be merged. */
     merge?: MergeSelectionState | null
     /** Present when the user may link books here; its reason says why this selection cannot be linked. */
@@ -128,10 +130,10 @@ const fieldValue = ref('')
 const slots = useSlots()
 const hasCustomContent = computed(() => Boolean(slots.content))
 const canBulkActions = computed(() => !isDemoRestrictedAccount.value)
-const canDownload = computed(() => hasPermission('library_download') && canBulkActions.value)
-const canSetRating = computed(() => hasPermission('library_edit_metadata') && canBulkActions.value)
-const canEditMetadata = computed(() => hasPermission('library_edit_metadata') && canBulkActions.value && props.metadataEditable !== false)
-const canMoveToLibrary = computed(() => hasPermission('library_edit_metadata') && canBulkActions.value && props.metadataEditable !== false)
+const canDownload = computed(() => props.downloadable === true && canBulkActions.value)
+const canSetRating = computed(() => props.metadataEditable === true && canBulkActions.value)
+const canEditMetadata = computed(() => props.metadataEditable === true && canBulkActions.value)
+const canMoveToLibrary = computed(() => props.metadataEditable === true && canBulkActions.value)
 const canMerge = computed(() => props.merge !== null && canBulkActions.value)
 const canLink = computed(() => props.link !== null && canBulkActions.value)
 const mergeDisabledText = computed(() => {
@@ -584,9 +586,9 @@ watch(
               <TooltipContent side="top">{{ t('components.selectionActionBar.moreActions') }}</TooltipContent>
             </Tooltip>
 
-            <div v-if="hasPermission('library_delete_books')" :class="DIVIDER" />
+            <div v-if="deletable" :class="DIVIDER" />
 
-            <Tooltip v-if="hasPermission('library_delete_books')">
+            <Tooltip v-if="deletable">
               <TooltipTrigger as-child>
                 <button
                   data-testid="action-delete"

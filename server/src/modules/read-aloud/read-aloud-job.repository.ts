@@ -78,21 +78,15 @@ export class ReadAloudJobRepository {
   }
 
   /**
-   * The newest finished job this viewer may see (their own, or anyone's for a superuser), unless it
+   * The viewer's newest finished job, unless it
    * was dismissed. Dismissing the newest one must not bring an older one back in its place.
    * Ordered by when the job finished: housekeeping restamps `updated_at` on old rows.
    */
-  async findLatestFinishedForViewer(bookId: number, viewer: { id: number; isSuperuser: boolean }) {
+  async findLatestFinishedForViewer(bookId: number, viewer: { id: number }) {
     const [row] = await this.db
       .select()
       .from(readAloudJobs)
-      .where(
-        and(
-          eq(readAloudJobs.bookId, bookId),
-          inArray(readAloudJobs.status, TERMINAL),
-          viewer.isSuperuser ? undefined : eq(readAloudJobs.requestedByUserId, viewer.id),
-        ),
-      )
+      .where(and(eq(readAloudJobs.bookId, bookId), inArray(readAloudJobs.status, TERMINAL), eq(readAloudJobs.requestedByUserId, viewer.id)))
       .orderBy(sql`${readAloudJobs.completedAt} desc nulls last`, desc(readAloudJobs.createdAt), desc(readAloudJobs.id))
       .limit(1);
     return row && row.dismissedAt == null ? row : null;

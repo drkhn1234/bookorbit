@@ -66,13 +66,13 @@ export class CollectionRepository {
     return this.db.select(collectionFields).from(collections).where(eq(collections.id, id)).limit(1);
   }
 
-  findByIdForViewer(id: number, userId: number, isSuperuser: boolean, visibleBooksWhere: SQL | undefined) {
+  findByIdForViewer(id: number, userId: number, visibleBooksWhere: SQL | undefined) {
     return this.db
       .select(collectionFieldsWithVisibleBookCount)
       .from(collections)
       .leftJoin(collectionBooks, eq(collections.id, collectionBooks.collectionId))
       .leftJoin(books, and(eq(books.id, collectionBooks.bookId), ne(books.status, 'processing'), visibleBooksWhere))
-      .where(isSuperuser ? eq(collections.id, id) : and(eq(collections.id, id), or(eq(collections.userId, userId), eq(collections.isPublic, true))))
+      .where(and(eq(collections.id, id), or(eq(collections.userId, userId), eq(collections.isPublic, true))))
       .groupBy(collections.id, collections.userId)
       .limit(1);
   }
@@ -108,7 +108,7 @@ export class CollectionRepository {
       .returning();
   }
 
-  buildReadableMembershipWhere(collectionId: number, userId: number, isSuperuser: boolean): SQL {
+  buildReadableMembershipWhere(collectionId: number, userId: number): SQL {
     const membership = this.db
       .select({ one: sql`1` })
       .from(collectionBooks)
@@ -117,7 +117,7 @@ export class CollectionRepository {
         and(
           eq(collectionBooks.collectionId, collectionId),
           eq(collectionBooks.bookId, books.id),
-          ...(isSuperuser ? [] : [or(eq(collections.userId, userId), eq(collections.isPublic, true))!]),
+          or(eq(collections.userId, userId), eq(collections.isPublic, true)),
         ),
       )
       .limit(1);

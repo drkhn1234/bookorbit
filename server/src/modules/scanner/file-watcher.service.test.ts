@@ -1,6 +1,7 @@
 import { mkdtemp, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import { LibraryOperationGate } from '../../common/services/library-operation-gate.service';
 import { SelfWriteRegistry } from '../../common/services/self-write-registry.service';
 
 import { FileWatcherService, WATCHER_DEBOUNCE_MS } from './file-watcher.service';
@@ -38,8 +39,9 @@ function makeService(db: any = {}) {
   } as unknown as ScannerService;
 
   const selfWriteRegistry = new SelfWriteRegistry();
-  const service = new FileWatcherService(db, processor, gateway, scannerService, selfWriteRegistry);
-  return { service, processor, gateway, scannerService, selfWriteRegistry };
+  const libraryGate = new LibraryOperationGate();
+  const service = new FileWatcherService(db, processor, gateway, scannerService, selfWriteRegistry, libraryGate);
+  return { service, processor, gateway, scannerService, selfWriteRegistry, libraryGate };
 }
 
 beforeEach(() => vi.useFakeTimers());
@@ -219,10 +221,28 @@ describe('process()', () => {
 // ── schedule() debounce ───────────────────────────────────────────────────────
 
 describe('schedule() debounce', () => {
+  it('rechecks queued watcher paths after a registry rebind and drops only paths no longer watched', async () => {
+    const { service, libraryGate, processor } = makeService();
+    (service as any).subscriptions.set(1, []);
+    (service as any).watchedLibraryPaths.set(1, ['/books/old', '/books/keep']);
+    const release = libraryGate.tryAcquire(1, 'library_rebind')!;
+    (service as any).schedule('create', '/books/old/removed.epub', 1);
+    (service as any).schedule('create', '/books/keep/retained.epub', 1);
+    await vi.advanceTimersByTimeAsync(WATCHER_DEBOUNCE_MS);
+    expect(processor.handleCreate).not.toHaveBeenCalled();
+
+    (service as any).watchedLibraryPaths.set(1, ['/books/new', '/books/keep']);
+    release();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(processor.handleCreate).toHaveBeenCalledExactlyOnceWith('/books/keep/retained.epub', 1);
+  });
+
   it('debounces rapid events for the same path — process called only once', async () => {
     const { service } = makeService();
     // Register a subscription so the orphaned-timer guard lets events through
     (service as any).subscriptions.set(1, []);
+    (service as any).watchedLibraryPaths.set(1, ['/books']);
     const processSpy = vi.spyOn(service as any, 'process').mockResolvedValue(undefined);
 
     (service as any).schedule('delete', '/books/file.epub', 1);
@@ -239,6 +259,7 @@ describe('schedule() debounce', () => {
   it('last event type wins when delete and create race for the same path', async () => {
     const { service } = makeService();
     (service as any).subscriptions.set(1, []);
+    (service as any).watchedLibraryPaths.set(1, ['/books']);
     const processSpy = vi.spyOn(service as any, 'process').mockResolvedValue(undefined);
 
     (service as any).schedule('delete', '/books/file.epub', 1);
@@ -254,6 +275,7 @@ describe('schedule() debounce', () => {
   it("ignores a hidden entry below the library root - the write path's own temp file", async () => {
     const { service } = makeService();
     (service as any).subscriptions.set(1, []);
+    (service as any).watchedLibraryPaths.set(1, ['/books']);
     (service as any).watchedLibraryPaths.set(1, ['/books']);
     const processSpy = vi.spyOn(service as any, 'process').mockResolvedValue(undefined);
 
@@ -271,6 +293,7 @@ describe('schedule() debounce', () => {
   it('still processes events under a library root that is itself hidden', async () => {
     const { service } = makeService();
     (service as any).subscriptions.set(1, []);
+    (service as any).watchedLibraryPaths.set(1, ['/books']);
     (service as any).watchedLibraryPaths.set(1, ['/mnt/.private/books']);
     const processSpy = vi.spyOn(service as any, 'process').mockResolvedValue(undefined);
 
@@ -285,6 +308,7 @@ describe('schedule() debounce', () => {
   it('does not debounce events for different paths', async () => {
     const { service } = makeService();
     (service as any).subscriptions.set(1, []);
+    (service as any).watchedLibraryPaths.set(1, ['/books']);
     const processSpy = vi.spyOn(service as any, 'process').mockResolvedValue(undefined);
 
     (service as any).schedule('delete', '/books/file-a.epub', 1);
@@ -300,6 +324,7 @@ describe('schedule() debounce', () => {
     const { service, selfWriteRegistry } = makeService();
     const path = '/books/file.epub';
     (service as any).subscriptions.set(1, []);
+    (service as any).watchedLibraryPaths.set(1, ['/books']);
     const processSpy = vi.spyOn(service as any, 'process').mockResolvedValue(undefined);
     selfWriteRegistry.begin([path]);
 
@@ -321,6 +346,7 @@ describe('schedule() debounce', () => {
     const { service, selfWriteRegistry } = makeService();
     const path = '/books/file.epub';
     (service as any).subscriptions.set(1, []);
+    (service as any).watchedLibraryPaths.set(1, ['/books']);
     const processSpy = vi.spyOn(service as any, 'process').mockResolvedValue(undefined);
     selfWriteRegistry.begin([path]);
 
@@ -338,6 +364,7 @@ describe('schedule() debounce', () => {
     const { service, scannerService, selfWriteRegistry } = makeService();
     const path = '/books/file.epub';
     (service as any).subscriptions.set(1, []);
+    (service as any).watchedLibraryPaths.set(1, ['/books']);
     const scheduleFolderScanSpy = vi.spyOn(service as any, 'scheduleFolderScan');
     selfWriteRegistry.begin([path]);
 
@@ -354,6 +381,7 @@ describe('schedule() debounce', () => {
     const { service, processor, selfWriteRegistry } = makeService();
     const path = '/books/file.epub';
     (service as any).subscriptions.set(1, []);
+    (service as any).watchedLibraryPaths.set(1, ['/books']);
     const scheduleFolderScanSpy = vi.spyOn(service as any, 'scheduleFolderScan');
     processor.handleCreate = vi.fn().mockResolvedValue({ type: 'scan-required', scope: 'file' });
     selfWriteRegistry.begin([path]);
@@ -373,6 +401,7 @@ describe('reconcile()', () => {
   it('emits book-restored for each restored result from reconcileMissingBooks', async () => {
     const { service, processor, gateway, scannerService } = makeService();
     (service as any).subscriptions.set(1, []);
+    (service as any).watchedLibraryPaths.set(1, ['/books']);
     (processor.reconcileMissingBooks as vi.Mock).mockResolvedValue([
       { type: 'book-restored', libraryId: 1, bookIds: [10, 11] },
       { type: 'book-restored', libraryId: 2, bookIds: [20] },
@@ -390,6 +419,7 @@ describe('reconcile()', () => {
   it('buffers book-missing and emits move or transfer results from reconcileMissingBooks', async () => {
     const { service, processor, gateway, scannerService } = makeService();
     (service as any).subscriptions.set(1, []);
+    (service as any).watchedLibraryPaths.set(1, ['/books']);
     (processor.reconcileMissingBooks as vi.Mock).mockResolvedValue([
       { type: 'book-missing', libraryId: 1, bookIds: [20] },
       { type: 'book-moved', libraryId: 1, bookIds: [30] },
@@ -411,6 +441,7 @@ describe('reconcile()', () => {
   it('emits book-transferred from cross-library reconcile results', async () => {
     const { service, processor, gateway } = makeService();
     (service as any).subscriptions.set(1, []);
+    (service as any).watchedLibraryPaths.set(1, ['/books']);
     (service as any).subscriptions.set(2, []);
     (processor.reconcileMissingBooks as vi.Mock).mockResolvedValue([{ type: 'book-transferred', fromLibraryId: 1, toLibraryId: 2, bookIds: [50] }]);
 
@@ -425,6 +456,7 @@ describe('reconcile()', () => {
   it('does nothing when reconcileMissingBooks returns empty', async () => {
     const { service, gateway } = makeService();
     (service as any).subscriptions.set(1, []);
+    (service as any).watchedLibraryPaths.set(1, ['/books']);
 
     await (service as any).reconcile();
 
@@ -518,6 +550,7 @@ describe('dir-level coalescing', () => {
   it('drops individual file events when folder scan is pending for parent dir', async () => {
     const { service } = makeService();
     (service as any).subscriptions.set(1, []);
+    (service as any).watchedLibraryPaths.set(1, ['/books']);
     const processSpy = vi.spyOn(service as any, 'process').mockResolvedValue(undefined);
 
     (service as any).pendingFolderScanTimers.set('1:/books/Author/Book', { timer: setTimeout(() => {}, 10000), libraryId: 1 });
@@ -532,6 +565,7 @@ describe('dir-level coalescing', () => {
   it('processes events when no folder scan is pending', async () => {
     const { service } = makeService();
     (service as any).subscriptions.set(1, []);
+    (service as any).watchedLibraryPaths.set(1, ['/books']);
     const processSpy = vi.spyOn(service as any, 'process').mockResolvedValue(undefined);
 
     (service as any).schedule('create', '/books/Author/Book/file.epub', 1);
@@ -553,6 +587,7 @@ describe('pauseWatcher() / resumeWatcher()', () => {
   it('drops events while paused and delivers them again after resuming', async () => {
     const { service } = makeService();
     (service as any).subscriptions.set(1, []);
+    (service as any).watchedLibraryPaths.set(1, ['/books']);
     const processSpy = vi.spyOn(service as any, 'process').mockResolvedValue(undefined);
 
     expect(service.pauseWatcher(1)).toBe(true);
@@ -574,6 +609,7 @@ describe('pauseWatcher() / resumeWatcher()', () => {
   it('discards events that were already pending when the pause began', async () => {
     const { service } = makeService();
     (service as any).subscriptions.set(1, []);
+    (service as any).watchedLibraryPaths.set(1, ['/books']);
     const processSpy = vi.spyOn(service as any, 'process').mockResolvedValue(undefined);
 
     (service as any).schedule('create', '/books/inflight.epub', 1);

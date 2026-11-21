@@ -1,3 +1,4 @@
+import type { LibraryScopeService } from '../../common/library-scope/library-scope.service';
 import { ConflictException, Logger, NotFoundException } from '@nestjs/common';
 
 import type { BookMergeBlocker, BookMergePreviewResponse } from '@bookorbit/types';
@@ -97,6 +98,10 @@ function createService() {
   const effects = { apply: vi.fn().mockResolvedValue(0) };
   const libraryGate = new LibraryOperationGate();
   const gateway = { emitBookMerged: vi.fn(), emitBookMergeJob: vi.fn() };
+  const libraryScope = {
+    assertPermission: vi.fn().mockResolvedValue(undefined),
+    filterVisible: vi.fn((_user, ids: number[]) => Promise.resolve(ids)),
+  };
   const service = new BookMergeService(
     repository as unknown as BookMergeRepository,
     planner as unknown as BookMergePlanner,
@@ -104,8 +109,9 @@ function createService() {
     effects as unknown as BookMergeEffectsService,
     libraryGate,
     gateway as unknown as ScanGateway,
+    libraryScope as unknown as LibraryScopeService,
   );
-  return { service, repository, planner, executor, effects, libraryGate, gateway };
+  return { service, repository, planner, executor, effects, libraryGate, gateway, libraryScope };
 }
 
 async function conflictOf(promise: Promise<unknown>): Promise<Record<string, unknown>> {
@@ -302,7 +308,12 @@ describe('BookMergeService across libraries', () => {
     await service.start(DTO, makeUser({ id: 5 }));
 
     await vi.waitFor(() =>
-      expect(gateway.emitBookMergeJob).toHaveBeenCalledWith(5, 'progress', expect.objectContaining({ bytesDone: 400, bytesTotal: 1000 })),
+      expect(gateway.emitBookMergeJob).toHaveBeenCalledWith(
+        5,
+        'progress',
+        expect.objectContaining({ bytesDone: 400, bytesTotal: 1000 }),
+        expect.any(Array),
+      ),
     );
   });
 
@@ -344,11 +355,11 @@ describe('BookMergeService.getJob', () => {
     await expect(service.getJob(4, makeUser())).rejects.toBeInstanceOf(NotFoundException);
   });
 
-  it("shows a superuser another user's job, with pending outcomes before any step ran", async () => {
+  it('shows the requester their scoped job, with pending outcomes before any step ran', async () => {
     const { service, repository } = createService();
     repository.findJob.mockResolvedValue(jobRow(4, { requestedByUserId: 2, status: 'moving', currentSourceBookId: 2 }));
 
-    const job = await service.getJob(4, makeUser({ id: 1, isSuperuser: true }));
+    const job = await service.getJob(4, makeUser({ id: 2, isSuperuser: true }));
 
     expect(job).toEqual({
       id: 4,

@@ -4,10 +4,9 @@ import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 import { Combine, Loader2 } from '@lucide/vue'
-import { BOOK_MERGE_MAX_BOOKS, Permission, type BookCard, type BookMergeField, type BookMergedEvent } from '@bookorbit/types'
+import { BOOK_MERGE_MAX_BOOKS, type BookCard, type BookMergeField, type BookMergedEvent } from '@bookorbit/types'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
-import { usePermissions } from '@/features/auth/composables/usePermissions'
 import { useLibraries } from '@/features/library/composables/useLibraries'
 import { useBookMerge } from '@/features/book/composables/useBookMerge'
 import { mergeBookLabels, mergedSourceIds, mergeLibraryNames } from '@/features/book/lib/book-merge'
@@ -46,7 +45,6 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 const router = useRouter()
-const { hasPermission } = usePermissions()
 const { libraries } = useLibraries()
 const merge = useBookMerge()
 
@@ -85,7 +83,7 @@ const libraryNames = computed(() => mergeLibraryNames(preview.value?.books ?? []
 const keptTitle = computed(() => (merge.keeperId.value !== null ? (bookLabels.value.get(merge.keeperId.value) ?? '') : ''))
 const blockers = computed(() => (merge.previewCurrent.value ? (preview.value?.blockers ?? []) : []))
 const blocked = computed(() => blockers.value.length > 0)
-const canDeleteBooks = computed(() => hasPermission(Permission.LibraryDeleteBooks))
+const canDeleteBooks = computed(() => preview.value?.canRemoveIdenticalCopies === true)
 const confirmLabel = computed(() => t('book.merge.confirm', { count: merge.bookIds.value.length }))
 const pickerExcluded = computed(() => props.bookIds)
 const pickerMax = computed(() => Math.max(0, BOOK_MERGE_MAX_BOOKS - props.bookIds.length))

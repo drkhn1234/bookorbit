@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, count, desc, eq, inArray, lt, notInArray, sql } from 'drizzle-orm';
+import { and, count, desc, eq, exists, inArray, isNull, lt, notInArray, or, sql } from 'drizzle-orm';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 
 import { NOTIFICATION_TYPE_META, NotificationType } from '@bookorbit/types';
@@ -9,6 +9,15 @@ import { notifications, users, userPermissions, userLibraryAccess } from '../../
 import type { NewNotification, Notification } from '../../db/schema';
 
 type Db = NodePgDatabase<typeof schema>;
+type NotificationReference = Pick<Notification, 'id' | 'meta'>;
+
+const moveScoped = sql`coalesce(${notifications.meta} ? 'targetLibraryId' or ${notifications.meta} ? 'sourceLibraryIds', false)`;
+// Refresh events need only the visibility inputs, which also lets bulk mutations deduplicate their scopes.
+const scopeMeta = sql`case
+  when ${moveScoped} then jsonb_build_object('targetLibraryId', ${notifications.meta}->'targetLibraryId', 'sourceLibraryIds', ${notifications.meta}->'sourceLibraryIds')
+  when ${notifications.meta}->>'libraryId' is not null then jsonb_build_object('libraryId', ${notifications.meta}->'libraryId')
+  else null
+end`.as('scope_meta');
 
 const BOOK_REQUEST_NOTIFICATION_TYPES = Object.values(NotificationType).filter((type) => NOTIFICATION_TYPE_META[type]?.category === 'bookRequests');
 
@@ -36,9 +45,14 @@ export class NotificationRepository {
       .returning();
   }
 
-  async findByUser(userId: number, limit: number, offset: number): Promise<{ items: Notification[]; total: number }> {
+  async findByUser(
+    userId: number,
+    limit: number,
+    offset: number,
+    libraryIds?: readonly number[] | null,
+  ): Promise<{ items: Notification[]; total: number }> {
     const requestCondition = await this.requestVisibilityCondition(userId);
-    const condition = and(eq(notifications.userId, userId), requestCondition);
+    const condition = and(eq(notifications.userId, userId), requestCondition, this.libraryVisibilityCondition(userId, libraryIds));
     const [items, [{ value: total }]] = await Promise.all([
       this.db
         .select()
@@ -52,12 +66,14 @@ export class NotificationRepository {
     return { items, total };
   }
 
-  async countUnread(userId: number): Promise<number> {
+  async countUnread(userId: number, libraryIds?: readonly number[] | null): Promise<number> {
     const requestCondition = await this.requestVisibilityCondition(userId);
     const [{ value }] = await this.db
       .select({ value: count() })
       .from(notifications)
-      .where(and(eq(notifications.userId, userId), eq(notifications.read, false), requestCondition));
+      .where(
+        and(eq(notifications.userId, userId), eq(notifications.read, false), requestCondition, this.libraryVisibilityCondition(userId, libraryIds)),
+      );
     return value;
   }
 
@@ -68,37 +84,83 @@ export class NotificationRepository {
       : undefined;
   }
 
-  async setRead(id: number, userId: number): Promise<boolean> {
-    const result = await this.db
+  private libraryVisibilityCondition(userId: number, libraryIds?: readonly number[] | null) {
+    const allowedGrant = and(
+      eq(userLibraryAccess.userId, userId),
+      libraryIds == null ? undefined : libraryIds.length ? inArray(userLibraryAccess.libraryId, libraryIds) : sql`false`,
+    );
+    const libraryId = sql`${notifications.meta}->>'libraryId'`;
+    const target = sql`${notifications.meta}->'targetLibraryId'`;
+    const sources = sql`case when jsonb_typeof(${notifications.meta}->'sourceLibraryIds') = 'array'
+      then ${notifications.meta}->'sourceLibraryIds' else '[]'::jsonb end`;
+    const missingMoveGrant = this.db
+      .select({ one: sql`1` })
+      .from(sql`jsonb_array_elements(${sources} || jsonb_build_array(${target})) as required(id)`)
+      .where(
+        sql`not exists (${this.db
+          .select({ one: sql`1` })
+          .from(userLibraryAccess)
+          .where(and(allowedGrant, sql`to_jsonb(${userLibraryAccess.libraryId}) = required.id`))})`,
+      );
+
+    return sql`case when ${moveScoped} then jsonb_array_length(${sources}) > 0 and not exists (${missingMoveGrant})
+      else ${or(
+        isNull(libraryId),
+        exists(
+          this.db
+            .select({ one: sql`1` })
+            .from(userLibraryAccess)
+            .where(and(allowedGrant, sql`${userLibraryAccess.libraryId}::text = ${libraryId}`)),
+        ),
+      )} end`;
+  }
+
+  async setRead(id: number, userId: number, libraryIds?: readonly number[] | null): Promise<NotificationReference | undefined> {
+    const [row] = await this.db
       .update(notifications)
       .set({ read: true, updatedAt: sql`${notifications.updatedAt}` })
-      .where(and(eq(notifications.id, id), eq(notifications.userId, userId)));
-    return (result.rowCount ?? 0) > 0;
+      .where(and(eq(notifications.id, id), eq(notifications.userId, userId), this.libraryVisibilityCondition(userId, libraryIds)))
+      .returning({ id: notifications.id, meta: notifications.meta });
+    return row;
   }
 
-  async setAllRead(userId: number): Promise<number> {
+  async setAllRead(userId: number, libraryIds?: readonly number[] | null): Promise<unknown[]> {
     const requestCondition = await this.requestVisibilityCondition(userId);
-    const result = await this.db
-      .update(notifications)
-      .set({ read: true, updatedAt: sql`${notifications.updatedAt}` })
-      .where(and(eq(notifications.userId, userId), eq(notifications.read, false), requestCondition));
-    return result.rowCount ?? 0;
+    const affected = this.db.$with('affected').as(
+      this.db
+        .update(notifications)
+        .set({ read: true, updatedAt: sql`${notifications.updatedAt}` })
+        .where(
+          and(eq(notifications.userId, userId), eq(notifications.read, false), requestCondition, this.libraryVisibilityCondition(userId, libraryIds)),
+        )
+        .returning({ scope: scopeMeta }),
+    );
+    const rows = await this.db.with(affected).selectDistinct({ scope: affected.scope }).from(affected);
+    return rows.map(({ scope }) => scope);
   }
 
-  async deleteOne(id: number, userId: number): Promise<boolean> {
-    const result = await this.db.delete(notifications).where(and(eq(notifications.id, id), eq(notifications.userId, userId)));
-    return (result.rowCount ?? 0) > 0;
+  async deleteOne(id: number, userId: number, libraryIds?: readonly number[] | null): Promise<NotificationReference | undefined> {
+    const [row] = await this.db
+      .delete(notifications)
+      .where(and(eq(notifications.id, id), eq(notifications.userId, userId), this.libraryVisibilityCondition(userId, libraryIds)))
+      .returning({ id: notifications.id, meta: notifications.meta });
+    return row;
   }
 
-  async deleteAllForUser(userId: number): Promise<number> {
+  async deleteAllForUser(userId: number, libraryIds?: readonly number[] | null): Promise<unknown[]> {
     const requestCondition = await this.requestVisibilityCondition(userId);
-    const result = await this.db.delete(notifications).where(and(eq(notifications.userId, userId), requestCondition));
-    return result.rowCount ?? 0;
+    const affected = this.db.$with('affected').as(
+      this.db
+        .delete(notifications)
+        .where(and(eq(notifications.userId, userId), requestCondition, this.libraryVisibilityCondition(userId, libraryIds)))
+        .returning({ scope: scopeMeta }),
+    );
+    const rows = await this.db.with(affected).selectDistinct({ scope: affected.scope }).from(affected);
+    return rows.map(({ scope }) => scope);
   }
 
-  async deleteOlderThan(date: Date, batchSize = 1_000): Promise<{ deleted: number; userIds: number[] }> {
+  async deleteOlderThan(date: Date, onBatchDeleted: (rows: { userId: number; scope: unknown }[]) => void, batchSize = 1_000): Promise<number> {
     let deleted = 0;
-    const userIds = new Set<number>();
 
     while (true) {
       const candidates = await this.db
@@ -120,28 +182,21 @@ export class NotificationRepository {
             lt(notifications.updatedAt, date),
           ),
         )
-        .returning({ userId: notifications.userId });
+        .returning({ userId: notifications.userId, scope: scopeMeta });
       deleted += rows.length;
-      for (const row of rows) userIds.add(row.userId);
+      onBatchDeleted(rows);
     }
 
-    return { deleted, userIds: [...userIds] };
+    return deleted;
   }
 
   async findUserIdsWithLibraryAccess(libraryId: number): Promise<number[]> {
-    const byAccess = this.db
+    const rows = await this.db
       .select({ userId: userLibraryAccess.userId })
       .from(userLibraryAccess)
       .innerJoin(users, eq(users.id, userLibraryAccess.userId))
       .where(and(eq(userLibraryAccess.libraryId, libraryId), eq(users.active, true)));
-
-    const superusers = this.db
-      .select({ userId: users.id })
-      .from(users)
-      .where(and(eq(users.isSuperuser, true), eq(users.active, true)));
-
-    const rows = await this.db.selectDistinct({ userId: sql<number>`user_id` }).from(sql`(${byAccess} UNION ${superusers}) as combined`);
-    return rows.map((r) => r.userId);
+    return rows.map((row) => row.userId);
   }
 
   async findUserIdsWithPermission(permission: string): Promise<number[]> {

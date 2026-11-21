@@ -3,6 +3,7 @@ import { BadRequestException, Body, Controller, Delete, Get, HttpCode, HttpStatu
 import type { FastifyReply } from 'fastify';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
+import { RequireScopedPermission } from '../../common/decorators/require-scoped-permission.decorator';
 import type { MultipartRequest } from '../../common/types/multipart-request';
 import type { RequestUser } from '../../common/types/request-user';
 import { CoverService } from './cover.service';
@@ -35,7 +36,7 @@ export class CoverController {
 
   @Post(':id/cover')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @RequirePermission(Permission.LibraryEditMetadata)
+  @RequireScopedPermission(Permission.LibraryEditMetadata, 'book')
   async uploadCover(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser() user: RequestUser,
@@ -51,7 +52,7 @@ export class CoverController {
 
   @Post(':id/cover/from-url')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @RequirePermission(Permission.LibraryEditMetadata)
+  @RequireScopedPermission(Permission.LibraryEditMetadata, 'book')
   uploadCoverFromUrl(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UploadCoverFromUrlDto,
@@ -64,7 +65,7 @@ export class CoverController {
   }
 
   @Delete(':id/cover')
-  @RequirePermission(Permission.LibraryEditMetadata)
+  @RequireScopedPermission(Permission.LibraryEditMetadata, 'book')
   async deleteCover(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: RequestUser, @Query() query?: CoverMediumQueryDto) {
     const coverSource = query?.medium ? await this.coverService.deleteCover(id, user, query.medium) : await this.coverService.deleteCover(id, user);
     return { coverSource };

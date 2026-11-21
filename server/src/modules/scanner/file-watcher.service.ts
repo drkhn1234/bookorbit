@@ -3,6 +3,7 @@ import { watch, type FSWatcher } from 'chokidar';
 import { eq } from 'drizzle-orm';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { dirname, sep } from 'path';
+import { LibraryOperationGate } from '../../common/services/library-operation-gate.service';
 import { SelfWriteRegistry } from '../../common/services/self-write-registry.service';
 import { normalizeWatchEvent, waitForWatcherReady, type WatchEventType } from '../../common/utils/fs-watch.utils';
 import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
@@ -45,6 +46,7 @@ export class FileWatcherService implements OnApplicationBootstrap, OnModuleDestr
     private readonly gateway: ScanGateway,
     private readonly scannerService: ScannerService,
     private readonly selfWriteRegistry: SelfWriteRegistry,
+    private readonly libraryGate: LibraryOperationGate,
   ) {}
 
   async onApplicationBootstrap(): Promise<void> {
@@ -137,7 +139,7 @@ export class FileWatcherService implements OnApplicationBootstrap, OnModuleDestr
 
     this.logger.log(`[${event}] [start] libraryCount=${libraryIds.length} libraryIds=${libraryIdsLabel} - reconcile started`);
     try {
-      const results = await this.processor.reconcileMissingBooks(libraryIds);
+      const results = await this.reconcileWatchedLibraries(libraryIds);
       for (const result of results) {
         if (result.type === 'book-restored' || result.type === 'book-moved' || result.type === 'book-transferred') {
           this.scannerService.reconcileCoverSlotsAsync(result.bookIds);
@@ -146,12 +148,12 @@ export class FileWatcherService implements OnApplicationBootstrap, OnModuleDestr
           this.scannerService.bufferBookMissingEvent(result.libraryId, result.bookIds);
           this.scannerService.bufferBooksUnavailableNotification(result.libraryId, result.bookIds);
         } else if (result.type === 'book-restored') {
-          this.gateway.emitBookRestored({ libraryId: result.libraryId, bookIds: result.bookIds });
+          void this.gateway.emitBookRestored({ libraryId: result.libraryId, bookIds: result.bookIds });
           this.scannerService.bufferBooksRestoredNotification(result.libraryId, result.bookIds);
         } else if (result.type === 'book-moved') {
-          this.gateway.emitBookMoved({ libraryId: result.libraryId, bookIds: result.bookIds });
+          void this.gateway.emitBookMoved({ libraryId: result.libraryId, bookIds: result.bookIds });
         } else if (result.type === 'book-transferred') {
-          this.gateway.emitBookTransferred({ fromLibraryId: result.fromLibraryId, toLibraryId: result.toLibraryId, bookIds: result.bookIds });
+          void this.gateway.emitBookTransferred({ fromLibraryId: result.fromLibraryId, toLibraryId: result.toLibraryId, bookIds: result.bookIds });
         }
       }
       this.logger.log(
@@ -165,6 +167,10 @@ export class FileWatcherService implements OnApplicationBootstrap, OnModuleDestr
       );
       throw err;
     }
+  }
+
+  private reconcileWatchedLibraries(libraryIds: number[]) {
+    return this.libraryGate.withStableRegistry(() => this.processor.reconcileMissingBooks(libraryIds.filter((id) => this.subscriptions.has(id))));
   }
 
   async startWatcher(libraryId: number, paths: string[]): Promise<void> {
@@ -355,17 +361,20 @@ export class FileWatcherService implements OnApplicationBootstrap, OnModuleDestr
       this.pendingCrossLibraryReconcileLibraryIds.clear();
       if (libraryIds.length === 0) return;
 
-      this.processor
-        .reconcileMissingBooks(libraryIds)
+      this.reconcileWatchedLibraries(libraryIds)
         .then((results) => {
           for (const result of results) {
             if (result.type === 'book-restored') {
-              this.gateway.emitBookRestored({ libraryId: result.libraryId, bookIds: result.bookIds });
+              void this.gateway.emitBookRestored({ libraryId: result.libraryId, bookIds: result.bookIds });
               this.scannerService.bufferBooksRestoredNotification(result.libraryId, result.bookIds);
             } else if (result.type === 'book-moved') {
-              this.gateway.emitBookMoved({ libraryId: result.libraryId, bookIds: result.bookIds });
+              void this.gateway.emitBookMoved({ libraryId: result.libraryId, bookIds: result.bookIds });
             } else if (result.type === 'book-transferred') {
-              this.gateway.emitBookTransferred({ fromLibraryId: result.fromLibraryId, toLibraryId: result.toLibraryId, bookIds: result.bookIds });
+              void this.gateway.emitBookTransferred({
+                fromLibraryId: result.fromLibraryId,
+                toLibraryId: result.toLibraryId,
+                bookIds: result.bookIds,
+              });
             }
           }
         })
@@ -469,11 +478,21 @@ export class FileWatcherService implements OnApplicationBootstrap, OnModuleDestr
       }
 
       this.pendingTimers.delete(path);
-      this.process(entry.type, path, entry.libraryId).catch((err) =>
-        this.logger.error(
-          `[scanner.watcher.process_event] [fail] libraryId=${entry.libraryId} type=${entry.type} path="${sanitizeLogValue(path)}" errorClass=${err instanceof Error ? err.name : 'Error'} error="${sanitizeLogValue(err instanceof Error ? err.message : String(err))}" - file event processing failed`,
-        ),
-      );
+      this.libraryGate
+        .withStableRegistry(async () => {
+          const roots = this.watchedLibraryPaths.get(entry.libraryId);
+          if (
+            !this.subscriptions.has(entry.libraryId) ||
+            !roots?.some((root) => path === root || path.startsWith(root.endsWith(sep) ? root : root + sep))
+          )
+            return;
+          await this.process(entry.type, path, entry.libraryId);
+        })
+        .catch((err) =>
+          this.logger.error(
+            `[scanner.watcher.process_event] [fail] libraryId=${entry.libraryId} type=${entry.type} path="${sanitizeLogValue(path)}" errorClass=${err instanceof Error ? err.name : 'Error'} error="${sanitizeLogValue(err instanceof Error ? err.message : String(err))}" - file event processing failed`,
+          ),
+        );
     }, DEBOUNCE_MS);
   }
 
@@ -509,17 +528,17 @@ export class FileWatcherService implements OnApplicationBootstrap, OnModuleDestr
       this.scannerService.bufferBooksUnavailableNotification(result.libraryId, result.bookIds);
       if (type === 'delete') this.scheduleCrossLibraryReconcile();
     } else if (result.type === 'book-restored') {
-      this.gateway.emitBookRestored({ libraryId: result.libraryId, bookIds: result.bookIds });
+      void this.gateway.emitBookRestored({ libraryId: result.libraryId, bookIds: result.bookIds });
       this.scannerService.bufferBooksRestoredNotification(result.libraryId, result.bookIds);
     } else if (result.type === 'book-moved') {
-      this.gateway.emitBookMoved({ libraryId: result.libraryId, bookIds: result.bookIds });
+      void this.gateway.emitBookMoved({ libraryId: result.libraryId, bookIds: result.bookIds });
       // The new path is already recorded, so the folder scan below cannot see the move regex rules read.
       this.scannerService.refreshRegexMetadataAfterMoveAsync(result.bookIds);
       // A move updates the file's path and may consolidate virtual-sibling books.
       // Schedule a folder scan so upsertBook can drain any remaining siblings.
       if (type === 'create') this.scheduleFolderScan(path, libraryId);
     } else if (result.type === 'book-transferred') {
-      this.gateway.emitBookTransferred({ fromLibraryId: result.fromLibraryId, toLibraryId: result.toLibraryId, bookIds: result.bookIds });
+      void this.gateway.emitBookTransferred({ fromLibraryId: result.fromLibraryId, toLibraryId: result.toLibraryId, bookIds: result.bookIds });
     }
   }
 }

@@ -9,6 +9,7 @@ import { and, desc, eq } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { DEFAULT_FORMAT_PRIORITY, type Permission } from '@bookorbit/types';
 
+import { triggerLibraryScan } from '../app-harness';
 import { AppModule } from '../../../src/app.module';
 import { DB } from '../../../src/db';
 import * as schema from '../../../src/db/schema';
@@ -216,22 +217,8 @@ export async function triggerAndWaitForLibraryScan(
   libraryId: number,
   timeoutMs = 45_000,
 ): Promise<typeof scanJobs.$inferSelect> {
-  const response = await ctx.app.inject({
-    method: 'POST',
-    url: `/api/v1/scanner/libraries/${libraryId}/scan`,
-    headers: authHeader(ctx.adminToken),
-  });
-
-  if (response.statusCode !== 202) {
-    throw new Error(`Scan endpoint failed: ${response.statusCode} ${response.body}`);
-  }
-
-  const body = response.json() as { jobId?: number };
-  if (!body.jobId) {
-    throw new Error(`Scan endpoint returned no jobId: ${response.body}`);
-  }
-
-  return waitForScanCompletion(ctx.db, body.jobId, timeoutMs);
+  const jobId = await triggerLibraryScan(ctx, libraryId);
+  return waitForScanCompletion(ctx.db, jobId, timeoutMs);
 }
 
 export async function waitForScanCompletion(db: Db, jobId: number, timeoutMs = 30_000, pollMs = 100): Promise<typeof scanJobs.$inferSelect> {

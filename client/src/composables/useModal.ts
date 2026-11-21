@@ -11,6 +11,8 @@ interface UseModalOptions {
   initialFocus?: Ref<HTMLElement | null>
   /** Reactive open state for dialogs that are conditionally rendered inside an already-mounted component. */
   active?: Readonly<Ref<boolean>>
+  /** Whether closing should return focus to the opener. */
+  shouldRestoreFocus?: () => boolean
 }
 
 const FOCUSABLE_SELECTOR = [
@@ -79,7 +81,7 @@ export function useModal(options: UseModalOptions): void {
     engaged = false
     window.removeEventListener('keydown', handleKeydown)
     document.body.style.overflow = previousOverflow
-    previouslyFocused?.focus?.()
+    if (previouslyFocused?.isConnected && (options.shouldRestoreFocus?.() ?? true)) previouslyFocused.focus()
     previouslyFocused = null
   }
 

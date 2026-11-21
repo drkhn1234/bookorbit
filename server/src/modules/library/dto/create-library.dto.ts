@@ -38,7 +38,7 @@ function trimString(value: unknown): unknown {
   return typeof value === 'string' ? value.trim() : value;
 }
 
-export class CreateLibraryDto {
+export class LibrarySettingsDto {
   @IsString()
   @IsNotEmpty()
   @MaxLength(255)
@@ -55,12 +55,6 @@ export class CreateLibraryDto {
   @IsInt()
   @Min(0)
   displayOrder?: number;
-
-  @IsArray()
-  @ArrayMinSize(1)
-  @IsString({ each: true })
-  @IsNotEmpty({ each: true })
-  folders: string[];
 
   @IsOptionalNotNull()
   @IsIn(LIBRARY_COVER_ASPECT_RATIOS)
@@ -213,4 +207,12 @@ export class CreateLibraryDto {
   @IsOptionalNotNull()
   @IsBoolean()
   fileRenameEnabled?: boolean;
+}
+
+export class CreateLibraryDto extends LibrarySettingsDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @IsString({ each: true })
+  @IsNotEmpty({ each: true })
+  folders: string[];
 }

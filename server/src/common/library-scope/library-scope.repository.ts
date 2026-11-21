@@ -57,4 +57,17 @@ export class LibraryScopeRepository {
     });
     return row?.accessLevel ?? null;
   }
+
+  async findResourceLibrary(resource: 'book' | 'file', id: number): Promise<number | null> {
+    if (resource === 'book') {
+      const [row] = await this.db.select({ libraryId: schema.books.libraryId }).from(schema.books).where(eq(schema.books.id, id));
+      return row?.libraryId ?? null;
+    }
+    const [row] = await this.db
+      .select({ libraryId: schema.books.libraryId })
+      .from(schema.bookFiles)
+      .innerJoin(schema.books, eq(schema.bookFiles.bookId, schema.books.id))
+      .where(eq(schema.bookFiles.id, id));
+    return row?.libraryId ?? null;
+  }
 }

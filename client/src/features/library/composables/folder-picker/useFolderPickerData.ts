@@ -8,7 +8,7 @@ import type {
   FolderSummary,
   UnclaimedFolders,
 } from '@bookorbit/types'
-import { api } from '@/lib/api'
+import { useLibraryPathApi } from '../useLibraryPathApi'
 import { normalizeFolderPath } from '../folder-paths'
 import { isAtOrInside } from './folder-picker-rules'
 
@@ -28,6 +28,7 @@ export type CreateFolderError = 'exists' | 'denied' | 'invalid' | 'failed'
  * are deduplicated, and counts for visible rows are batched.
  */
 export function useFolderPickerData() {
+  const api = useLibraryPathApi()
   const places = ref<FolderPlaces | null>(null)
   const placesFailed = ref(false)
   const unclaimed = ref<UnclaimedFolders | null>(null)

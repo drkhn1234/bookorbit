@@ -122,12 +122,11 @@ describe('ScannerRepository', () => {
     await expect(repo.findLibraryName(2)).resolves.toBeNull();
   });
 
-  it('returns unique accessible user ids including explicit library access and superusers', async () => {
+  it('returns only users with explicit library access', async () => {
     const { repo, queues } = makeRepo();
     queues.select.push([{ userId: 2 }, { userId: 3 }]);
-    queues.select.push([{ userId: 1 }, { userId: 3 }]);
 
-    await expect(repo.findLibraryAccessibleUserIds(9)).resolves.toEqual([2, 3, 1]);
+    await expect(repo.findLibraryAccessibleUserIds(9)).resolves.toEqual([2, 3]);
   });
 
   it('creates and updates books, including primary file reassignment and missing state', async () => {

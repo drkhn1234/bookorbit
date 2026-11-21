@@ -209,7 +209,13 @@ function createPlanner(scenario: Scenario) {
     countCompanionRequestsLeftBehind: vi.fn().mockResolvedValue([]),
     findSessionReaders: vi.fn().mockResolvedValue([]),
   };
-  const bookService = { verifyBookAccess: vi.fn().mockResolvedValue(undefined) };
+  const bookService = {
+    verifyBookPermission: vi.fn((_id: number, user: RequestUser, permission: Permission) =>
+      permission === Permission.LibraryDeleteBooks && !user.permissions.includes(permission)
+        ? Promise.reject(new ForbiddenException())
+        : Promise.resolve(),
+    ),
+  };
   const consolidation = { loadFacts: vi.fn((_tx: unknown, id: number) => Promise.resolve(factsById.get(id) ?? factsOf(id))) };
   const libraryGate = { isHeld: vi.fn().mockReturnValue(false) };
   const fileLocks = { isLocked: vi.fn().mockReturnValue(false) };
@@ -278,7 +284,7 @@ describe('BookMergePlanner.plan', () => {
       expect(preview.eligible).toBe(false);
       expect(preview.previewToken).toBeNull();
       expect(plan).toBeNull();
-      expect(bookService.verifyBookAccess).toHaveBeenCalledTimes(1);
+      expect(bookService.verifyBookPermission.mock.calls.filter(([, , permission]) => permission === Permission.LibraryMergeBooks)).toHaveLength(1);
     });
 
     it('rejects more than the maximum number of books with TOO_MANY_BOOKS before checking access', async () => {
@@ -289,7 +295,7 @@ describe('BookMergePlanner.plan', () => {
 
       expect(error).toBeInstanceOf(BadRequestException);
       expect((error as BadRequestException).getResponse()).toMatchObject({ errorCode: 'TOO_MANY_BOOKS' });
-      expect(bookService.verifyBookAccess).not.toHaveBeenCalled();
+      expect(bookService.verifyBookPermission).not.toHaveBeenCalled();
     });
 
     it('passes on a BOOK_MERGED not-found answer for a merged-away id without loading any book', async () => {
@@ -299,7 +305,7 @@ describe('BookMergePlanner.plan', () => {
         errorCode: 'BOOK_MERGED',
         errorMeta: { targetBookId: 1 },
       });
-      bookService.verifyBookAccess.mockImplementation((id: number) => (id === 2 ? Promise.reject(merged) : Promise.resolve()));
+      bookService.verifyBookPermission.mockImplementation((id: number) => (id === 2 ? Promise.reject(merged) : Promise.resolve()));
 
       await expect(planner.plan(MERGE_2_INTO_1, makeUser())).rejects.toBe(merged);
       expect(repository.loadBooks).not.toHaveBeenCalled();
@@ -307,7 +313,7 @@ describe('BookMergePlanner.plan', () => {
 
     it('passes on a NOT_FOUND answer for a book the user cannot see', async () => {
       const { planner, bookService } = createPlanner(twoBooks());
-      bookService.verifyBookAccess.mockRejectedValue(new NotFoundException('Book 2 not found'));
+      bookService.verifyBookPermission.mockRejectedValue(new NotFoundException('Book 2 not found'));
 
       await expect(planner.plan(MERGE_2_INTO_1, makeUser())).rejects.toBeInstanceOf(NotFoundException);
     });
@@ -318,9 +324,9 @@ describe('BookMergePlanner.plan', () => {
 
       await planner.plan(MERGE_2_INTO_1, user);
 
-      expect(bookService.verifyBookAccess.mock.calls).toEqual([
-        [1, user, 'editor'],
-        [2, user, 'editor'],
+      expect(bookService.verifyBookPermission.mock.calls.filter(([, , permission]) => permission === Permission.LibraryMergeBooks)).toEqual([
+        [1, user, Permission.LibraryMergeBooks],
+        [2, user, Permission.LibraryMergeBooks],
       ]);
     });
 
@@ -749,7 +755,7 @@ describe('BookMergePlanner.plan', () => {
     });
 
     it.each([
-      ['a superuser', { isSuperuser: true }],
+      ['a superuser with explicit user-management permission', { isSuperuser: true, permissions: [Permission.ManageUsers] }],
       ['a user manager', { permissions: [Permission.ManageUsers] }],
     ])("shows other readers' counts to %s", async (_name, overrides) => {
       const { planner, repository } = createPlanner(twoBooks());

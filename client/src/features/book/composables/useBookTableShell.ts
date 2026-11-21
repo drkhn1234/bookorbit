@@ -29,7 +29,11 @@ export function useBookTableShell({ books, selectionMode, querySelection, onMove
   const { setBookContext } = useBookNavigation()
   const tableControls = useTableViewControls()
   const selection = useBookViewSelection(books, selectionMode)
-  const { canEditSelectionMetadata, mergeSelection, linkSelection } = useBookSelectionPermissions(books, selection.selectedIds, querySelection)
+  const { canEditSelectionMetadata, canDownloadSelection, canDeleteSelection, mergeSelection, linkSelection } = useBookSelectionPermissions(
+    books,
+    selection.selectedIds,
+    querySelection,
+  )
 
   const {
     pendingId: deleteBookId,
@@ -164,6 +168,8 @@ export function useBookTableShell({ books, selectionMode, querySelection, onMove
     ...tableControls,
     ...selection,
     canEditSelectionMetadata,
+    canDownloadSelection,
+    canDeleteSelection,
     mergeSelection,
     mergeOpen,
     mergeBookIds,

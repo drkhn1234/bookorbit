@@ -33,8 +33,8 @@ import {
   stateForError,
   SYSTEM_FOLDERS,
 } from './folder-walk';
-import { PathPolicyService } from './path-policy.service';
-import { PathRepository } from './path.repository';
+import { PathPolicyService, type PathAccess, type PathRequest } from './path-policy.service';
+import type { RequestUser } from '../../common/types/request-user';
 
 /** Past this many folders, children are not opened to learn whether they have their own. */
 const HAS_CHILDREN_CHECK_LIMIT = 400;
@@ -51,20 +51,35 @@ const MOUNT_CACHE_TTL_MS = 5 * 60_000;
 @Injectable()
 export class PathService {
   private readonly logger = new Logger(PathService.name);
-  private mountCache: { root: string; mounts: string[]; expires: number } | null = null;
+  private mountCache: { key: string; mounts: string[]; expires: number } | null = null;
 
-  constructor(
-    private readonly pathPolicy: PathPolicyService,
-    private readonly pathRepository?: PathRepository,
-  ) {}
+  constructor(private readonly pathPolicy: PathPolicyService) {}
 
-  getConfig(): PathConfig {
-    return { root: this.pathPolicy.getBrowseRoot() };
+  async getConfig(request: PathRequest): Promise<PathConfig> {
+    return { root: (await this.pathPolicy.access(request)).root };
   }
 
-  async listDirectories(rawPath?: string): Promise<DirectoryEntry[]> {
-    const browseRoot = resolve(this.pathPolicy.getBrowseRoot());
-    const resolved = resolve(await this.pathPolicy.resolveBrowsePath(rawPath));
+  async adoptPersonalRoot(user: RequestUser, userId: number): Promise<string> {
+    const startedAt = Date.now();
+    this.logger.log(`[path.adopt_personal_root] [start] actorId=${user.id} userId=${userId} - explicit personal storage adoption started`);
+    try {
+      const root = await this.pathPolicy.adoptPersonalRoot(user, userId);
+      this.logger.log(
+        `[path.adopt_personal_root] [end] actorId=${user.id} userId=${userId} durationMs=${Date.now() - startedAt} - personal storage explicitly adopted`,
+      );
+      return root;
+    } catch (error) {
+      this.logger.warn(
+        `[path.adopt_personal_root] [fail] actorId=${user.id} userId=${userId} durationMs=${Date.now() - startedAt} errorClass=${getErrorClass(error)} error="${sanitizeLogValue(getErrorMessage(error))}" - personal storage adoption failed`,
+      );
+      throw error;
+    }
+  }
+
+  async listDirectories(request: PathRequest, rawPath?: string): Promise<DirectoryEntry[]> {
+    const access = await this.pathPolicy.access(request);
+    const browseRoot = access.root;
+    const resolved = await this.pathPolicy.resolveScopedPath(rawPath, access);
     const relativePath = relative(browseRoot, resolved);
     if (relativePath === '..' || relativePath.startsWith(`..${sep}`) || isAbsolute(relativePath)) return [];
 
@@ -81,6 +96,7 @@ export class PathService {
         if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
         if (entry.name.startsWith('.')) continue;
         const full = join(resolved, entry.name);
+        if (!this.pathPolicy.isVisiblePath(access, full)) continue;
         dirs.push({ name: entry.name, path: full });
       }
       return dirs.sort((a, b) => a.name.localeCompare(b.name));
@@ -89,10 +105,14 @@ export class PathService {
     }
   }
 
-  async createDirectory(rawParent: string, rawName: string): Promise<CreateFolderResult> {
+  async createDirectory(request: PathRequest, rawParent: string, rawName: string): Promise<CreateFolderResult> {
     const name = this.assertSafeName(rawName);
-    const browseRoot = resolve(this.pathPolicy.getBrowseRoot());
-    const parent = resolve(await this.pathPolicy.resolveBrowsePath(rawParent));
+    let access = await this.pathPolicy.access(request);
+    await this.pathPolicy.resolveScopedPath(rawParent, access);
+    access = await this.pathPolicy.access(request, true);
+    const browseRoot = access.root;
+    const parent = await this.pathPolicy.resolveScopedPath(rawParent, access);
+    await this.pathPolicy.assertWritable(access, parent);
     const relativeParent = relative(browseRoot, parent);
     if (relativeParent === '..' || relativeParent.startsWith(`..${sep}`) || isAbsolute(relativeParent)) {
       throw new ForbiddenException('Cannot create a folder outside the configured library browse root');
@@ -115,9 +135,10 @@ export class PathService {
       if (relativeTarget === '..' || relativeTarget.startsWith(`..${sep}`) || isAbsolute(relativeTarget)) {
         throw new BadRequestException('Invalid folder name');
       }
-      await this.pathPolicy.assertWithinBrowseRoot(resolvedTarget);
+      await this.pathPolicy.resolveScopedPath(resolvedTarget, access);
 
       await mkdir(resolvedTarget);
+      await this.pathPolicy.resolveScopedPath(resolvedTarget, access);
       this.logger.log(
         `[path.create_folder] [end] path="${sanitizeLogValue(resolvedTarget)}" durationMs=${Date.now() - startedAt} - create folder completed`,
       );
@@ -134,8 +155,9 @@ export class PathService {
    * One folder's subfolders with what the picker shows beside them. Unlike `listDirectories`, a folder
    * that cannot be read says so instead of looking empty.
    */
-  async listFolder(rawPath?: string): Promise<FolderListing> {
-    const resolved = resolve(await this.pathPolicy.resolveBrowsePath(rawPath));
+  async listFolder(request: PathRequest, rawPath?: string): Promise<FolderListing> {
+    const access = await this.pathPolicy.access(request);
+    const resolved = await this.pathPolicy.resolveScopedPath(rawPath, access);
     const blocked: FolderListing = { path: resolved, state: 'blocked', entries: [], truncated: false };
     if (await this.isBlocked(resolved)) return blocked;
 
@@ -159,7 +181,12 @@ export class PathService {
     const isAppData = (full: string, name: string) =>
       (!!rawAppData && isInsideOrAt(full, rawAppData)) ||
       (!!appDataPath && (isInsideOrAt(full, appDataPath) || isInsideOrAt(join(realDir, name), appDataPath)));
-    const listable = dirents.filter((entry) => isListableDirectory(entry, join(resolved, entry.name)) && !isBlockedPath(join(realDir, entry.name)));
+    const listable = dirents.filter(
+      (entry) =>
+        isListableDirectory(entry, join(resolved, entry.name)) &&
+        !isBlockedPath(join(realDir, entry.name)) &&
+        this.pathPolicy.isVisiblePath(access, join(resolved, entry.name)),
+    );
     const truncated = listable.length > LISTING_MAX_ENTRIES;
     const dirs = truncated ? listable.sort((a, b) => a.name.localeCompare(b.name)).slice(0, LISTING_MAX_ENTRIES) : listable;
     // A folder of thousands of author folders is listed by name alone: no per-child stat or peek.
@@ -179,16 +206,23 @@ export class PathService {
         path: full,
         mount,
         system: resolved === sep && SYSTEM_FOLDERS.has(entry.name),
-        appData: isAppData(full, entry.name),
-        hasChildren: inspectChildren ? await hasListableChild(full) : null,
+        appData: request.scope === 'admin' && isAppData(full, entry.name),
+        hasChildren: inspectChildren
+          ? await hasListableChild(
+              full,
+              (path) => this.pathPolicy.canVisit(access, path),
+              (path) => this.pathPolicy.isVisiblePath(access, path),
+            )
+          : null,
       };
     });
     return { path: resolved, state: 'ok', entries: entries.sort((a, b) => a.name.localeCompare(b.name)), truncated };
   }
 
   /** Folders whose name contains `query`, breadth-first below `rawPath`, within fixed bounds. */
-  async searchFolders(query: string, rawPath?: string, includeSystem = false): Promise<FolderSearchResult> {
-    const root = resolve(await this.pathPolicy.resolveBrowsePath(rawPath));
+  async searchFolders(request: PathRequest, query: string, rawPath?: string, includeSystem = false): Promise<FolderSearchResult> {
+    const access = await this.pathPolicy.access(request);
+    const root = await this.pathPolicy.resolveScopedPath(rawPath, access);
     // Names are compared composed and case-folded the same way on every server, whatever its locale.
     const fold = (name: string) => name.normalize('NFC').toLowerCase();
     const needle = fold(query.trim());
@@ -202,6 +236,7 @@ export class PathService {
     for (let depth = 0; depth < SEARCH_MAX_DEPTH && queue.length > 0; depth++) {
       const next: typeof queue = [];
       for (const { dir, real } of queue) {
+        if (!(await this.pathPolicy.canVisit(access, dir))) continue;
         if (results.length >= SEARCH_MAX_RESULTS || entries >= SEARCH_MAX_ENTRIES || Date.now() > deadline) return { results, truncated: true };
         let dirents: Dirent[];
         try {
@@ -209,6 +244,7 @@ export class PathService {
         } catch {
           continue;
         }
+        dirents = dirents.filter((entry) => this.pathPolicy.isVisiblePath(access, join(dir, entry.name)));
         entries += dirents.length;
         dirents.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
         for (const entry of dirents) {
@@ -230,11 +266,16 @@ export class PathService {
   }
 
   /** Where a picker starts: mounted folders near the browse root, the data folder, every library's folders. */
-  async getPlaces(): Promise<FolderPlaces> {
-    const root = resolve(this.pathPolicy.getBrowseRoot());
+  async getPlaces(request: PathRequest): Promise<FolderPlaces> {
+    return this.getPlacesForAccess(await this.pathPolicy.access(request));
+  }
+
+  async getPlacesForAccess(access: PathAccess): Promise<FolderPlaces> {
+    const root = access.root;
+    const admin = access.request.scope === 'admin';
     const appDataPath = await this.pathPolicy.getCanonicalAppDataPath();
-    const mounts = await this.findMounts(root);
-    const rows = (await this.pathRepository?.findLibraryFolders()) ?? [];
+    const mounts = admin ? await this.findMounts(access) : [];
+    const rows = access.libraries;
     const libraries = new Map<number, FolderPickerLibrary>();
     for (const row of rows) {
       const library = libraries.get(row.libraryId) ?? { id: row.libraryId, name: row.name, icon: row.icon, folders: [] };
@@ -244,8 +285,8 @@ export class PathService {
 
     return {
       root,
-      mounts: mounts.length > 0 || root === sep ? mounts : [root],
-      appDataPath: appDataPath && isInsideOrAt(appDataPath, root) ? appDataPath : null,
+      mounts: !admin || mounts.length > 0 || root === sep ? mounts : [root],
+      appDataPath: admin && appDataPath && isInsideOrAt(appDataPath, root) && this.pathPolicy.isVisiblePath(access, appDataPath) ? appDataPath : null,
       libraries: [...libraries.values()],
     };
   }
@@ -255,11 +296,15 @@ export class PathService {
    * restart, not between picker opens, so the answer is cached; the walk reads only the first folders
    * of each level, so a root holding thousands of author folders costs the same as `/`.
    */
-  private async findMounts(root: string): Promise<string[]> {
-    if (this.mountCache && this.mountCache.root === root && this.mountCache.expires > Date.now()) return this.mountCache.mounts;
+  private async findMounts(access: PathAccess): Promise<string[]> {
+    const root = access.root;
+    const cacheKey = `${access.cacheKey}\0${root}`;
+    if (!(await this.pathPolicy.canVisit(access, root))) return [];
+    if (this.mountCache && this.mountCache.key === cacheKey && this.mountCache.expires > Date.now()) return this.mountCache.mounts;
     const mounts: string[] = [];
     let stats = 0;
     const visit = async (dir: string, dev: number, depth: number) => {
+      if (!(await this.pathPolicy.canVisit(access, dir))) return;
       let dirents: Dirent[];
       try {
         dirents = await readdir(dir, { withFileTypes: true });
@@ -267,10 +312,16 @@ export class PathService {
         return;
       }
       dirents.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
-      const dirs = dirents.filter((entry) => isListableDirectory(entry, join(dir, entry.name)) && !(dir === sep && SYSTEM_FOLDERS.has(entry.name)));
+      const dirs = dirents.filter(
+        (entry) =>
+          isListableDirectory(entry, join(dir, entry.name)) &&
+          this.pathPolicy.isVisiblePath(access, join(dir, entry.name)) &&
+          !(dir === sep && SYSTEM_FOLDERS.has(entry.name)),
+      );
       for (const entry of dirs.slice(0, MOUNT_SCAN_FOLDERS_PER_LEVEL)) {
         if (stats++ >= MOUNT_SCAN_MAX_STATS) return;
         const full = join(dir, entry.name);
+        if (!(await this.pathPolicy.canVisit(access, full))) continue;
         let childDev: number;
         try {
           childDev = (await stat(full)).dev;
@@ -286,7 +337,7 @@ export class PathService {
     } catch {
       // An unreadable root has no places to offer.
     }
-    this.mountCache = { root, mounts, expires: Date.now() + MOUNT_CACHE_TTL_MS };
+    this.mountCache = { key: cacheKey, mounts, expires: Date.now() + MOUNT_CACHE_TTL_MS };
     return mounts;
   }
 
@@ -298,13 +349,14 @@ export class PathService {
     const name = (rawName ?? '').trim();
     const safeName = basename(name);
     if (!name) throw new BadRequestException('Folder name is required');
+    if (Buffer.byteLength(name) > 255) throw new BadRequestException('Folder name is too long');
     if (safeName !== name || safeName.includes('/') || safeName.includes('\\') || safeName.includes(sep)) {
       throw new BadRequestException('Folder name cannot contain path separators');
     }
     if (safeName === '.' || safeName === '..' || safeName.startsWith('.')) {
       throw new BadRequestException('Folder name cannot start with a dot');
     }
-    if (safeName.includes('\0')) throw new BadRequestException('Folder name contains invalid characters');
+    if (/\p{Cc}/u.test(safeName)) throw new BadRequestException('Folder name contains invalid characters');
     return safeName;
   }
 

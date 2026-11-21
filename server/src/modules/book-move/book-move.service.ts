@@ -1,13 +1,6 @@
+import { Permission } from '@bookorbit/types';
 import { LibraryScopeService } from '../../common/library-scope/library-scope.service';
-import {
-  BadRequestException,
-  ConflictException,
-  ForbiddenException,
-  Injectable,
-  Logger,
-  NotFoundException,
-  OnApplicationBootstrap,
-} from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, OnApplicationBootstrap } from '@nestjs/common';
 import { stat } from 'fs/promises';
 
 import type {
@@ -195,7 +188,7 @@ export class BookMoveService implements OnApplicationBootstrap {
       );
 
       this.emitTransfers(movedByLibrary, target.libraryId);
-      await this.notifyCompletion(user.id, target, succeeded + merged, failed);
+      await this.notifyCompletion(user.id, target, resolved.sourceLibraryIds, succeeded + merged, failed);
 
       return { processed: succeeded + merged + failed + skipped, succeeded, merged, failed, skipped, cancelled };
     } catch (error) {
@@ -258,7 +251,7 @@ export class BookMoveService implements OnApplicationBootstrap {
   private emitTransfers(movedByLibrary: Map<number, number[]>, targetLibraryId: number): void {
     for (const [sourceLibraryId, bookIds] of movedByLibrary) {
       if (bookIds.length === 0) continue;
-      this.scanGateway.emitBookTransferred({ fromLibraryId: sourceLibraryId, toLibraryId: targetLibraryId, bookIds });
+      void this.scanGateway.emitBookTransferred({ fromLibraryId: sourceLibraryId, toLibraryId: targetLibraryId, bookIds });
     }
   }
 
@@ -345,11 +338,7 @@ export class BookMoveService implements OnApplicationBootstrap {
   private async assertEditorAccess(user: RequestUser, libraryIds: number[]): Promise<void> {
     if (libraryIds.length === 0) return;
 
-    const granted = new Set(await this.libraryScope.editableIds(user));
-    const missing = libraryIds.filter((id) => !granted.has(id));
-    if (missing.length > 0) {
-      throw new ForbiddenException(`Editor access is required for library ${missing[0]} to move books`);
-    }
+    await Promise.all(libraryIds.map((id) => this.libraryScope.assertPermission(user, id, Permission.LibraryEditMetadata)));
   }
 
   private selectWork(
@@ -512,10 +501,9 @@ export class BookMoveService implements OnApplicationBootstrap {
     }
 
     const userRows = await this.moveRepo.findUsers([...losingBookCounts.keys()]);
-    const nonSuperusers = userRows.filter((row) => !row.isSuperuser);
-    const deviceCounts = await this.moveRepo.countKoboDevicesByUser(nonSuperusers.map((row) => row.id));
+    const deviceCounts = await this.moveRepo.countKoboDevicesByUser(userRows.map((row) => row.id));
 
-    const accessLosers = nonSuperusers.map((row) => ({
+    const accessLosers = userRows.map((row) => ({
       userId: row.id,
       username: row.username,
       bookCount: losingBookCounts.get(row.id) ?? 0,
@@ -569,14 +557,25 @@ export class BookMoveService implements OnApplicationBootstrap {
     return false;
   }
 
-  private async notifyCompletion(userId: number, target: MoveTargetLibrary, movedCount: number, failed: number): Promise<void> {
+  private async notifyCompletion(
+    userId: number,
+    target: MoveTargetLibrary,
+    sourceLibraryIds: number[],
+    movedCount: number,
+    failed: number,
+  ): Promise<void> {
     await this.notificationService
       .notify({
         type: failed > 0 ? NotificationType.BulkRenameFailed : NotificationType.BulkRenameCompleted,
         title: failed > 0 ? 'Book move completed with errors' : 'Book move completed',
         message: `${movedCount} moved to ${target.libraryName}, ${failed} failed`,
         scope: { kind: 'user', userId },
-        meta: { targetLibraryId: target.libraryId, moved: movedCount, failed },
+        meta: {
+          targetLibraryId: target.libraryId,
+          sourceLibraryIds: sourceLibraryIds.length ? sourceLibraryIds : [target.libraryId],
+          moved: movedCount,
+          failed,
+        },
       })
       .catch(() => {});
   }

@@ -26,11 +26,26 @@ import { access, copyFile } from 'fs/promises';
 import { join } from 'path';
 
 import { and, eq, inArray } from 'drizzle-orm';
+import { io } from 'socket.io-client';
 
-import type { BookMovePreviewResult, BookMoveProgressEvent, BookMoveSummary } from '@bookorbit/types';
-import { Permission } from '@bookorbit/types';
+import type { BookMovePreviewResult, BookMoveProgressEvent, BookMoveSummary, CreatedApiKey, NotificationItem } from '@bookorbit/types';
+import { NotificationType, Permission } from '@bookorbit/types';
 
-import { annotations, bookFiles, bookMerges, bookMoveJobs, books, collectionBooks, collections, libraries, userBookStatus } from '../src/db/schema';
+import {
+  annotations,
+  bookFiles,
+  bookMerges,
+  bookMoveJobs,
+  books,
+  collectionBooks,
+  collections,
+  libraries,
+  notifications,
+  userBookStatus,
+} from '../src/db/schema';
+import { BookMoveExecutorService } from '../src/modules/book-move/book-move-executor.service';
+import { NotificationService } from '../src/modules/notification/notification.service';
+import { NotificationGateway } from '../src/modules/notification/notification.gateway';
 import { createEpubFixture, createM4bFixture, createPdfFixture } from './e2e/metadata-write/metadata-write-fixture-builder';
 import {
   authHeader,
@@ -50,9 +65,14 @@ const SCENARIO_TIMEOUT_MS = 120_000;
 
 describe('Cross-library book move (e2e)', () => {
   let ctx: MetadataWriteE2EContext;
+  let adminId: number;
 
   beforeAll(async () => {
     ctx = await createMetadataWriteE2EContext();
+    const me = await ctx.app.inject({ method: 'GET', url: '/api/v1/auth/me', headers: authHeader(ctx.adminToken) });
+    expect(me.statusCode, me.body).toBe(200);
+    adminId = me.json().id;
+    await ctx.app.listen(0, '127.0.0.1');
   }, SCENARIO_TIMEOUT_MS);
 
   afterAll(async () => {
@@ -77,7 +97,9 @@ describe('Cross-library book move (e2e)', () => {
   }
 
   async function createSource(options: { mode?: 'book_per_file' | 'book_per_folder' } = {}): Promise<CreatedLibrary> {
-    return createLibraryWithFolder(ctx, { name: `move-src-${randomUUID()}`, mode: options.mode ?? 'book_per_file' });
+    const library = await createLibraryWithFolder(ctx, { name: `move-src-${randomUUID()}`, mode: options.mode ?? 'book_per_file' });
+    await grantLibraryAccess(ctx, adminId, library.libraryId, 'owner');
+    return library;
   }
 
   async function createTarget(
@@ -89,6 +111,7 @@ describe('Cross-library book move (e2e)', () => {
       mode,
       allowedFormats: options.allowedFormats ?? [],
     });
+    await grantLibraryAccess(ctx, adminId, library.libraryId, 'owner');
     await setNamingPattern(library.libraryId, options.pattern ?? (mode === 'book_per_folder' ? '{title}/{title}' : '{title}'));
     return library;
   }
@@ -195,6 +218,280 @@ describe('Cross-library book move (e2e)', () => {
       .from(bookFiles)
       .where(eq(bookFiles.bookId, bookId));
   }
+
+  describe('move completion notifications', () => {
+    function readNotifications(headers: Record<string, string>, suffix = '', method: 'GET' | 'PATCH' | 'DELETE' = 'GET') {
+      return ctx.app.inject({ method, url: `/api/v1/notifications${suffix}`, headers });
+    }
+
+    async function openNotificationSocket(token: string) {
+      const client = io(`${await ctx.app.getUrl()}/notifications`, {
+        auth: { token },
+        transports: ['websocket'],
+        reconnection: false,
+        forceNew: true,
+      });
+      const events: { name: string; data: unknown }[] = [];
+      client.onAny((name, data: unknown) => events.push({ name, data }));
+      try {
+        await vi.waitFor(() => expect(events[0]?.name).toBe('notification:unread-count'));
+      } catch (error) {
+        client.close();
+        throw error;
+      }
+      return { client, events };
+    }
+
+    function followNotificationDeliveries(gateway: NotificationGateway) {
+      const calls = [
+        vi.spyOn(gateway, 'emitNew'),
+        vi.spyOn(gateway, 'emitRead'),
+        vi.spyOn(gateway, 'emitDismissed'),
+        vi.spyOn(gateway, 'emitCountUpdate'),
+        vi.spyOn(gateway, 'emitRefresh'),
+      ];
+      return {
+        async drain() {
+          await Promise.all(calls.flatMap((spy) => spy.mock.results.map(({ value }) => value)));
+        },
+        restore() {
+          for (const spy of calls) spy.mockRestore();
+        },
+      };
+    }
+
+    it(
+      'delivers a completed move only to the initiator with both library grants, including counts and changes',
+      async () => {
+        const src = await createSource();
+        const dst = await createTarget();
+        const book = await seedEpub(src, 'move-notice.epub', 'Move notice fixture');
+        const actor = await createUserAndLogin(ctx, {
+          permissions: [Permission.LibraryEditMetadata, Permission.NotificationAccess, Permission.ApiKeys],
+        });
+        const other = await createUserAndLogin(ctx, { permissions: [Permission.NotificationAccess] });
+        for (const id of [src.libraryId, dst.libraryId]) {
+          await grantLibraryAccess(ctx, actor.userId, id, 'editor');
+          await grantLibraryAccess(ctx, other.userId, id, 'viewer');
+        }
+
+        const full = authHeader(actor.accessToken);
+        const otherHeaders = authHeader(other.accessToken);
+        const keys = await Promise.all(
+          [[src.libraryId], [dst.libraryId], [src.libraryId, dst.libraryId]].map(async (libraryIds) => {
+            const res = await ctx.app.inject({
+              method: 'POST',
+              url: '/api/v1/api-keys',
+              headers: full,
+              payload: { name: `Move notice ${libraryIds.join('-')}`, access: 'write', libraryIds, permissions: [Permission.NotificationAccess] },
+            });
+            expect(res.statusCode, res.body).toBe(201);
+            return (res.json() as CreatedApiKey).token;
+          }),
+        );
+        const [legacy] = await ctx.db
+          .insert(notifications)
+          .values({
+            userId: actor.userId,
+            type: NotificationType.BulkRenameCompleted,
+            title: 'Book move completed',
+            message: 'Legacy move details',
+            meta: { targetLibraryId: dst.libraryId, moved: 2, failed: 0 },
+          })
+          .returning();
+        const gateway = ctx.app.get(NotificationGateway);
+        const delivery = followNotificationDeliveries(gateway);
+        const sockets: Awaited<ReturnType<typeof openNotificationSocket>>[] = [];
+        try {
+          for (const token of [actor.accessToken, other.accessToken, ...keys]) sockets.push(await openNotificationSocket(token));
+          for (const { events } of sockets) expect(events.shift()?.data).toEqual({ count: 0 });
+          const [initiator, outsider, sourceKey, destinationKey, fullKey] = sockets;
+          const summary = await moveAndSummarize(
+            {
+              selection: { bookIds: [book.bookId] },
+              targetLibraryId: dst.libraryId,
+              targetFolderId: dst.libraryFolderId,
+              collisionPolicy: 'suggested',
+            },
+            actor.accessToken,
+          );
+          expect(summary).toMatchObject({ succeeded: 1, failed: 0 });
+          await delivery.drain();
+
+          const expectedNotice = (await readNotifications(full)).json().items[0] as NotificationItem;
+          expect(expectedNotice).toMatchObject({
+            type: NotificationType.BulkRenameCompleted,
+            title: 'Book move completed',
+            message: expect.stringMatching(/^1 moved to move-dst-.*?, 0 failed$/),
+            actionUrl: null,
+            meta: { sourceLibraryIds: [src.libraryId], targetLibraryId: dst.libraryId, moved: 1, failed: 0 },
+            count: 1,
+            read: false,
+          });
+          expect(JSON.stringify(expectedNotice)).not.toContain('Move notice fixture');
+          await vi.waitFor(() => {
+            for (const { events } of [initiator, fullKey]) expect(events).toEqual([{ name: 'notification:new', data: expectedNotice }]);
+          });
+
+          for (const headers of [full, { 'x-api-key': keys[2] }]) {
+            expect((await readNotifications(headers)).json()).toEqual({ items: [expectedNotice], total: 1 });
+            expect((await readNotifications(headers, '/unread-count')).json()).toEqual({ count: 1 });
+          }
+          for (const headers of [otherHeaders, ...keys.slice(0, 2).map((token) => ({ 'x-api-key': token }))]) {
+            expect((await readNotifications(headers)).json()).toEqual({ items: [], total: 0 });
+            expect((await readNotifications(headers, '/unread-count')).json()).toEqual({ count: 0 });
+          }
+          expect((await readNotifications(full, '/read-all', 'PATCH')).statusCode).toBe(204);
+          expect((await readNotifications(full, `/${expectedNotice.id}/read`, 'PATCH')).statusCode).toBe(204);
+          expect((await readNotifications(full, `/${expectedNotice.id}`, 'DELETE')).statusCode).toBe(204);
+          for (const headers of [full, { 'x-api-key': keys[0] }]) {
+            expect((await readNotifications(headers, '/read-all', 'PATCH')).statusCode).toBe(204);
+            expect((await readNotifications(headers, '', 'DELETE')).statusCode).toBe(204);
+          }
+          const [persisted] = await ctx.db.select().from(notifications).where(eq(notifications.id, legacy.id));
+          expect(persisted).toEqual(legacy);
+
+          const service = ctx.app.get(NotificationService);
+          for (const user of [actor, other]) {
+            await service.notify({
+              type: NotificationType.BulkRenameCompleted,
+              title: 'Ordinary rename notice',
+              scope: { kind: 'user', userId: user.userId },
+            });
+          }
+          await delivery.drain();
+          await vi.waitFor(() => {
+            for (const { events } of sockets) {
+              expect(events.at(-1)).toMatchObject({ name: 'notification:new', data: { title: 'Ordinary rename notice' } });
+            }
+          });
+          for (const { events } of [sourceKey, destinationKey, outsider]) expect(events).toHaveLength(1);
+          for (const { events } of [initiator, fullKey]) {
+            expect(events).toEqual(
+              expect.arrayContaining([
+                { name: 'notification:refresh', data: null },
+                { name: 'notification:read', data: { id: expectedNotice.id } },
+                { name: 'notification:dismissed', data: { id: expectedNotice.id } },
+                { name: 'notification:unread-count', data: { count: 0 } },
+              ]),
+            );
+          }
+
+          const expiredAt = new Date('2000-01-01');
+          await ctx.db.update(notifications).set({ updatedAt: expiredAt }).where(eq(notifications.id, legacy.id));
+          for (const { events } of sockets) events.length = 0;
+          expect(await service.runRetentionCleanup()).toBe(1);
+          await delivery.drain();
+          expect(await ctx.db.select().from(notifications).where(eq(notifications.id, legacy.id))).toHaveLength(0);
+          await service.notify({
+            type: NotificationType.BulkRenameCompleted,
+            title: 'Retention control',
+            scope: { kind: 'user', userId: actor.userId },
+          });
+          await delivery.drain();
+          await vi.waitFor(() => {
+            for (const { events } of [initiator, sourceKey, destinationKey, fullKey]) {
+              expect(events).toEqual([{ name: 'notification:new', data: expect.objectContaining({ title: 'Retention control' }) }]);
+            }
+          });
+        } finally {
+          delivery.restore();
+          for (const { client } of sockets) client.close();
+        }
+      },
+      SCENARIO_TIMEOUT_MS,
+    );
+
+    it.each(['source', 'destination'] as const)(
+      'withholds a running move completion after %s access is revoked on a live socket',
+      async (side) => {
+        const src = await createSource();
+        const dst = await createTarget();
+        const book = await seedEpub(src, 'revoked-notice.epub', 'Revoked move notice fixture');
+        const actor = await createUserAndLogin(ctx, { permissions: [Permission.LibraryEditMetadata, Permission.NotificationAccess] });
+        for (const id of [src.libraryId, dst.libraryId]) await grantLibraryAccess(ctx, actor.userId, id, 'editor');
+
+        const connection = await openNotificationSocket(actor.accessToken);
+        const executor = ctx.app.get(BookMoveExecutorService);
+        const execute = executor.execute.bind(executor);
+        const delivery = followNotificationDeliveries(ctx.app.get(NotificationGateway));
+        let signalExecuted!: () => void;
+        const executed = new Promise<void>((resolve) => {
+          signalExecuted = resolve;
+        });
+        let releaseExecutor!: () => void;
+        const finish = new Promise<void>((resolve) => {
+          releaseExecutor = resolve;
+        });
+        const pause = vi.spyOn(executor, 'execute').mockImplementationOnce(async (input) => {
+          const result = await execute(input);
+          signalExecuted();
+          await finish;
+          return result;
+        });
+        const move = moveAndSummarize(
+          {
+            selection: { bookIds: [book.bookId] },
+            targetLibraryId: dst.libraryId,
+            targetFolderId: dst.libraryFolderId,
+            collisionPolicy: 'suggested',
+          },
+          actor.accessToken,
+        );
+        try {
+          await Promise.race([
+            executed,
+            move.then(() => {
+              throw new Error('Move finished before the executor barrier');
+            }),
+          ]);
+          const revokedId = side === 'source' ? src.libraryId : dst.libraryId;
+          const revoke = await ctx.app.inject({
+            method: 'DELETE',
+            url: `/api/v1/libraries/${revokedId}/access/${actor.userId}?scope=admin`,
+            headers: authHeader(ctx.adminToken),
+          });
+          expect(revoke.statusCode, revoke.body).toBe(204);
+          releaseExecutor();
+          expect(await move).toMatchObject({ succeeded: 1, failed: 0 });
+          await delivery.drain();
+
+          const headers = authHeader(actor.accessToken);
+          expect((await readNotifications(headers)).json()).toEqual({ items: [], total: 0 });
+          expect((await readNotifications(headers, '/unread-count')).json()).toEqual({ count: 0 });
+          const [hidden] = await ctx.db.select().from(notifications).where(eq(notifications.userId, actor.userId));
+          expect(hidden?.meta).toEqual({ sourceLibraryIds: [src.libraryId], targetLibraryId: dst.libraryId, moved: 1, failed: 0 });
+          expect((await readNotifications(headers, `/${hidden.id}/read`, 'PATCH')).statusCode).toBe(404);
+          expect((await readNotifications(headers, `/${hidden.id}`, 'DELETE')).statusCode).toBe(404);
+          expect((await readNotifications(headers, '/read-all', 'PATCH')).statusCode).toBe(204);
+          expect((await readNotifications(headers, '', 'DELETE')).statusCode).toBe(204);
+          const [after] = await ctx.db.select().from(notifications).where(eq(notifications.id, hidden.id));
+          expect(after).toEqual(hidden);
+
+          await ctx.app.get(NotificationService).notify({
+            type: NotificationType.BulkRenameCompleted,
+            title: 'Still connected',
+            scope: { kind: 'user', userId: actor.userId },
+          });
+          await delivery.drain();
+          await vi.waitFor(() => {
+            expect(connection.events).toEqual([
+              { name: 'notification:unread-count', data: { count: 0 } },
+              { name: 'notification:new', data: expect.objectContaining({ title: 'Still connected' }) },
+            ]);
+          });
+          expect(connection.client.connected).toBe(true);
+        } finally {
+          releaseExecutor();
+          await Promise.allSettled([move]);
+          pause.mockRestore();
+          delivery.restore();
+          connection.client.close();
+        }
+      },
+      SCENARIO_TIMEOUT_MS,
+    );
+  });
 
   describe('preview', () => {
     it(

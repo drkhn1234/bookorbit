@@ -101,7 +101,8 @@ watch(
   },
 )
 
-const { onBookMissing, onBookRestored, onBookMoved, onBookTransferred, onBookProgressChanged, onBookMerged, onBookLinksChanged } = useBookEvents()
+const { onBookMissing, onBookRestored, onBookMoved, onBookTransferred, onBookProgressChanged, onBookMerged, onBookLinksChanged, onLibraryChanged } =
+  useBookEvents()
 onBookMissing((bookIds) => {
   if (detail.value && bookIds.includes(detail.value.id)) {
     detail.value = { ...detail.value, status: 'missing' }
@@ -139,6 +140,9 @@ function handleBookMerged(event: BookMergedEvent) {
 }
 
 onBookMerged(handleBookMerged)
+onLibraryChanged(() => {
+  if (detail.value) void fetch(bookId.value)
+})
 
 function refreshLinks() {
   void fetch(bookId.value)

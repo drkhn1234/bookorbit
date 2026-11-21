@@ -1,3 +1,6 @@
+> This is a modified version of BookOrbit and is not an official BookOrbit release.
+> Personal library and authorization changes dated 2026-11-20.
+
 <div align="center">
 
 <h1>
@@ -105,6 +108,7 @@ Take your library anywhere with the official native BookOrbit app. Read ebooks, 
 ### Library Management
 
 - **Multiple Libraries**: Isolate content with per-library folders, custom scan rules, and format priorities.
+- **Personal Libraries**: Create and share a library with one or more personal storage folders. See the [feature demo](docs/PERSONAL_LIBRARY_DEMO.md) and [setup guide](docs/PERSONAL_LIBRARIES.md).
 - **12 Metadata Providers**: Google Books, Open Library, Amazon, Goodreads, Kobo, Hardcover, Audible, Audnexus, Libro.fm, and iTunes, plus ComicVine for comics and RanobeDB for light novels. [External providers](docs/METADATA_PROVIDERS.md) add more, such as Douban, FantLab, J-Novel Club, Libris, LubimyCzytac and MangaBaka. Cover art is sourced separately from iTunes, DuckDuckGo, and AudiobookCovers.
 - **Smart Scopes & Collections**: Organize your collection with curated lists and dynamic, rule-based saved filters.
 

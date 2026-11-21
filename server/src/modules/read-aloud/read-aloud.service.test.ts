@@ -1,3 +1,4 @@
+import type { RequestUser } from '../../common/types/request-user';
 import 'reflect-metadata';
 import { BadRequestException, ConflictException, ForbiddenException, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { validate } from 'class-validator';
@@ -5,7 +6,6 @@ import { plainToInstance } from 'class-transformer';
 import { Permission, READ_ALOUD_MAX_AUDIO_FILES } from '@bookorbit/types';
 
 import { FORBIDDEN_PERMISSION_KEY } from '../../common/decorators/forbid-permission.decorator';
-import { PERMISSION_KEY } from '../../common/decorators/require-permission.decorator';
 import { GeneratedFileError } from '../upload/generated-book-file.service';
 import { CreateReadAloudJobDto } from './dto/create-read-aloud-job.dto';
 import { ResyncReadAloudJobDto } from './dto/resync-read-aloud-job.dto';
@@ -44,9 +44,14 @@ function makeService(
     dismiss: vi.fn(),
   };
   const worker = { healthState: vi.fn().mockResolvedValue(options.health ?? okHealth()), cancel: vi.fn().mockResolvedValue(undefined) };
-  const books = { getDetail: vi.fn().mockResolvedValue(options.book ?? bookDetail()), verifyBookAccess: vi.fn().mockResolvedValue(undefined) };
+  const books = { getDetail: vi.fn().mockResolvedValue(options.book ?? bookDetail()), verifyBookPermission: vi.fn().mockResolvedValue(undefined) };
   const users = { findByIdWithPermissions: vi.fn().mockResolvedValue(OWNER) };
-  const libraries = { findOne: vi.fn().mockResolvedValue({ organizationMode: options.organizationMode ?? 'book_per_folder' }) };
+  const libraries = {
+    verifyPermission: vi.fn((user: RequestUser, _id: number, permission: Permission) =>
+      user.permissions.includes(permission) ? Promise.resolve() : Promise.reject(new ForbiddenException()),
+    ),
+    findOne: vi.fn().mockResolvedValue({ organizationMode: options.organizationMode ?? 'book_per_folder' }),
+  };
   const activity = { record: vi.fn().mockResolvedValue(undefined), list: vi.fn().mockResolvedValue([]) };
   const notifier = { pushUpdate: vi.fn().mockResolvedValue(undefined), notify: vi.fn().mockResolvedValue(undefined) };
   const publisher = {
@@ -93,8 +98,7 @@ function oversplitBook() {
 }
 
 describe('read-aloud HTTP contract', () => {
-  it('requires the dedicated permission and the demo restriction on every endpoint', () => {
-    expect(Reflect.getMetadata(PERMISSION_KEY, ReadAloudController)).toBe(Permission.LibraryGenerateReadAloud);
+  it('requires the demo restriction on every endpoint', () => {
     expect(Reflect.getMetadata(FORBIDDEN_PERMISSION_KEY, ReadAloudController)).toEqual({
       permission: Permission.DemoRestricted,
       message: 'Demo-restricted account cannot generate read-aloud books',
@@ -257,10 +261,10 @@ describe('ReadAloudService job actions', () => {
     await expect(service[action](JOB_ID, OTHER)).rejects.toThrow(ForbiddenException);
   });
 
-  it('lets a superuser act on anyone’s job', async () => {
+  it('requires the same requester identity on a superuser’s ordinary request', async () => {
     const { service, jobs } = makeService();
     jobs.dismiss.mockResolvedValue(jobRow({ status: 'failed', dismissedAt: new Date() }));
-    await expect(service.dismiss(JOB_ID, ADMIN)).resolves.toMatchObject({ canManage: true });
+    await expect(service.dismiss(JOB_ID, ADMIN)).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('removes the work at once when a queued or review job is cancelled', async () => {
@@ -465,7 +469,7 @@ describe('ReadAloudService.resolveProcessingContext', () => {
     'turns a requester who can no longer reach the book (%s) into a permanent, coded failure',
     async (denial) => {
       const { service, books, jobs } = makeService();
-      books.verifyBookAccess.mockRejectedValue(denial);
+      books.verifyBookPermission.mockRejectedValue(denial);
 
       const failure = await service.resolveProcessingContext(jobRow()).catch((error: unknown) => error);
       expect(failure).toBeInstanceOf(ReadAloudJobError);
@@ -478,7 +482,7 @@ describe('ReadAloudService.resolveProcessingContext', () => {
   it('lets an unexpected access-check failure through unchanged', async () => {
     const { service, books } = makeService();
     const outage = new Error('connection terminated');
-    books.verifyBookAccess.mockRejectedValue(outage);
+    books.verifyBookPermission.mockRejectedValue(outage);
     await expect(service.resolveProcessingContext(jobRow())).rejects.toBe(outage);
   });
 });

@@ -1,6 +1,6 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import type { ConfigType } from '@nestjs/config';
-import type { ReadAloudNarrationCoverage, ReadAloudReportSummary, ReadAloudWarningCode } from '@bookorbit/types';
+import { Permission, type ReadAloudNarrationCoverage, type ReadAloudReportSummary, type ReadAloudWarningCode } from '@bookorbit/types';
 
 import type { RequestUser } from '../../common/types/request-user';
 import { readAloudConfig } from '../../config/config';
@@ -10,7 +10,7 @@ import { GENERATED_FILENAME_MAX_BYTES, GeneratedBookFileService, truncateUtf8 } 
 import { ReadAloudActivityService } from './read-aloud-activity.service';
 import { ReadAloudJobError } from './read-aloud-errors';
 import { ReadAloudJobRepository, type ReadAloudJobPayload } from './read-aloud-job.repository';
-import { canReplaceReadAlong } from './read-aloud-presenter.service';
+import { BookService } from '../book/book.service';
 import { assessCoverage, parseAlignmentReport, reportWarnings } from './read-aloud-report';
 import { ReadAloudWorkspace } from './read-aloud-workspace.service';
 import { READ_ALOUD_HEARTBEAT_MS } from './read-aloud.constants';
@@ -33,6 +33,7 @@ export class ReadAloudPublisher {
     private readonly workspace: ReadAloudWorkspace,
     private readonly files: GeneratedBookFileService,
     private readonly activity: ReadAloudActivityService,
+    private readonly books: BookService,
   ) {}
 
   /** Checks the worker's output on the server side before anything reaches the library. */
@@ -77,9 +78,8 @@ export class ReadAloudPublisher {
       user,
     };
     const replaceTarget = await this.replaceTarget(row);
-    // Permissions can change while a job waits in the queue or for review, and a superuser may be
-    // the one publishing, so the check is on whoever publishes, as of now.
-    if (replaceTarget != null && canReplaceReadAlong(user)) {
+    // Re-evaluate the publisher's current library permission after the job's wait for review.
+    if (replaceTarget != null && (await this.canReplace(row.bookId, user))) {
       const { fileId } = await this.files.replaceFile({ ...source, fileId: replaceTarget });
       await this.activity.record(row.id, 'info', 'publishing', 'file_replaced', 'Replaced the existing read-along', { fileId });
       return fileId;
@@ -106,6 +106,16 @@ export class ReadAloudPublisher {
       fileId,
     });
     return fileId;
+  }
+
+  private async canReplace(bookId: number, user: RequestUser): Promise<boolean> {
+    try {
+      await this.books.verifyBookPermission(bookId, user, Permission.LibraryDeleteBooks);
+      return true;
+    } catch (error) {
+      if (error instanceof ForbiddenException || error instanceof NotFoundException) return false;
+      throw error;
+    }
   }
 
   private async replaceTarget(row: ReadAloudJobRow): Promise<number | null> {

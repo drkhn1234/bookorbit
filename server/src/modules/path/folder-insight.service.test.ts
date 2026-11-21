@@ -1,3 +1,4 @@
+import { TEST_ADMIN_REQUEST, attachPathContext } from '../../../test/unit/path-access';
 import { mkdir, mkdtemp, rm, symlink, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -39,7 +40,13 @@ describe('FolderInsightService', () => {
     pathRepository.findLibraryFolders.mockResolvedValue([
       { libraryId: 1, name: 'Novels', icon: null, type: 'books', path: join(root, 'books', 'Ebooks', 'Fiction') },
     ]);
-    service = new FolderInsightService(pathPolicy as never, pathService as never, pathRepository as never);
+    attachPathContext(
+      pathPolicy,
+      () => root,
+      () => pathRepository.findLibraryFolders(),
+    );
+    Object.assign(pathService, { getPlacesForAccess: () => pathService.getPlaces() });
+    service = new FolderInsightService(pathPolicy as never, pathService as never);
   });
 
   afterEach(async () => {
@@ -51,14 +58,14 @@ describe('FolderInsightService', () => {
       const scifi = join(root, 'books', 'Ebooks', 'Science Fiction');
       const cookbooks = join(root, 'books', 'Ebooks', 'Cookbooks');
 
-      const [first, second] = await service.summarize([scifi, cookbooks]);
+      const [first, second] = await service.summarize(TEST_ADMIN_REQUEST, [scifi, cookbooks]);
 
       expect(first).toMatchObject({ path: scifi, state: 'ok', files: 3, folderBooks: 3, folders: 2, mergedFolders: 0, truncated: false });
       expect(second).toMatchObject({ path: cookbooks, files: 2, folderBooks: 2, formats: { pdf: 2 } });
     });
 
     it('sees the merge a parent folder would cause', async () => {
-      const [ebooks] = await service.summarize([join(root, 'books', 'Ebooks')]);
+      const [ebooks] = await service.summarize(TEST_ADMIN_REQUEST, [join(root, 'books', 'Ebooks')]);
 
       expect(ebooks).toMatchObject({ files: 6, folderBooks: 5, mergedFolders: 1 });
     });
@@ -68,7 +75,7 @@ describe('FolderInsightService', () => {
         path === '/outside' ? Promise.reject(new Error('outside')) : Promise.resolve(path),
       );
 
-      const [proc, outside] = await service.summarize(['/proc/1', '/outside']);
+      const [proc, outside] = await service.summarize(TEST_ADMIN_REQUEST, ['/proc/1', '/outside']);
 
       expect(proc).toMatchObject({ path: '/proc/1', state: 'blocked', files: 0 });
       expect(outside).toMatchObject({ path: '/outside', state: 'blocked', files: 0 });
@@ -77,44 +84,46 @@ describe('FolderInsightService', () => {
     it('reports folders the batch had no time left for as pending, never as empty, and does not cache them', async () => {
       const unsorted = join(root, 'books', 'Unsorted');
       const cookbooks = join(root, 'books', 'Ebooks', 'Cookbooks');
-      await service.summarize([cookbooks]);
+      await service.summarize(TEST_ADMIN_REQUEST, [cookbooks]);
 
-      const [late, cached] = await service.summarize([unsorted, cookbooks], -1);
+      const [late, cached] = await service.summarize(TEST_ADMIN_REQUEST, [unsorted, cookbooks], -1);
       expect(late).toMatchObject({ path: unsorted, state: 'pending', files: 0 });
       expect(cached).toMatchObject({ path: cookbooks, state: 'ok', files: 2 });
 
-      await expect(service.summarize([unsorted])).resolves.toMatchObject([{ state: 'ok', files: 3 }]);
+      await expect(service.summarize(TEST_ADMIN_REQUEST, [unsorted])).resolves.toMatchObject([{ state: 'ok', files: 3 }]);
     });
 
     it('refuses a symlink into a blocked system path without walking it', async () => {
       await symlink('/dev', join(root, 'dev-link'));
 
-      await expect(service.summarize([join(root, 'dev-link')])).resolves.toMatchObject([{ path: join(root, 'dev-link'), state: 'blocked' }]);
+      await expect(service.summarize(TEST_ADMIN_REQUEST, [join(root, 'dev-link')])).resolves.toMatchObject([
+        { path: join(root, 'dev-link'), state: 'blocked' },
+      ]);
     });
 
     it('does not keep a failed answer: a folder that appears later is counted', async () => {
       const later = join(root, 'books', 'Later');
-      await expect(service.summarize([later])).resolves.toMatchObject([{ state: 'missing' }]);
+      await expect(service.summarize(TEST_ADMIN_REQUEST, [later])).resolves.toMatchObject([{ state: 'missing' }]);
 
       await files(later, ['Later.epub']);
 
-      await expect(service.summarize([later])).resolves.toMatchObject([{ state: 'ok', files: 1 }]);
+      await expect(service.summarize(TEST_ADMIN_REQUEST, [later])).resolves.toMatchObject([{ state: 'ok', files: 1 }]);
     });
 
     it('answers a repeat from the cache, and walks again once forgotten', async () => {
       const unsorted = join(root, 'books', 'Unsorted');
-      await service.summarize([unsorted]);
+      await service.summarize(TEST_ADMIN_REQUEST, [unsorted]);
       await writeFile(join(unsorted, 'd.epub'), 'x');
 
-      await expect(service.summarize([unsorted])).resolves.toMatchObject([{ files: 3 }]);
+      await expect(service.summarize(TEST_ADMIN_REQUEST, [unsorted])).resolves.toMatchObject([{ files: 3 }]);
       service.forget();
-      await expect(service.summarize([unsorted])).resolves.toMatchObject([{ files: 4 }]);
+      await expect(service.summarize(TEST_ADMIN_REQUEST, [unsorted])).resolves.toMatchObject([{ files: 4 }]);
     });
   });
 
   describe('inspect', () => {
     it('adds the size and the first two book files', async () => {
-      await expect(service.inspect(join(root, 'books', 'Ebooks', 'Science Fiction'))).resolves.toMatchObject({
+      await expect(service.inspect(TEST_ADMIN_REQUEST, join(root, 'books', 'Ebooks', 'Science Fiction'))).resolves.toMatchObject({
         files: 3,
         bytes: 12,
         samples: ['Ann Leckie/Ancillary Justice (2013)/Ancillary Justice.epub', 'Ann Leckie/Provenance (2017)/Provenance.epub'],
@@ -124,13 +133,13 @@ describe('FolderInsightService', () => {
     it('does not walk a blocked path', async () => {
       pathPolicy.resolveBrowsePath.mockResolvedValue('/proc');
 
-      await expect(service.inspect('/proc')).resolves.toMatchObject({ state: 'blocked', bytes: 0, samples: [] });
+      await expect(service.inspect(TEST_ADMIN_REQUEST, '/proc')).resolves.toMatchObject({ state: 'blocked', bytes: 0, samples: [] });
     });
   });
 
   describe('unclaimed', () => {
     it('lists library-shaped folders no library reads, biggest first, skipping the data folder', async () => {
-      const result = await service.unclaimed();
+      const result = await service.unclaimed(TEST_ADMIN_REQUEST);
 
       expect(result.truncated).toBe(false);
       expect(result.folders.map((folder) => [folder.path.slice(root.length), folder.files])).toEqual([
@@ -143,26 +152,26 @@ describe('FolderInsightService', () => {
     it('looks around the libraries’ folders when nothing is mounted separately', async () => {
       pathService.getPlaces.mockResolvedValue({ root, mounts: [], appDataPath: join(root, 'data'), libraries: [] });
 
-      const result = await service.unclaimed();
+      const result = await service.unclaimed(TEST_ADMIN_REQUEST);
 
       expect(result.folders.map((folder) => folder.path.slice(root.length))).toEqual(['/books/Ebooks/Science Fiction', '/books/Ebooks/Cookbooks']);
     });
 
     it('shares one scan between pickers asking at the same time', async () => {
-      const [first, second] = await Promise.all([service.unclaimed(), service.unclaimed()]);
+      const [first, second] = await Promise.all([service.unclaimed(TEST_ADMIN_REQUEST), service.unclaimed(TEST_ADMIN_REQUEST)]);
 
       expect(first).toBe(second);
       expect(pathService.getPlaces).toHaveBeenCalledTimes(1);
     });
 
     it('scans again once a library reads a different set of folders', async () => {
-      await service.unclaimed();
+      await service.unclaimed(TEST_ADMIN_REQUEST);
       pathRepository.findLibraryFolders.mockResolvedValue([
         { libraryId: 1, name: 'Novels', icon: null, type: 'books', path: join(root, 'books', 'Ebooks', 'Fiction') },
         { libraryId: 2, name: 'Inbox', icon: null, type: 'books', path: join(root, 'books', 'Unsorted') },
       ]);
 
-      const result = await service.unclaimed();
+      const result = await service.unclaimed(TEST_ADMIN_REQUEST);
 
       expect(pathService.getPlaces).toHaveBeenCalledTimes(2);
       expect(result.folders.map((folder) => folder.path.slice(root.length))).not.toContain('/books/Unsorted');
@@ -172,24 +181,24 @@ describe('FolderInsightService', () => {
       let release!: () => void;
       const places = await pathService.getPlaces();
       pathService.getPlaces.mockImplementationOnce(() => new Promise((resolve) => (release = () => resolve(places))));
-      const running = service.unclaimed();
+      const running = service.unclaimed(TEST_ADMIN_REQUEST);
       await vi.waitFor(() => expect(release).toBeTypeOf('function'));
 
       service.forget();
       release();
       await running;
-      await service.unclaimed();
+      await service.unclaimed(TEST_ADMIN_REQUEST);
 
       expect(pathService.getPlaces).toHaveBeenCalledTimes(3);
     });
 
     it('caches the scan until forgotten', async () => {
-      await service.unclaimed();
-      await service.unclaimed();
+      await service.unclaimed(TEST_ADMIN_REQUEST);
+      await service.unclaimed(TEST_ADMIN_REQUEST);
       expect(pathService.getPlaces).toHaveBeenCalledTimes(1);
 
       service.forget();
-      await service.unclaimed();
+      await service.unclaimed(TEST_ADMIN_REQUEST);
       expect(pathService.getPlaces).toHaveBeenCalledTimes(2);
     });
   });

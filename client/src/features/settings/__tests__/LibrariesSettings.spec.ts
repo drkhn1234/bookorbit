@@ -1,3 +1,6 @@
+vi.mock('@/features/library/composables/useLibraryCapabilities', () => ({
+  useLibraryCapabilities: () => ({ canCreate: ref(true), canUseAdministrativeStorage: ref(true) }),
+}))
 import { afterEach, describe, expect, it, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
@@ -894,7 +897,7 @@ describe('LibrariesSettings ledger', () => {
       librariesRef.value = [makeLibrary({ id: 5, name: 'Novels' })]
       const fallback = apiMock.getMockImplementation()!
       apiMock.mockImplementation(async (path: unknown, init?: unknown) => {
-        if (String(path).endsWith('/libraries/5') && (init as RequestInit | undefined)?.method === 'DELETE') {
+        if (String(path).split('?')[0]!.endsWith('/libraries/5') && (init as RequestInit | undefined)?.method === 'DELETE') {
           return { ok: false, status: 409, json: async () => ({ statusCode: 409, message: 'Busy', errorCode: 'LIBRARY_BUSY' }) }
         }
         return fallback(path, init)

@@ -1,3 +1,4 @@
+import { TEST_ADMIN_REQUEST, attachPathContext } from '../../../test/unit/path-access';
 import { chmod, mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -31,7 +32,12 @@ describe('PathService folder picker routes', () => {
     pathPolicy.getCanonicalAppDataPath.mockResolvedValue(join(root, 'data'));
     pathPolicy.resolveBrowsePath.mockImplementation((path?: string) => Promise.resolve(path || root));
     pathRepository.findLibraryFolders.mockResolvedValue([]);
-    service = new PathService(pathPolicy as never, pathRepository as never);
+    attachPathContext(
+      pathPolicy,
+      () => pathPolicy.getBrowseRoot(),
+      () => pathRepository.findLibraryFolders(),
+    );
+    service = new PathService(pathPolicy as never);
   });
 
   afterEach(async () => {
@@ -41,7 +47,7 @@ describe('PathService folder picker routes', () => {
 
   describe('listFolder', () => {
     it('lists real folders with whether each has folders of its own, skipping files, hidden folders and symlinks', async () => {
-      const listing = await service.listFolder(join(root, 'books'));
+      const listing = await service.listFolder(TEST_ADMIN_REQUEST, join(root, 'books'));
 
       expect(listing.state).toBe('ok');
       expect(listing.entries.map((entry) => [entry.name, entry.hasChildren, entry.system, entry.appData])).toEqual([
@@ -53,7 +59,7 @@ describe('PathService folder picker routes', () => {
     it('lists a folder of hundreds of folders by name alone, without peeking inside each one', async () => {
       for (let i = 0; i < 401; i++) await mkdir(join(root, 'books', 'Ebooks', 'Fiction', `Author ${i}`));
 
-      const listing = await service.listFolder(join(root, 'books', 'Ebooks', 'Fiction'));
+      const listing = await service.listFolder(TEST_ADMIN_REQUEST, join(root, 'books', 'Ebooks', 'Fiction'));
 
       expect(listing.entries).toHaveLength(401);
       expect(listing.entries.every((entry) => entry.hasChildren === null)).toBe(true);
@@ -63,7 +69,7 @@ describe('PathService folder picker routes', () => {
       const crowded = join(root, 'books', 'Ebooks', 'Fiction');
       for (let i = 0; i <= 5_000; i++) await mkdir(join(crowded, `Author ${String(i).padStart(4, '0')}`));
 
-      const listing = await service.listFolder(crowded);
+      const listing = await service.listFolder(TEST_ADMIN_REQUEST, crowded);
 
       expect(listing.truncated).toBe(true);
       expect(listing.entries).toHaveLength(5_000);
@@ -71,7 +77,7 @@ describe('PathService folder picker routes', () => {
     });
 
     it('marks BookOrbit’s data folder', async () => {
-      const listing = await service.listFolder(root);
+      const listing = await service.listFolder(TEST_ADMIN_REQUEST, root);
 
       expect(listing.truncated).toBe(false);
       expect(listing.entries.find((entry) => entry.name === 'data')?.appData).toBe(true);
@@ -84,13 +90,13 @@ describe('PathService folder picker routes', () => {
       pathPolicy.getAppDataPath.mockReturnValue(join(root, 'real', 'inner', 'data'));
       pathPolicy.getCanonicalAppDataPath.mockResolvedValue(await realpath(join(root, 'real', 'inner', 'data')));
 
-      const listing = await service.listFolder(join(root, 'via', 'inner'));
+      const listing = await service.listFolder(TEST_ADMIN_REQUEST, join(root, 'via', 'inner'));
 
       expect(listing.entries).toMatchObject([{ name: 'data', appData: true }]);
     });
 
     it('says a missing folder is missing rather than empty', async () => {
-      await expect(service.listFolder(join(root, 'gone'))).resolves.toEqual({
+      await expect(service.listFolder(TEST_ADMIN_REQUEST, join(root, 'gone'))).resolves.toEqual({
         path: join(root, 'gone'),
         state: 'missing',
         entries: [],
@@ -101,37 +107,45 @@ describe('PathService folder picker routes', () => {
     it('never opens blocked system paths', async () => {
       pathPolicy.resolveBrowsePath.mockResolvedValue('/proc');
 
-      await expect(service.listFolder('/proc')).resolves.toEqual({ path: '/proc', state: 'blocked', entries: [], truncated: false });
+      await expect(service.listFolder(TEST_ADMIN_REQUEST, '/proc')).resolves.toEqual({
+        path: '/proc',
+        state: 'blocked',
+        entries: [],
+        truncated: false,
+      });
     });
 
     it('refuses a symlinked folder', async () => {
-      await expect(service.listFolder(join(root, 'books', 'Linked'))).resolves.toMatchObject({ state: 'blocked', entries: [] });
+      await expect(service.listFolder(TEST_ADMIN_REQUEST, join(root, 'books', 'Linked'))).resolves.toMatchObject({ state: 'blocked', entries: [] });
     });
 
     it('refuses a folder reached through a symlink into a blocked system path', async () => {
       await symlink('/dev', join(root, 'dev-link'));
 
-      await expect(service.listFolder(join(root, 'dev-link', 'fd'))).resolves.toMatchObject({ state: 'blocked', entries: [] });
+      await expect(service.listFolder(TEST_ADMIN_REQUEST, join(root, 'dev-link', 'fd'))).resolves.toMatchObject({ state: 'blocked', entries: [] });
     });
 
     it.skipIf(runningAsRoot)('says a folder it may not read is denied', async () => {
       await chmod(join(root, 'books'), 0o000);
 
-      await expect(service.listFolder(join(root, 'books'))).resolves.toMatchObject({ state: 'denied', entries: [] });
+      await expect(service.listFolder(TEST_ADMIN_REQUEST, join(root, 'books'))).resolves.toMatchObject({ state: 'denied', entries: [] });
     });
   });
 
   describe('searchFolders', () => {
     it('finds folders by name anywhere below, ignoring case', async () => {
-      await expect(service.searchFolders('FICT')).resolves.toEqual({ results: [join(root, 'books', 'Ebooks', 'Fiction')], truncated: false });
+      await expect(service.searchFolders(TEST_ADMIN_REQUEST, 'FICT')).resolves.toEqual({
+        results: [join(root, 'books', 'Ebooks', 'Fiction')],
+        truncated: false,
+      });
     });
 
     it('returns nothing for a blank query', async () => {
-      await expect(service.searchFolders('   ')).resolves.toEqual({ results: [], truncated: false });
+      await expect(service.searchFolders(TEST_ADMIN_REQUEST, '   ')).resolves.toEqual({ results: [], truncated: false });
     });
 
     it('does not follow symlinks or hidden folders', async () => {
-      const { results } = await service.searchFolders('e');
+      const { results } = await service.searchFolders(TEST_ADMIN_REQUEST, 'e');
 
       expect(results.some((path) => path.includes('Linked') || path.includes('.hidden'))).toBe(false);
     });
@@ -139,13 +153,13 @@ describe('PathService folder picker routes', () => {
     it('does not search below a symlink into a blocked system path', async () => {
       await symlink('/dev', join(root, 'dev-link'));
 
-      await expect(service.searchFolders('fd', join(root, 'dev-link'))).resolves.toEqual({ results: [], truncated: false });
+      await expect(service.searchFolders(TEST_ADMIN_REQUEST, 'fd', join(root, 'dev-link'))).resolves.toEqual({ results: [], truncated: false });
     });
 
     it('matches a name stored decomposed when the query is typed composed', async () => {
       await mkdir(join(root, 'books', 'Cafe\u0301 Stories'));
 
-      const { results } = await service.searchFolders('café');
+      const { results } = await service.searchFolders(TEST_ADMIN_REQUEST, 'café');
 
       expect(results).toEqual([join(root, 'books', 'Cafe\u0301 Stories')]);
     });
@@ -153,7 +167,7 @@ describe('PathService folder picker routes', () => {
     it('says the results may be incomplete when folders lie deeper than it looks', async () => {
       await mkdir(join(root, 'books', 'a', 'b', 'c', 'd', 'e', 'f', 'Deep Find'), { recursive: true });
 
-      await expect(service.searchFolders('deep find')).resolves.toEqual({ results: [], truncated: true });
+      await expect(service.searchFolders(TEST_ADMIN_REQUEST, 'deep find')).resolves.toEqual({ results: [], truncated: true });
     });
   });
 
@@ -165,7 +179,7 @@ describe('PathService folder picker routes', () => {
         { libraryId: 1, name: 'Novels', icon: 'BookOpen', path: join(root, 'books', 'Extra') },
       ]);
 
-      await expect(service.getPlaces()).resolves.toEqual({
+      await expect(service.getPlaces(TEST_ADMIN_REQUEST)).resolves.toEqual({
         root,
         mounts: [root],
         appDataPath: join(root, 'data'),
@@ -184,7 +198,7 @@ describe('PathService folder picker routes', () => {
     it('leaves out a data folder that sits outside the browse root', async () => {
       pathPolicy.getCanonicalAppDataPath.mockResolvedValue('/elsewhere/data');
 
-      await expect(service.getPlaces()).resolves.toMatchObject({ appDataPath: null });
+      await expect(service.getPlaces(TEST_ADMIN_REQUEST)).resolves.toMatchObject({ appDataPath: null });
     });
   });
 });

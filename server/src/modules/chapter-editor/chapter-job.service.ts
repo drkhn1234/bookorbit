@@ -76,7 +76,8 @@ export class ChapterJobService implements OnModuleInit, OnModuleDestroy {
       if (!job) return;
       try {
         const user = await this.users.findByIdWithPermissions(job.userId);
-        if (!user?.active || (!user.isSuperuser && !user.permissions.includes(Permission.LibraryEditMetadata))) throw new ForbiddenException();
+        if (!user?.active) throw new ForbiddenException();
+        await this.books.verifyBookPermission(job.bookId, user, Permission.LibraryEditMetadata);
         const dto = { baseRevision: job.baseRevision };
         const progress = (done: number, total: number) => this.repo.progress(job.id, done, total);
         const result =

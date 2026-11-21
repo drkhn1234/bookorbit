@@ -1,3 +1,6 @@
+import { ForbiddenException } from '@nestjs/common';
+import { Permission } from '@bookorbit/types';
+import type { RequestUser } from '../../common/types/request-user';
 import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -18,7 +21,18 @@ function setup(workRoot = '/data/read-aloud/jobs') {
   };
   const activity = { record: vi.fn().mockResolvedValue(undefined) };
   const workspace = new ReadAloudWorkspace({ workRoot } as never);
-  const publisher = new ReadAloudPublisher({ maxOutputBytes: 1e9 } as never, jobs as never, workspace, files as never, activity as never);
+  const publisher = new ReadAloudPublisher(
+    { maxOutputBytes: 1e9 } as never,
+    jobs as never,
+    workspace,
+    files as never,
+    activity as never,
+    {
+      verifyBookPermission: vi.fn((_id: number, user: RequestUser) => {
+        if (!user.permissions.includes(Permission.LibraryDeleteBooks)) throw new ForbiddenException();
+      }),
+    } as never,
+  );
   return { publisher, jobs, files, activity };
 }
 
@@ -27,7 +41,7 @@ describe('ReadAloudPublisher.publish', () => {
 
   it.each([
     ['a requester who may delete books', DELETER],
-    ['a superuser', ADMIN],
+    ['a superuser with explicit delete permission', { ...ADMIN, permissions: [Permission.LibraryDeleteBooks] }],
   ])('replaces the chosen read-along for %s', async (_label, user) => {
     const { publisher, files } = setup();
     await expect(publisher.publish(row, user)).resolves.toBe(300);

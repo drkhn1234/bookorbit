@@ -1,3 +1,4 @@
+import { useLibraryCapabilities } from '@/features/library/composables/useLibraryCapabilities'
 import { computed, type Component } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
@@ -122,6 +123,7 @@ export function useSidebarSections() {
   const { collections, reorderCollections } = useCollections()
   const { activityFor } = useSidebarLibraryActivity()
 
+  const { canCreate } = useLibraryCapabilities()
   const canManageLibraries = computed(() => hasPermission('manage_libraries'))
 
   const lists: Record<SidebarListKind, () => SidebarEntity[]> = {
@@ -161,7 +163,7 @@ export function useSidebarSections() {
         filterLabel: t(definition.copy.filter),
         filterPlaceholder: t(definition.copy.filterPlaceholder),
         seeAllLabel: t(definition.copy.seeAll, { count: formatNumber(items.length) }),
-        canAdd: isLibrary ? canManageLibraries.value : true,
+        canAdd: isLibrary ? canCreate.value : true,
         addLabel: t(definition.copy.add),
       },
       tourId: definition.tourId,

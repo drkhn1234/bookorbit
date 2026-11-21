@@ -16,7 +16,7 @@ import { DB } from '../../../src/db';
 import * as schema from '../../../src/db/schema';
 import { MetadataService } from '../../../src/modules/metadata/metadata.service';
 import { BookDockWatcherService } from '../../../src/modules/book-dock/book-dock-watcher.service';
-import { makeMetadataNoopMock, seedLibrary, waitForScanCompletion, type MetadataNoopMock } from '../app-harness';
+import { makeMetadataNoopMock, seedLibrary, triggerLibraryScan, waitForScanCompletion, type MetadataNoopMock } from '../app-harness';
 import { createSlotCoverArtifacts, type SlotCoverArtifactOptions } from '../slot-cover-artifacts';
 import {
   buildFb2Fixture,
@@ -101,7 +101,9 @@ export function authHeader(token: string): Record<string, string> {
   return { authorization: `Bearer ${token}` };
 }
 
-export async function createAuthorizationMatrixE2EContext(): Promise<AuthorizationMatrixE2EContext> {
+export async function createAuthorizationMatrixE2EContext({
+  keepMetadataPersistence = false,
+}: { keepMetadataPersistence?: boolean } = {}): Promise<AuthorizationMatrixE2EContext> {
   const fixture = await createAuthorizationFixtureRoot();
   const envSnapshot: EnvSnapshot = {
     appDataPath: process.env.APP_DATA_PATH,
@@ -110,14 +112,15 @@ export async function createAuthorizationMatrixE2EContext(): Promise<Authorizati
   process.env.APP_DATA_PATH = fixture.booksPath;
 
   const metadataMock = makeMetadataNoopMock();
-  const moduleFixture = await Test.createTestingModule({
-    imports: [AppModule],
-  })
-    .overrideProvider(MetadataService)
-    .useValue(metadataMock)
-    .compile();
+  const builder = Test.createTestingModule({ imports: [AppModule] });
+  if (!keepMetadataPersistence) builder.overrideProvider(MetadataService).useValue(metadataMock);
+  const moduleFixture = await builder.compile();
 
   const app = moduleFixture.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
+  if (keepMetadataPersistence) {
+    // Keep the real author and other relation writers while stubbing file and cover work.
+    Object.assign(app.get(MetadataService), metadataMock);
+  }
   app.setGlobalPrefix('api/v1');
   app.useGlobalPipes(
     new ValidationPipe({
@@ -187,22 +190,8 @@ export async function triggerAndWaitForLibraryScan(
   libraryId: number,
   timeoutMs = 45_000,
 ): Promise<typeof schema.scanJobs.$inferSelect> {
-  const response = await ctx.app.inject({
-    method: 'POST',
-    url: `/api/v1/scanner/libraries/${libraryId}/scan`,
-    headers: authHeader(ctx.adminToken),
-  });
-
-  if (response.statusCode !== 202) {
-    throw new Error(`Scan endpoint failed: ${response.statusCode} ${response.body}`);
-  }
-
-  const body = response.json() as { jobId?: number };
-  if (!body.jobId) {
-    throw new Error(`Scan endpoint returned no jobId: ${response.body}`);
-  }
-
-  return waitForScanCompletion(ctx.db, body.jobId, timeoutMs);
+  const jobId = await triggerLibraryScan(ctx, libraryId);
+  return waitForScanCompletion(ctx.db, jobId, timeoutMs);
 }
 
 export async function createUserAndLogin(
@@ -422,11 +411,15 @@ export async function uploadLibraryFile(
     content: string | Buffer;
     folderId?: number;
     contentType?: string;
+    administrative?: boolean;
   },
 ) {
   const contentBuffer = typeof input.content === 'string' ? Buffer.from(input.content, 'utf8') : input.content;
   const { body, boundary } = buildMultipartBody(input.fileName, contentBuffer, input.contentType ?? 'application/octet-stream');
-  const folderQuery = input.folderId ? `?folderId=${input.folderId}` : '';
+  const query = new URLSearchParams();
+  if (input.folderId) query.set('folderId', String(input.folderId));
+  if (input.administrative) query.set('scope', 'admin');
+  const folderQuery = query.size ? `?${query}` : '';
   return ctx.app.inject({
     method: 'POST',
     url: `/api/v1/libraries/${input.libraryId}/upload${folderQuery}`,

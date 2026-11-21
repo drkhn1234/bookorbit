@@ -1,6 +1,6 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { createHash, randomBytes, randomUUID } from 'crypto';
-import { and, asc, count, desc, eq, ilike, inArray, isNull, ne, notInArray, or, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, ilike, inArray, isNull, ne, or, sql } from 'drizzle-orm';
 import type { SQL } from 'drizzle-orm';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { hash } from 'bcryptjs';
@@ -16,6 +16,7 @@ import type {
 } from '@bookorbit/types';
 import { RequestUser } from '../../common/types/request-user';
 import { DB } from '../../db';
+import { currentGrantActor, lockGrantAccount, lockGrantLibraries } from '../../db/library-grant-locks';
 import * as schema from '../../db/schema';
 import { AuthenticationPolicyService } from '../../common/services/authentication-policy.service';
 
@@ -23,6 +24,7 @@ type Db = NodePgDatabase<typeof schema>;
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 
 export type ManagedUserMutationStatus = 'updated' | 'target_not_found' | 'requester_not_superuser' | 'last_superuser';
+type ManagedUserDeletionStatus = ManagedUserMutationStatus | 'last_library_owner';
 export type SuperuserTransitionStatus = ManagedUserMutationStatus | 'unchanged' | 'self_target' | 'shared_target' | 'target_no_oidc';
 
 /**
@@ -444,17 +446,20 @@ export class UserRepository {
     });
   }
 
-  async delete(id: number) {
-    await this.db.delete(schema.users).where(eq(schema.users.id, id));
-  }
-
-  async deleteManagedUser(requestingUserId: number, targetUserId: number, beforeDelete?: () => Promise<void>): Promise<ManagedUserMutationStatus> {
+  async deleteManagedUser(requestingUserId: number, targetUserId: number, beforeDelete?: () => Promise<void>): Promise<ManagedUserDeletionStatus> {
     return this.db.transaction(async (tx) => {
       await this.authenticationPolicy.lockAdministratorAvailability(tx);
       const { requester, target } = await this.findLifecycleUsers(tx, requestingUserId, targetUserId);
       if (!target) return 'target_not_found';
       if (target.isSuperuser && !this.isActiveSuperuser(requester)) return 'requester_not_superuser';
       if (target.isSuperuser && (await this.countOtherActiveSuperusers(tx, targetUserId)) === 0) return 'last_superuser';
+
+      // Grant writers lock the target account before library rows, including when it has no grants.
+      await lockGrantAccount(tx, targetUserId);
+      const grants = await this.findLibraryGrantsByUserId(targetUserId, tx);
+      const owned = grants.filter(({ accessLevel }) => accessLevel === 'owner').map(({ libraryId }) => libraryId);
+      const locked = await lockGrantLibraries(tx, owned);
+      if (!(await this.allLibrariesHaveAnotherOwner(tx, targetUserId, [...locked]))) return 'last_library_owner';
 
       if (beforeDelete) await beforeDelete();
       await tx.delete(schema.users).where(eq(schema.users.id, targetUserId));
@@ -664,25 +669,44 @@ export class UserRepository {
 
   async assignViewerLibraries(userId: number, libraryIds: number[]) {
     if (libraryIds.length === 0) return;
-    await this.db
-      .insert(schema.userLibraryAccess)
-      .values(libraryIds.map((libraryId) => ({ userId, libraryId, accessLevel: 'viewer' as const })))
-      .onConflictDoNothing();
+    await this.db.transaction(async (tx) => {
+      await lockGrantAccount(tx, userId);
+      await lockGrantLibraries(tx, libraryIds);
+      await tx
+        .insert(schema.userLibraryAccess)
+        .values(libraryIds.map((libraryId) => ({ userId, libraryId, accessLevel: 'viewer' as const })))
+        .onConflictDoNothing();
+    });
   }
 
-  async findLibraryIdsByUserId(userId: number): Promise<number[]> {
-    const rows = await this.db
+  async findLibraryIdsByUserId(userId: number, db: Pick<Db, 'select'> = this.db): Promise<number[]> {
+    const rows = await db
       .select({ libraryId: schema.userLibraryAccess.libraryId })
       .from(schema.userLibraryAccess)
       .where(eq(schema.userLibraryAccess.userId, userId));
     return rows.map((r) => r.libraryId);
   }
 
-  findLibraryGrantsByUserId(userId: number): Promise<UserLibraryGrant[]> {
-    return this.db
+  findLibraryGrantsByUserId(userId: number, db: Pick<Db, 'select'> = this.db): Promise<UserLibraryGrant[]> {
+    return db
       .select({ libraryId: schema.userLibraryAccess.libraryId, accessLevel: schema.userLibraryAccess.accessLevel })
       .from(schema.userLibraryAccess)
       .where(eq(schema.userLibraryAccess.userId, userId));
+  }
+
+  private async allLibrariesHaveAnotherOwner(tx: Tx, userId: number, libraryIds: number[]): Promise<boolean> {
+    if (libraryIds.length === 0) return true;
+    const otherOwners = await tx
+      .selectDistinct({ libraryId: schema.userLibraryAccess.libraryId })
+      .from(schema.userLibraryAccess)
+      .where(
+        and(
+          inArray(schema.userLibraryAccess.libraryId, libraryIds),
+          ne(schema.userLibraryAccess.userId, userId),
+          eq(schema.userLibraryAccess.accessLevel, 'owner'),
+        ),
+      );
+    return otherOwners.length === libraryIds.length;
   }
 
   async findExistingLibraryIds(libraryIds: number[]): Promise<number[]> {
@@ -695,17 +719,48 @@ export class UserRepository {
    * Libraries that stay assigned keep their access level: it is set per library from the library's
    * access settings, and resetting it here would silently revoke editing on every user save.
    */
-  async replaceLibraries(userId: number, libraryIds: number[]): Promise<void> {
+  async replaceLibraries(userId: number, libraryIds: number[], actor: RequestUser): Promise<void> {
+    const requested = new Set(libraryIds);
     await this.db.transaction(async (tx) => {
-      const ownedByUser = eq(schema.userLibraryAccess.userId, userId);
-      await tx
-        .delete(schema.userLibraryAccess)
-        .where(libraryIds.length > 0 ? and(ownedByUser, notInArray(schema.userLibraryAccess.libraryId, libraryIds)) : ownedByUser);
-      if (libraryIds.length > 0) {
-        await tx
-          .insert(schema.userLibraryAccess)
-          .values(libraryIds.map((libraryId) => ({ userId, libraryId, accessLevel: 'viewer' as const })))
-          .onConflictDoNothing();
+      await lockGrantAccount(tx, userId);
+      const currentIds = await this.findLibraryIdsByUserId(userId, tx);
+      const locked = await lockGrantLibraries(tx, [...new Set([...currentIds, ...requested])]);
+
+      const principal = await currentGrantActor(tx, actor);
+      if (!principal.isSuperuser && !principal.permissions.includes(Permission.ManageUsers)) {
+        throw new ForbiddenException(`Missing permission: ${Permission.ManageUsers}`);
+      }
+      const [target] = await tx.select({ isSuperuser: schema.users.isSuperuser }).from(schema.users).where(eq(schema.users.id, userId));
+      if (!target) throw new NotFoundException('User not found');
+      if (target.isSuperuser && !principal.isSuperuser) {
+        throw new ForbiddenException('Only administrators can edit administrator accounts');
+      }
+      const missing = libraryIds.filter((id) => !locked.has(id));
+      if (missing.length) throw new BadRequestException(`Unknown library IDs: ${missing.join(', ')}`);
+
+      const grants = await this.findLibraryGrantsByUserId(userId, tx);
+      if (grants.some(({ libraryId }) => !locked.has(libraryId))) throw new ConflictException('Library grants changed during assignment');
+      const removed = grants.filter(({ libraryId }) => !requested.has(libraryId));
+      const removedOwners = removed.filter(({ accessLevel }) => accessLevel === 'owner').map(({ libraryId }) => libraryId);
+      if (!(await this.allLibrariesHaveAnotherOwner(tx, userId, removedOwners))) {
+        throw new ConflictException('The last library owner cannot be removed through user library assignment');
+      }
+
+      if (removed.length) {
+        await tx.delete(schema.userLibraryAccess).where(
+          and(
+            eq(schema.userLibraryAccess.userId, userId),
+            inArray(
+              schema.userLibraryAccess.libraryId,
+              removed.map(({ libraryId }) => libraryId),
+            ),
+          ),
+        );
+      }
+      const existing = new Set(grants.map(({ libraryId }) => libraryId));
+      const additions = libraryIds.filter((id) => !existing.has(id));
+      if (additions.length) {
+        await tx.insert(schema.userLibraryAccess).values(additions.map((libraryId) => ({ userId, libraryId, accessLevel: 'viewer' as const })));
       }
     });
   }

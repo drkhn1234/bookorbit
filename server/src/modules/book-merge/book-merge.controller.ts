@@ -1,11 +1,10 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Param, ParseIntPipe, Post } from '@nestjs/common';
 
-import { AuditAction, AuditResource, Permission } from '@bookorbit/types';
+import { AuditAction, AuditResource } from '@bookorbit/types';
 
 import { KeyReadSafe } from '../../common/decorators/api-key-policy.decorator';
 import { Auditable } from '../../common/decorators/auditable.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import type { RequestUser } from '../../common/types/request-user';
 import { BookMergeService } from './book-merge.service';
 import { BookMergeDto, BookMergePreviewDto } from './dto/book-merge.dto';
@@ -21,14 +20,12 @@ export class BookMergeController {
   @Post('preview')
   @KeyReadSafe()
   @HttpCode(HttpStatus.OK)
-  @RequirePermission(Permission.LibraryMergeBooks)
   preview(@Body() dto: BookMergePreviewDto, @CurrentUser() user: RequestUser) {
     return this.bookMergeService.preview(dto, user);
   }
 
   @Post()
   @HttpCode(HttpStatus.ACCEPTED)
-  @RequirePermission(Permission.LibraryMergeBooks)
   @Auditable({
     action: AuditAction.BookMerge,
     resource: AuditResource.Book,
@@ -48,7 +45,6 @@ export class BookMergeController {
   }
 
   @Get('jobs/:jobId')
-  @RequirePermission(Permission.LibraryMergeBooks)
   getJob(@Param('jobId', ParseIntPipe) jobId: number, @CurrentUser() user: RequestUser) {
     return this.bookMergeService.getJob(jobId, user);
   }

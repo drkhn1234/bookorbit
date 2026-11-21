@@ -72,6 +72,8 @@ function blankForm() {
 export function useLibraryCreator() {
   const t = (key: string) => i18n.global.t(key)
   const form = reactive(blankForm())
+  const personal = ref(true)
+  const administrative = ref(false)
   const mode = ref<'create' | 'edit'>('create')
   const editingLibraryId = ref<number | null>(null)
   const loading = ref(false)
@@ -86,11 +88,16 @@ export function useLibraryCreator() {
   const latestCheck = new Map<string, number>()
   let checkSequence = 0
 
+  function resetFolderChecks() {
+    latestCheck.clear()
+    folderChecks.value = {}
+  }
+
   const validationErrors = computed<Partial<Record<LibraryCreatorSectionId, string>>>(() => {
     const errors: Partial<Record<LibraryCreatorSectionId, string>> = {}
     if (!form.name.trim()) errors.details = t('library.creator.errors.nameRequired')
     else if (!form.icon?.trim()) errors.details = t('library.creator.errors.iconRequired')
-    if (form.folders.length === 0) errors.folders = t('library.creator.errors.folderRequired')
+    if (!personal.value && form.folders.length === 0) errors.folders = t('library.creator.errors.folderRequired')
     else {
       const overlap = folderOverlapError()
       if (overlap) errors.folders = overlap
@@ -234,7 +241,7 @@ export function useLibraryCreator() {
 
     let results: PrescanResult['paths'] | null = null
     try {
-      const res = await api('/api/v1/libraries/prescan', {
+      const res = await api(`/api/v1/libraries/prescan${administrative.value ? '?scope=admin' : ''}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ paths: targets, ...(editingLibraryId.value === null ? {} : { libraryId: editingLibraryId.value }) }),
@@ -266,6 +273,7 @@ export function useLibraryCreator() {
   }
 
   async function save(): Promise<Library | null> {
+    if (loading.value) return null
     const firstValidationError = Object.values(validationErrors.value)[0]
     if (firstValidationError) {
       error.value = firstValidationError
@@ -281,14 +289,17 @@ export function useLibraryCreator() {
         folders: [...new Set(form.folders.map((path) => path.trim()))],
         formatPriority: withoutImplicitReadAlongFormatPriority(form.formatPriority),
       }
+      if ((mode.value === 'edit' && (personal.value || !administrative.value)) || (personal.value && payload.folders.length === 0))
+        delete (payload as Partial<typeof payload>).folders
+      const suffix = administrative.value ? '?scope=admin' : ''
       const res =
         mode.value === 'create'
-          ? await api('/api/v1/libraries', {
+          ? await api(`/api/v1/libraries${personal.value ? '/personal' : ''}${suffix}`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(payload),
             })
-          : await api(`/api/v1/libraries/${editingLibraryId.value}`, {
+          : await api(`/api/v1/libraries/${editingLibraryId.value}${suffix}`, {
               method: 'PATCH',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(payload),
@@ -308,12 +319,15 @@ export function useLibraryCreator() {
 
   return {
     form,
+    personal,
+    administrative,
     storedAddedAtSource,
     storedRegexMetadata,
     mode,
     editingLibraryId,
     loading,
     folderChecks,
+    resetFolderChecks,
     stats,
     error,
     validationErrors,

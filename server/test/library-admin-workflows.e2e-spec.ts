@@ -129,7 +129,6 @@ async function waitForCoverRefreshCalls(ctx: AuthorizationMatrixE2EContext, expe
 
 async function createLibraryViaApi(
   ctx: AuthorizationMatrixE2EContext,
-  token: string,
   input?: Partial<{
     name: string;
     folders: string[];
@@ -157,8 +156,8 @@ async function createLibraryViaApi(
 
   const response = await ctx.app.inject({
     method: 'POST',
-    url: '/api/v1/libraries',
-    headers: authHeader(token),
+    url: '/api/v1/libraries?scope=admin',
+    headers: authHeader(ctx.adminToken),
     payload: {
       name: input?.name ?? `Library Admin ${randomUUID()}`,
       icon: input?.icon ?? 'library',
@@ -238,7 +237,7 @@ describe('Library admin workflows (e2e)', { timeout: SCENARIO_TIMEOUT_MS }, () =
       });
       expect(response.statusCode).toBe(400);
     }
-    // Like every other library setting, regex rules need ManageLibraries and no per-library grant.
+    // Regex configuration is an explicit administrative operation.
     const library = await createLibraryWithFolder(ctx);
     const scoped = await ctx.app.inject({
       method: 'POST',
@@ -249,7 +248,7 @@ describe('Library admin workflows (e2e)', { timeout: SCENARIO_TIMEOUT_MS }, () =
     expect(scoped.statusCode).toBe(200);
     const update = await ctx.app.inject({
       method: 'PATCH',
-      url: `/api/v1/libraries/${library.libraryId}`,
+      url: `/api/v1/libraries/${library.libraryId}?scope=admin`,
       headers: authHeader(manager.accessToken),
       payload: { icon: 'BookOpen', regexMetadata: payload.config },
     });
@@ -299,7 +298,7 @@ describe('Library admin workflows (e2e)', { timeout: SCENARIO_TIMEOUT_MS }, () =
     });
     expect(superuserResponse.statusCode).toBe(200);
     const superuserLibraries = superuserResponse.json() as Array<{ id: number }>;
-    expect(superuserLibraries.find(({ id }) => id === library.libraryId)).toMatchObject(savedSettings);
+    expect(superuserLibraries.map(({ id }) => id)).not.toContain(library.libraryId);
 
     const scopedResponse = await ctx.app.inject({
       method: 'GET',
@@ -337,7 +336,7 @@ describe('Library admin workflows (e2e)', { timeout: SCENARIO_TIMEOUT_MS }, () =
         headers: authHeader(scopedUser.accessToken),
         payload,
       });
-      expectError(response, 403, 'Missing permission: manage_libraries');
+      expectError(response, 403, 'Insufficient library access level');
     }
 
     for (const action of ['scan', 'refresh-covers']) {
@@ -347,6 +346,12 @@ describe('Library admin workflows (e2e)', { timeout: SCENARIO_TIMEOUT_MS }, () =
         headers: authHeader(scopedUser.accessToken),
       });
       expectError(response, 403, 'Missing permission: manage_libraries');
+      const superuserWithoutGrant = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/scanner/libraries/${library.libraryId}/${action}`,
+        headers: authHeader(ctx.adminToken),
+      });
+      expectError(superuserWithoutGrant, 403, 'No library access');
     }
 
     const writeUrl = `/api/v1/libraries/${library.libraryId}/write-metadata-to-files`;
@@ -368,13 +373,20 @@ describe('Library admin workflows (e2e)', { timeout: SCENARIO_TIMEOUT_MS }, () =
   });
 
   it.each([null, { rules: [{ pattern: '(?<title>.+)', flags: '' }] }])(
-    'lets managers save regex rules and unrelated settings without a library grant: %j',
+    'lets managers save settings without a content grant only in explicit administrative scope: %j',
     async (regexMetadata) => {
       const library = await createLibraryWithFolder(ctx);
       await ctx.db.update(schema.libraries).set({ regexMetadata }).where(eq(schema.libraries.id, library.libraryId));
-      const response = await ctx.app.inject({
+      const ordinary = await ctx.app.inject({
         method: 'PATCH',
         url: `/api/v1/libraries/${library.libraryId}`,
+        headers: authHeader(manager.accessToken),
+        payload: { icon: 'BookOpen', regexMetadata },
+      });
+      expect(ordinary.statusCode).toBe(403);
+      const response = await ctx.app.inject({
+        method: 'PATCH',
+        url: `/api/v1/libraries/${library.libraryId}?scope=admin`,
         headers: authHeader(manager.accessToken),
         payload: { name: `Renamed library ${library.libraryId}`, icon: 'BookOpen', regexMetadata },
       });
@@ -383,7 +395,7 @@ describe('Library admin workflows (e2e)', { timeout: SCENARIO_TIMEOUT_MS }, () =
       const nextRegexMetadata = regexMetadata === null ? { rules: [{ pattern: '(?<title>.+)', flags: '' }] } : null;
       const changed = await ctx.app.inject({
         method: 'PATCH',
-        url: `/api/v1/libraries/${library.libraryId}`,
+        url: `/api/v1/libraries/${library.libraryId}?scope=admin`,
         headers: authHeader(manager.accessToken),
         payload: { icon: 'BookOpen', regexMetadata: nextRegexMetadata },
       });
@@ -427,7 +439,7 @@ describe('Library admin workflows (e2e)', { timeout: SCENARIO_TIMEOUT_MS }, () =
       expect(imported.json().errorCode).toBe('ADDED_AT_SOURCE_IMPORTED');
       const update = await ctx.app.inject({
         method: 'PATCH',
-        url: `/api/v1/libraries/${library.libraryId}`,
+        url: `/api/v1/libraries/${library.libraryId}?scope=admin`,
         headers: authHeader(manager.accessToken),
         payload: { addedAtSource: 'file_modified', icon: 'BookOpen' },
       });
@@ -533,7 +545,8 @@ describe('Library admin workflows (e2e)', { timeout: SCENARIO_TIMEOUT_MS }, () =
       const path = await createEpubFixture(library.folderPath, 'dated.epub', { title: 'Dated Book' });
       const timestamp = new Date('2018-06-01T00:00:00Z');
       await utimes(path, timestamp, timestamp);
-      await startLibraryScanAs(ctx, ctx.adminToken, library.libraryId);
+      await grantLibraryAccess(ctx, manager.userId, library.libraryId, 'editor');
+      await startLibraryScanAs(ctx, manager.accessToken, library.libraryId);
       const [book] = await ctx.db.select().from(schema.books).where(eq(schema.books.libraryId, library.libraryId));
       expect(book.addedAt).toEqual(timestamp);
     });
@@ -543,6 +556,9 @@ describe('Library admin workflows (e2e)', { timeout: SCENARIO_TIMEOUT_MS }, () =
     it('lists valid directories, hides blocked or hidden entries, and returns prescan details for valid, overlapping, and missing paths', async () => {
       const overlapLibraryName = `library-overlap-${randomUUID()}`;
       const overlapLibrary = await createLibraryWithFolder(ctx, { name: overlapLibraryName });
+      const admin = await ctx.app.inject({ method: 'GET', url: '/api/v1/auth/me', headers: authHeader(ctx.adminToken) });
+      expect(admin.statusCode).toBe(200);
+      await grantLibraryAccess(ctx, admin.json<{ id: number }>().id, overlapLibrary.libraryId, 'viewer');
       const visibleDir = join(ctx.fixture.booksPath, `path-visible-${randomUUID()}`);
       const hiddenDir = join(ctx.fixture.booksPath, `.path-hidden-${randomUUID()}`);
       await mkdir(visibleDir, { recursive: true });
@@ -554,8 +570,8 @@ describe('Library admin workflows (e2e)', { timeout: SCENARIO_TIMEOUT_MS }, () =
 
       const pathResponse = await ctx.app.inject({
         method: 'GET',
-        url: `/api/v1/path?path=${encodeURIComponent(ctx.fixture.booksPath)}`,
-        headers: authHeader(manager.accessToken),
+        url: `/api/v1/path?scope=admin&path=${encodeURIComponent(ctx.fixture.booksPath)}`,
+        headers: authHeader(ctx.adminToken),
       });
 
       expect(pathResponse.statusCode).toBe(200);
@@ -580,23 +596,22 @@ describe('Library admin workflows (e2e)', { timeout: SCENARIO_TIMEOUT_MS }, () =
 
       const blockedPathResponse = await ctx.app.inject({
         method: 'GET',
-        url: '/api/v1/path?path=/proc',
-        headers: authHeader(manager.accessToken),
+        url: '/api/v1/path?scope=admin&path=/proc',
+        headers: authHeader(ctx.adminToken),
       });
-      expect(blockedPathResponse.statusCode).toBe(200);
-      expect(blockedPathResponse.json()).toEqual([]);
+      expect(blockedPathResponse.statusCode).toBe(403);
 
       const forbiddenPathResponse = await ctx.app.inject({
         method: 'GET',
-        url: `/api/v1/path?path=${encodeURIComponent(ctx.fixture.booksPath)}`,
+        url: `/api/v1/path?scope=admin&path=${encodeURIComponent(ctx.fixture.booksPath)}`,
         headers: authHeader(noPermissionUser.accessToken),
       });
       expect(forbiddenPathResponse.statusCode).toBe(403);
 
       const prescanResponse = await ctx.app.inject({
         method: 'POST',
-        url: '/api/v1/libraries/prescan',
-        headers: authHeader(manager.accessToken),
+        url: '/api/v1/libraries/prescan?scope=admin',
+        headers: authHeader(ctx.adminToken),
         payload: {
           paths: [prescanValidDir, overlapLibrary.folderPath, join(ctx.fixture.booksPath, `missing-${randomUUID()}`)],
         },
@@ -641,8 +656,8 @@ describe('Library admin workflows (e2e)', { timeout: SCENARIO_TIMEOUT_MS }, () =
 
       const editPrescanResponse = await ctx.app.inject({
         method: 'POST',
-        url: '/api/v1/libraries/prescan',
-        headers: authHeader(manager.accessToken),
+        url: '/api/v1/libraries/prescan?scope=admin',
+        headers: authHeader(ctx.adminToken),
         payload: { paths: [overlapLibrary.folderPath], libraryId: overlapLibrary.libraryId },
       });
 
@@ -660,7 +675,7 @@ describe('Library admin workflows (e2e)', { timeout: SCENARIO_TIMEOUT_MS }, () =
 
       const forbiddenPrescanResponse = await ctx.app.inject({
         method: 'POST',
-        url: '/api/v1/libraries/prescan',
+        url: '/api/v1/libraries/prescan?scope=admin',
         headers: authHeader(noPermissionUser.accessToken),
         payload: { paths: [prescanValidDir] },
       });
@@ -671,14 +686,14 @@ describe('Library admin workflows (e2e)', { timeout: SCENARIO_TIMEOUT_MS }, () =
   describe('create library and manage access', () => {
     it.each([undefined, ['regex', 'embedded']])('creates regex rules with precedence %j', async (metadataPrecedence) => {
       const regexMetadata = { rules: [{ pattern: '(?<title>.+)', flags: '' }] };
-      const { body: library } = await createLibraryViaApi(ctx, manager.accessToken, { regexMetadata, metadataPrecedence });
+      const { body: library } = await createLibraryViaApi(ctx, { regexMetadata, metadataPrecedence });
       expect(library.regexMetadata).toEqual(regexMetadata);
       expect(library.metadataPrecedence).toEqual(metadataPrecedence ?? ['folderStructure', 'embedded', 'nfoFile', 'opfFile', 'sidecar', 'regex']);
       await waitForNoRunningScans(ctx, library.id);
     });
 
     it('persists fractional finished thresholds through create and update', async () => {
-      const { body: createdLibrary } = await createLibraryViaApi(ctx, manager.accessToken, {
+      const { body: createdLibrary } = await createLibraryViaApi(ctx, {
         markAsFinishedPercentComplete: 99.95,
       });
       expect(createdLibrary.markAsFinishedPercentComplete).toBe(99.95);
@@ -703,7 +718,7 @@ describe('Library admin workflows (e2e)', { timeout: SCENARIO_TIMEOUT_MS }, () =
     });
 
     it('refuses folders that overlap another library folder, and keeps saving a library whose folders overlapped before', async () => {
-      const { body: books } = await createLibraryViaApi(ctx, manager.accessToken);
+      const { body: books } = await createLibraryViaApi(ctx);
       const booksFolder = books.folders[0]!.path;
       const nested = join(booksFolder, 'comics');
       const sibling = `${booksFolder}-extra`;
@@ -712,8 +727,8 @@ describe('Library admin workflows (e2e)', { timeout: SCENARIO_TIMEOUT_MS }, () =
       const create = (folders: string[]) =>
         ctx.app.inject({
           method: 'POST',
-          url: '/api/v1/libraries',
-          headers: authHeader(manager.accessToken),
+          url: '/api/v1/libraries?scope=admin',
+          headers: authHeader(ctx.adminToken),
           payload: { name: `Overlap ${randomUUID()}`, icon: 'library', folders },
         });
 
@@ -735,8 +750,8 @@ describe('Library admin workflows (e2e)', { timeout: SCENARIO_TIMEOUT_MS }, () =
       await grantLibraryAccess(ctx, manager.userId, books.id, 'owner');
       const addNested = await ctx.app.inject({
         method: 'PATCH',
-        url: `/api/v1/libraries/${books.id}`,
-        headers: authHeader(manager.accessToken),
+        url: `/api/v1/libraries/${books.id}?scope=admin`,
+        headers: authHeader(ctx.adminToken),
         payload: { folders: [booksFolder, nested] },
       });
       expect(addNested.statusCode, addNested.body).toBe(409);
@@ -746,15 +761,15 @@ describe('Library admin workflows (e2e)', { timeout: SCENARIO_TIMEOUT_MS }, () =
       await ctx.db.insert(schema.libraryFolders).values({ libraryId: books.id, path: nested });
       const resave = await ctx.app.inject({
         method: 'PATCH',
-        url: `/api/v1/libraries/${books.id}`,
-        headers: authHeader(manager.accessToken),
+        url: `/api/v1/libraries/${books.id}?scope=admin`,
+        headers: authHeader(ctx.adminToken),
         payload: { name: `Renamed ${randomUUID()}`, folders: [booksFolder, nested] },
       });
       expect(resave.statusCode, resave.body).toBe(200);
     });
 
     it('creates a library with the requested settings, requires explicit access rows, and reflects grant/update/revoke changes', async () => {
-      const { body: createdLibrary } = await createLibraryViaApi(ctx, manager.accessToken, {
+      const { body: createdLibrary } = await createLibraryViaApi(ctx, {
         name: `library-contract-${randomUUID()}`,
       });
 
@@ -801,16 +816,16 @@ describe('Library admin workflows (e2e)', { timeout: SCENARIO_TIMEOUT_MS }, () =
       });
       expect(forbiddenAccessLookup.statusCode).toBe(403);
 
-      const selfGrantResponse = await ctx.app.inject({
+      const adminGrantResponse = await ctx.app.inject({
         method: 'POST',
-        url: `/api/v1/libraries/${createdLibrary.id}/access`,
-        headers: authHeader(manager.accessToken),
+        url: `/api/v1/libraries/${createdLibrary.id}/access?scope=admin`,
+        headers: authHeader(ctx.adminToken),
         payload: {
           userId: manager.userId,
           accessLevel: 'owner',
         },
       });
-      expect(selfGrantResponse.statusCode).toBe(201);
+      expect(adminGrantResponse.statusCode).toBe(201);
 
       const scopedGrantResponse = await ctx.app.inject({
         method: 'POST',
@@ -897,7 +912,7 @@ describe('Library admin workflows (e2e)', { timeout: SCENARIO_TIMEOUT_MS }, () =
 
   describe('upload, scan, and stats', () => {
     it('enforces upload boundaries, persists uploaded files, scans direct file additions, and isolates stats after access revocation', async () => {
-      const { body: createdLibrary } = await createLibraryViaApi(ctx, manager.accessToken, {
+      const { body: createdLibrary } = await createLibraryViaApi(ctx, {
         name: `library-upload-${randomUUID()}`,
       });
       await waitForNoRunningScans(ctx, createdLibrary.id);
@@ -1088,7 +1103,7 @@ describe('Library admin workflows (e2e)', { timeout: SCENARIO_TIMEOUT_MS }, () =
 
   describe('refresh covers, reorder, and delete', () => {
     it('queues cover refresh for each primary file, reorders libraries, and deletes a populated library while cleaning cover artifacts', async () => {
-      const { body: createdLibrary } = await createLibraryViaApi(ctx, manager.accessToken, {
+      const { body: createdLibrary } = await createLibraryViaApi(ctx, {
         name: `library-refresh-${randomUUID()}`,
       });
       await waitForNoRunningScans(ctx, createdLibrary.id);
@@ -1168,13 +1183,13 @@ describe('Library admin workflows (e2e)', { timeout: SCENARIO_TIMEOUT_MS }, () =
       });
       expect(reorderResponse.statusCode).toBe(204);
 
-      const adminLibrariesResponse = await ctx.app.inject({
+      const managerLibrariesResponse = await ctx.app.inject({
         method: 'GET',
         url: '/api/v1/libraries',
-        headers: authHeader(ctx.adminToken),
+        headers: authHeader(manager.accessToken),
       });
-      expect(adminLibrariesResponse.statusCode).toBe(200);
-      const orderedLibraries = (adminLibrariesResponse.json() as Array<{ id: number; displayOrder: number }>).filter((library) =>
+      expect(managerLibrariesResponse.statusCode).toBe(200);
+      const orderedLibraries = (managerLibrariesResponse.json() as Array<{ id: number; displayOrder: number }>).filter((library) =>
         [createdLibrary.id, reorderPeerLibrary.libraryId, peerCoverLibrary.libraryId].includes(library.id),
       );
       expect(orderedLibraries.map((library) => ({ id: library.id, displayOrder: library.displayOrder }))).toEqual([
@@ -1195,7 +1210,7 @@ describe('Library admin workflows (e2e)', { timeout: SCENARIO_TIMEOUT_MS }, () =
         url: `/api/v1/libraries/${createdLibrary.id}`,
         headers: authHeader(ctx.adminToken),
       });
-      expectError(deletedLibraryResponse, 404, 'Library not found');
+      expectError(deletedLibraryResponse, 403, 'No library access');
 
       const deletedLibraryBooks = await ctx.db
         .select({ id: schema.books.id })
@@ -1221,7 +1236,7 @@ describe('Library admin workflows (e2e)', { timeout: SCENARIO_TIMEOUT_MS }, () =
 
       const refused = await ctx.app.inject({
         method: 'DELETE',
-        url: `/api/v1/libraries/${busyLibrary.libraryId}`,
+        url: `/api/v1/libraries/${busyLibrary.libraryId}?scope=admin`,
         headers: authHeader(ctx.adminToken),
       });
       expect(refused.statusCode).toBe(409);
@@ -1235,7 +1250,7 @@ describe('Library admin workflows (e2e)', { timeout: SCENARIO_TIMEOUT_MS }, () =
       releaseMove!();
       const deleted = await ctx.app.inject({
         method: 'DELETE',
-        url: `/api/v1/libraries/${busyLibrary.libraryId}`,
+        url: `/api/v1/libraries/${busyLibrary.libraryId}?scope=admin`,
         headers: authHeader(ctx.adminToken),
       });
       expect(deleted.statusCode).toBe(204);

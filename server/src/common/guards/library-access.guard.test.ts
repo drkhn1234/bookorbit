@@ -66,10 +66,15 @@ describe('LibraryAccessGuard', () => {
     expect(findFirst).not.toHaveBeenCalled();
   });
 
-  it('allows superusers without querying access table', async () => {
+  it('denies superusers without an explicit grant', async () => {
     const { guard, findFirst } = makeGuard({ required: 'owner' });
+    await expect(guard.canActivate(makeContext(makeUser({ isSuperuser: true }), { libraryId: '1' }))).rejects.toThrow(ForbiddenException);
+    expect(findFirst).toHaveBeenCalled();
+  });
+
+  it('allows superusers with an explicit owner grant', async () => {
+    const { guard } = makeGuard({ required: 'owner', row: { accessLevel: 'owner' } });
     await expect(guard.canActivate(makeContext(makeUser({ isSuperuser: true }), { libraryId: '1' }))).resolves.toBe(true);
-    expect(findFirst).not.toHaveBeenCalled();
   });
 
   it('throws BadRequestException when libraryId is missing', async () => {

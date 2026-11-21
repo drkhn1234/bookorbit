@@ -329,7 +329,7 @@ export class AuthService {
       avatarUrl: resolveUserAvatarUrl(user),
       provisioningMethod: user.provisioningMethod,
       authenticationMethod,
-      permissions: user.isSuperuser ? ['*'] : user.permissions,
+      permissions: user.isSuperuser ? ['*', ...user.permissions] : user.permissions,
     };
   }
 

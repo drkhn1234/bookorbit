@@ -97,7 +97,7 @@ const showCount = computed(() => !props.isOpen && typeof props.count === 'number
     <p v-else class="sidebar-section-label min-w-0 flex-1 truncate px-2">{{ label }}</p>
 
     <button
-      v-if="canAdd"
+      v-show="canAdd"
       type="button"
       class="flex h-6 w-6 shrink-0 items-center justify-center text-primary outline-hidden transition-colors duration-150 hover:bg-(--shell-accent-wash) focus-visible:ring-2 focus-visible:ring-sidebar-ring"
       :class="iconRadiusClass"

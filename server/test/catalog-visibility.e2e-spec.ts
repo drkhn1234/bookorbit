@@ -26,6 +26,7 @@ interface CatalogNames {
 }
 
 interface SeededCatalogBook {
+  libraryId: number;
   bookId: number;
   tagId: number;
   genreId: number;
@@ -81,7 +82,7 @@ async function seedCatalogBook(
     ctx.db.insert(schema.bookSeriesMemberships).values({ bookId: book!.id, seriesId: series!.id }),
   ]);
 
-  return { bookId: book!.id, tagId: tag!.id, genreId: genre!.id, names };
+  return { libraryId: library.libraryId, bookId: book!.id, tagId: tag!.id, genreId: genre!.id, names };
 }
 
 describe('Catalog visibility (e2e)', { timeout: SCENARIO_TIMEOUT_MS }, () => {
@@ -92,7 +93,6 @@ describe('Catalog visibility (e2e)', { timeout: SCENARIO_TIMEOUT_MS }, () => {
   let queryToken!: string;
   let visible!: SeededCatalogBook;
   let contentFiltered!: SeededCatalogBook;
-  let hiddenLibrary!: SeededCatalogBook;
 
   async function search(endpoint: keyof CatalogNames, token: string, q = queryToken): Promise<Array<{ id?: number; name: string }>> {
     const response = await ctx.app.inject({
@@ -114,7 +114,7 @@ describe('Catalog visibility (e2e)', { timeout: SCENARIO_TIMEOUT_MS }, () => {
 
     visible = await seedCatalogBook(ctx, accessibleLibrary, queryToken, 'Visible');
     contentFiltered = await seedCatalogBook(ctx, accessibleLibrary, queryToken, 'Filtered');
-    hiddenLibrary = await seedCatalogBook(ctx, inaccessibleLibrary, queryToken, 'Hidden');
+    await seedCatalogBook(ctx, inaccessibleLibrary, queryToken, 'Hidden');
 
     await Promise.all([
       ctx.db.insert(schema.authors).values({ name: `${queryToken} Orphan Author` }),
@@ -192,12 +192,15 @@ describe('Catalog visibility (e2e)', { timeout: SCENARIO_TIMEOUT_MS }, () => {
     }
   });
 
-  it('lets superusers search every library while bypassing their content filters', async () => {
-    for (const endpoint of Object.keys(visible.names) as Array<keyof CatalogNames>) {
+  it('lets superusers search only granted libraries while bypassing their content filters', async () => {
+    const endpoints = Object.keys(visible.names) as Array<keyof CatalogNames>;
+    for (const endpoint of endpoints) {
+      expect(await search(endpoint, superuser.accessToken)).toEqual([]);
+    }
+    await grantLibraryAccess(ctx, superuser.userId, visible.libraryId);
+    for (const endpoint of endpoints) {
       const results = await search(endpoint, superuser.accessToken);
-      expect(results.map(({ name }) => name)).toEqual(
-        [contentFiltered.names[endpoint], hiddenLibrary.names[endpoint], visible.names[endpoint]].sort(),
-      );
+      expect(results.map(({ name }) => name)).toEqual([contentFiltered.names[endpoint], visible.names[endpoint]].sort());
     }
   });
 

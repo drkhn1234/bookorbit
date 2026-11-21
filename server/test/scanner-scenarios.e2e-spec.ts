@@ -1,10 +1,12 @@
-import { mkdir, writeFile } from 'fs/promises';
+import { mkdir, readdir, utimes, writeFile } from 'fs/promises';
 import { dirname, join } from 'path';
 
 import { eq } from 'drizzle-orm';
 
-import { bookFiles, books } from '../src/db/schema';
+import { bookFiles, books, libraryDirScanState } from '../src/db/schema';
+import { ScannerService } from '../src/modules/scanner/scanner.service';
 
+import { createEpubFixture } from './e2e/metadata-write/metadata-write-fixture-builder';
 import type { FixtureEntry } from './e2e/scanner/scanner-fixture-builder';
 import { createFixtureTree, file } from './e2e/scanner/scanner-fixture-builder';
 import {
@@ -18,6 +20,11 @@ import {
   type LibraryBookState,
   type ScannerE2EContext,
 } from './e2e/scanner/scanner-harness';
+
+vi.mock('fs/promises', async (importOriginal) => {
+  const fs = await importOriginal<typeof import('fs/promises')>();
+  return { ...fs, readdir: vi.fn(fs.readdir) };
+});
 
 type OrganizationMode = 'book_per_file' | 'book_per_folder';
 
@@ -450,6 +457,65 @@ describe('Scanner structures (e2e)', () => {
       await closeScannerE2EContext(context);
     }
   });
+
+  it.each(['book_per_file', 'book_per_folder'] as const)(
+    'imports a file that arrived during enumeration on the next incremental scan (%s)',
+    async (mode) => {
+      if (!context) throw new Error('E2E context not initialized');
+      const { app, db } = context;
+      const fixture = await createFixtureTree([], 'scanner-e2e-concurrent-arrival-');
+      const fs = await vi.importActual<typeof import('fs/promises')>('fs/promises');
+      try {
+        const root = fixture.rootPath;
+        const existing = await createEpubFixture(root, 'existing.epub', { title: 'Existing book' });
+        const originalTime = 1_700_000_000;
+        await utimes(root, originalTime, originalTime);
+        const { libraryId, libraryFolderId } = await seedLibrary(db, { rootPath: root, mode });
+        const scanner = app.get(ScannerService);
+        const scan = async (full = false) => {
+          const { jobId } = await scanner.startScan(libraryId, 'manual', full);
+          return waitForScanCompletion(db, jobId);
+        };
+        const state = () => loadLibraryBookState(db, libraryId);
+        const cache = () => db.select().from(libraryDirScanState).where(eq(libraryDirScanState.libraryFolderId, libraryFolderId));
+        expect(await scan()).toMatchObject({ status: 'completed', addedCount: 1 });
+        expect(await cache()).toHaveLength(1);
+
+        const arriving = join(root, 'arriving.epub');
+        let inserted = false;
+        vi.mocked(readdir).mockImplementation((async (path, options) => {
+          const entries = await fs.readdir(path, options);
+          if (path === root && !inserted) {
+            inserted = true;
+            await createEpubFixture(root, 'arriving.epub', { title: 'Arrived during enumeration' });
+            const modifiedTime = originalTime + (mode === 'book_per_file' ? 0.00025 : 2);
+            await utimes(root, modifiedTime, modifiedTime);
+          }
+          return entries;
+        }) as typeof readdir);
+        const interleaved = await scan();
+        vi.mocked(readdir).mockReset();
+        expect(inserted).toBe(true);
+        expect(await fs.readFile(arriving)).not.toHaveLength(0);
+        expect(interleaved).toMatchObject({ status: 'completed', addedCount: 0, missingCount: 0 });
+        expect((await state()).map((book) => book.primaryPath)).toEqual([existing]);
+        const interleavedCache = await cache();
+
+        const incremental = await scan();
+        const afterIncremental = await state();
+        const full = await scan(true);
+        expect((await state()).map((book) => book.primaryPath).sort()).toEqual([arriving, existing].sort());
+        expect.soft(incremental, 'next ordinary scan must discover the new file').toMatchObject({ status: 'completed', addedCount: 1 });
+        expect.soft(afterIncremental).toEqual(expect.arrayContaining([expect.objectContaining({ primaryPath: arriving, status: 'present' })]));
+        expect.soft(interleavedCache, 'discard the old directory state, even for an otherwise empty cache replacement').toHaveLength(0);
+        expect.soft(full, 'full scan must not be needed for recovery').toMatchObject({ addedCount: 0 });
+      } finally {
+        vi.mocked(readdir).mockReset();
+        await fixture.cleanup();
+      }
+    },
+    SCENARIO_TIMEOUT_MS,
+  );
 
   describe('organizationMode=book_per_folder', () => {
     for (const scenario of bookPerFolderScenarios) {

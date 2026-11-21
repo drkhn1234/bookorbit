@@ -74,6 +74,8 @@ bookorbit/
 
 > **Shared types** live in `packages/types/` and are imported as `@bookorbit/types`. Never duplicate types between client and server.
 
+For the library ownership transaction, storage boundaries, and authorization model, see [Personal Libraries](PERSONAL_LIBRARIES.md).
+
 ---
 
 ## Prerequisites
@@ -229,18 +231,19 @@ pnpm --filter @bookorbit/types dev
 
 These are the variables you are most likely to need during development. See `server/.env.example` for the full list with comments.
 
-| Variable              | Purpose                              | Default (dev)                                             |
-| --------------------- | ------------------------------------ | --------------------------------------------------------- |
-| `DATABASE_URL`        | PostgreSQL connection string         | `postgres://bookorbit:bookorbit@localhost:5432/bookorbit` |
-| `PORT`                | Server listen port                   | `3000`                                                    |
-| `HOST`                | Server listen address (IPv4 or IPv6) | `0.0.0.0`                                                 |
-| `NODE_ENV`            | Runtime mode                         | `development`                                             |
-| `JWT_SECRET`          | Signing key for auth tokens          | `change-me-in-production`                                 |
-| `APP_DATA_PATH`       | Storage for covers, avatars, cache   | `../local/data`                                           |
-| `LIBRARY_BROWSE_ROOT` | Library folder picker root           | `/`                                                       |
-| `APP_URL`             | Base URL for email links             | `http://localhost:6263`                                   |
-| `SWAGGER_ENABLED`     | Serve Swagger UI and OpenAPI JSON    | `false`                                                   |
-| `DISABLE_LOCAL_AUTH`  | Disable password authentication      | `false`                                                   |
+| Variable                | Purpose                                              | Default (dev)                                             |
+| ----------------------- | ---------------------------------------------------- | --------------------------------------------------------- |
+| `DATABASE_URL`          | PostgreSQL connection string                         | `postgres://bookorbit:bookorbit@localhost:5432/bookorbit` |
+| `PORT`                  | Server listen port                                   | `3000`                                                    |
+| `HOST`                  | Server listen address (IPv4 or IPv6)                 | `0.0.0.0`                                                 |
+| `NODE_ENV`              | Runtime mode                                         | `development`                                             |
+| `JWT_SECRET`            | Signing key for auth tokens                          | `change-me-in-production`                                 |
+| `APP_DATA_PATH`         | Storage for covers, avatars, cache                   | `../local/data`                                           |
+| `LIBRARY_BROWSE_ROOT`   | Outer boundary for storage browsing and registration | `/`                                                       |
+| `PERSONAL_LIBRARY_ROOT` | Parent of the per-user storage directories           | `/books`                                                  |
+| `APP_URL`               | Base URL for email links                             | `http://localhost:6263`                                   |
+| `SWAGGER_ENABLED`       | Serve Swagger UI and OpenAPI JSON                    | `false`                                                   |
+| `DISABLE_LOCAL_AUTH`    | Disable password authentication                      | `false`                                                   |
 
 For a native server accessible only on this machine, set `HOST=127.0.0.1` in `server/.env`. `HOST` accepts an IPv4 or IPv6 address without a port or brackets, such as `::1` for IPv6 loopback. An unset or blank value keeps the existing `0.0.0.0` default. `PORT` continues to select the listen port.
 

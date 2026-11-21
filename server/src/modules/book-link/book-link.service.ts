@@ -1,6 +1,12 @@
 import { ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 
-import { BOOK_LINK_MAX_MEMBERS, LINK_GROUP_FULL_ERROR_CODE, LINK_GROUP_NOT_EDITABLE_ERROR_CODE, type BookLinkGroup } from '@bookorbit/types';
+import {
+  Permission,
+  BOOK_LINK_MAX_MEMBERS,
+  LINK_GROUP_FULL_ERROR_CODE,
+  LINK_GROUP_NOT_EDITABLE_ERROR_CODE,
+  type BookLinkGroup,
+} from '@bookorbit/types';
 
 import type { RequestUser } from '../../common/types/request-user';
 import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
@@ -36,7 +42,7 @@ export class BookLinkService {
   async link(dto: BookLinkDto, user: RequestUser): Promise<BookLinkGroup> {
     const startedAt = Date.now();
     const bookIds = dto.bookIds;
-    for (const bookId of bookIds) await this.bookService.verifyBookAccess(bookId, user, 'editor');
+    for (const bookId of bookIds) await this.bookService.verifyBookPermission(bookId, user, Permission.LibraryMergeBooks);
 
     const memberships = await this.repository.findMemberships(bookIds);
     const groupIds = [...new Set(memberships.map((row) => row.groupId))];
@@ -81,20 +87,27 @@ export class BookLinkService {
   }
 
   async setLead(groupId: number, dto: BookLinkLeadDto, user: RequestUser): Promise<BookLinkGroup> {
-    await this.bookService.verifyBookAccess(dto.leadBookId, user, 'editor');
+    await this.bookService.verifyBookPermission(dto.leadBookId, user, Permission.LibraryMergeBooks);
     const [membership] = await this.repository.findMemberships([dto.leadBookId]);
     if (!membership || membership.groupId !== groupId) throw new NotFoundException('Link group not found');
-    await this.repository.transaction((tx) => this.repository.setLead(tx, groupId, dto.leadBookId));
+    await this.repository.transaction(async (tx) => {
+      await this.verifyEditable(await this.repository.findMemberIds([groupId], tx), user);
+      await this.repository.setLead(tx, groupId, dto.leadBookId);
+    });
     await this.notify(await this.repository.findMemberIds([groupId]));
     return this.group(groupId, user);
   }
 
   async unlink(bookId: number, user: RequestUser): Promise<void> {
-    await this.bookService.verifyBookAccess(bookId, user, 'editor');
+    await this.bookService.verifyBookPermission(bookId, user, Permission.LibraryMergeBooks);
     const affected = await this.repository.transaction(async (tx) => {
       const [membership] = await this.repository.findMemberships([bookId], tx);
       if (!membership) return null;
       const members = await this.repository.findMemberIds([membership.groupId], tx);
+      await this.verifyEditable(
+        members.filter((id) => id !== bookId),
+        user,
+      );
       await this.repository.removeMember(tx, bookId);
       const remaining = members.filter((id) => id !== bookId);
       if (remaining.length < 2) await this.repository.deleteGroup(tx, membership.groupId);
@@ -112,7 +125,7 @@ export class BookLinkService {
   private async verifyEditable(bookIds: number[], user: RequestUser): Promise<void> {
     for (const bookId of bookIds) {
       try {
-        await this.bookService.verifyBookAccess(bookId, user, 'editor');
+        await this.bookService.verifyBookPermission(bookId, user, Permission.LibraryMergeBooks);
       } catch (error) {
         if (error instanceof NotFoundException || error instanceof ForbiddenException) throw notEditable();
         throw error;
@@ -132,7 +145,7 @@ export class BookLinkService {
       for (const { bookId, libraryId } of await this.repository.findBookLibraries(bookIds)) {
         byLibrary.set(libraryId, [...(byLibrary.get(libraryId) ?? []), bookId]);
       }
-      for (const [libraryId, ids] of byLibrary) this.gateway.emitBookLinksChanged({ libraryId, bookIds: ids });
+      for (const [libraryId, ids] of byLibrary) void this.gateway.emitBookLinksChanged({ libraryId, bookIds: ids });
     } catch (error) {
       this.logger.warn(
         `[${LINK_EVENT}] [fail] bookCount=${bookIds.length} errorClass=${error instanceof Error ? error.name : 'Error'} error="${sanitizeLogValue(error instanceof Error ? error.message : String(error))}" - link change not broadcast`,

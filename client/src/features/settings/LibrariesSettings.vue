@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useLibraryCapabilities } from '@/features/library/composables/useLibraryCapabilities'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
@@ -52,6 +53,7 @@ const query = ref('')
 const expandedId = ref<number | null>(null)
 const sortBy = ref<LibrarySortField>('default')
 const scanningAll = ref(false)
+const { canCreate, canUseAdministrativeStorage } = useLibraryCapabilities()
 const creatorOpen = ref(false)
 const editingLibrary = ref<LibraryType | null>(null)
 const editingSection = ref<LibraryCreatorSectionId | undefined>(undefined)
@@ -60,6 +62,7 @@ const savingAutomation = ref<Set<number>>(new Set())
 const justFinished = ref<Set<number>>(new Set())
 const deletingLibrary = ref<LibraryType | null>(null)
 const deleteConfirmName = ref('')
+const deleteWithAdministrativeIntent = ref(false)
 const deleting = ref(false)
 const fileSyncingMap = ref<Record<number, boolean>>({})
 const confirmSyncLibrary = ref<LibraryType | null>(null)
@@ -346,6 +349,7 @@ async function confirmSyncFiles() {
 }
 
 function openCreate() {
+  if (!canCreate.value && !canUseAdministrativeStorage.value) return
   editingLibrary.value = null
   editingSection.value = undefined
   templateLibrary.value = null
@@ -361,6 +365,7 @@ function openEdit(lib: LibraryType, section?: LibraryCreatorSectionId) {
 
 /** A new library seeded from this one's settings; its folders and access are left for the new one. */
 function openDuplicate(lib: LibraryType) {
+  if (!canCreate.value && !canUseAdministrativeStorage.value) return
   editingLibrary.value = null
   editingSection.value = undefined
   templateLibrary.value = lib
@@ -398,10 +403,11 @@ function syncFilesFromEditor(lib: LibraryType) {
 
 function removeFromEditor(lib: LibraryType) {
   closeCreator()
-  openDelete(lib)
+  openDelete(lib, true)
 }
 
-function openDelete(lib: LibraryType) {
+function openDelete(lib: LibraryType, administrative = false) {
+  deleteWithAdministrativeIntent.value = administrative
   deletingLibrary.value = lib
   deleteConfirmName.value = ''
 }
@@ -415,7 +421,7 @@ async function confirmDelete() {
   if (!lib) return
   deleting.value = true
   try {
-    const res = await api(`/api/v1/libraries/${lib.id}`, { method: 'DELETE' })
+    const res = await api(`/api/v1/libraries/${lib.id}${deleteWithAdministrativeIntent.value ? '?scope=admin' : ''}`, { method: 'DELETE' })
     if (res.ok) {
       toast.success(t('settings.admin.libraries.libraryDeleted', { name: lib.name }))
       deletingLibrary.value = null
@@ -458,7 +464,7 @@ async function confirmDelete() {
             {{ scanningAll ? t('settings.admin.libraries.scanning') : t('settings.admin.libraries.scanAll') }}
           </span>
         </Button>
-        <Button size="sm" type="button" @click="openCreate">
+        <Button v-show="canCreate || canUseAdministrativeStorage" size="sm" type="button" @click="openCreate">
           <Plus :size="14" aria-hidden="true" />
           {{ t('settings.admin.libraries.addLibrary') }}
         </Button>
@@ -543,7 +549,7 @@ async function confirmDelete() {
         </div>
         <p class="mb-1 text-sm font-medium text-foreground">{{ t('settings.admin.libraries.emptyTitle') }}</p>
         <p class="mb-5 text-sm text-muted-foreground">{{ t('settings.admin.libraries.emptyHint') }}</p>
-        <Button size="sm" type="button" @click="openCreate">
+        <Button v-show="canCreate || canUseAdministrativeStorage" size="sm" type="button" @click="openCreate">
           <Plus :size="14" aria-hidden="true" />
           {{ t('settings.admin.libraries.addFirstLibrary') }}
         </Button>
@@ -552,13 +558,12 @@ async function confirmDelete() {
 
     <LibraryCreatorModal
       v-if="creatorOpen"
+      administrative
       :library="editingLibrary"
       :initial-section="editingSection"
       :template="templateLibrary"
       @close="closeCreator"
       @saved="onSaved"
-      @scan="scan"
-      @refresh-covers="refreshCovers"
       @sync-files="syncFilesFromEditor"
       @remove="removeFromEditor"
     />

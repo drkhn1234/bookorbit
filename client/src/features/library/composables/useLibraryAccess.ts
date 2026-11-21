@@ -1,6 +1,7 @@
-import { computed, ref, type InjectionKey, type Ref } from 'vue'
+import { computed, getCurrentScope, onScopeDispose, ref, watch, type InjectionKey, type Ref } from 'vue'
 import type { AccessLevel, LibraryAccessEntry } from '@bookorbit/types'
 import { api } from '@/lib/api'
+import { useLibraries } from './useLibraries'
 import { i18n } from '@/i18n'
 
 export interface AssignableUser {
@@ -24,7 +25,8 @@ export interface PendingGrant {
  * queue up and `applyPending` sends them after the create succeeds; any that fail stay queued and
  * flagged so the editor can say who was not added and retry.
  */
-export function useLibraryAccess(libraryId: Ref<number | null>) {
+export function useLibraryAccess(libraryId: Ref<number | null>, administrative: Readonly<Ref<boolean>> = ref(false)) {
+  const scoped = (path: string) => (administrative.value ? `${path}?scope=admin` : path)
   const entries = ref<LibraryAccessEntry[]>([])
   const assignable = ref<AssignableUser[]>([])
   const pending = ref<PendingGrant[]>([])
@@ -40,46 +42,78 @@ export function useLibraryAccess(libraryId: Ref<number | null>) {
   const failedGrants = computed(() => pending.value.filter((grant) => grant.failed))
   const count = computed(() => (libraryId.value === null ? pending.value.length : entries.value.length))
 
+  let loadSequence = 0
+  let epoch = 0
+  if (getCurrentScope()) {
+    onScopeDispose(() => {
+      epoch++
+      loadSequence++
+    })
+  }
+  watch(
+    libraryId,
+    () => {
+      epoch++
+      loadSequence++
+      entries.value = []
+      assignable.value = []
+      pending.value = []
+      loaded.value = false
+      loading.value = false
+      busy.value = false
+      error.value = null
+    },
+    { flush: 'sync' },
+  )
   async function load(): Promise<void> {
+    const sequence = ++loadSequence
+    const id = libraryId.value
     loading.value = true
     error.value = null
     try {
       const [usersRes, accessRes] = await Promise.all([
-        api('/api/v1/users/assignable'),
-        libraryId.value === null ? Promise.resolve(null) : api(`/api/v1/libraries/${libraryId.value}/access`),
+        api(scoped(id === null ? '/api/v1/libraries/assignable-users' : `/api/v1/libraries/${id}/assignable-users`)),
+        id === null ? Promise.resolve(null) : api(scoped(`/api/v1/libraries/${id}/access`)),
       ])
+      if (sequence !== loadSequence || libraryId.value !== id) return
       if (!usersRes.ok || (accessRes && !accessRes.ok)) {
         error.value = i18n.global.t('library.creator.access.errors.load')
         return
       }
+      if (sequence !== loadSequence || libraryId.value !== id) return
       const users: unknown = await usersRes.json()
       const granted: unknown = accessRes ? await accessRes.json() : []
+      if (sequence !== loadSequence || libraryId.value !== id) return
       assignable.value = Array.isArray(users) ? (users as AssignableUser[]) : []
       entries.value = Array.isArray(granted) ? (granted as LibraryAccessEntry[]) : []
       loaded.value = true
     } catch {
-      error.value = i18n.global.t('library.creator.errors.connection')
+      if (sequence === loadSequence) error.value = i18n.global.t('library.creator.errors.connection')
     } finally {
-      loading.value = false
+      if (sequence === loadSequence) loading.value = false
     }
   }
 
   async function mutate(request: () => Promise<Response>, fallbackKey: string): Promise<boolean> {
+    if (busy.value) return false
+    const requestEpoch = epoch
     error.value = null
     busy.value = true
     try {
       const res = await request()
+      if (requestEpoch !== epoch) return false
       if (!res.ok) {
         error.value = await messageFrom(res, i18n.global.t(fallbackKey))
         return false
       }
+      await useLibraries().refreshLibraries()
       await load()
       return true
     } catch {
-      error.value = i18n.global.t('library.creator.errors.connection')
+      if (requestEpoch === epoch) error.value = i18n.global.t('library.creator.errors.connection')
       return false
     } finally {
-      busy.value = false
+      if (requestEpoch === epoch) busy.value = false
     }
   }
 
@@ -91,7 +125,10 @@ export function useLibraryAccess(libraryId: Ref<number | null>) {
       return true
     }
     const id = libraryId.value
-    return mutate(() => api(`/api/v1/libraries/${id}/access`, jsonRequest('POST', { userId, accessLevel })), 'library.creator.access.errors.grant')
+    return mutate(
+      () => api(scoped(`/api/v1/libraries/${id}/access`), jsonRequest('POST', { userId, accessLevel })),
+      'library.creator.access.errors.grant',
+    )
   }
 
   async function changeLevel(userId: number, accessLevel: AccessLevel): Promise<boolean> {
@@ -102,7 +139,7 @@ export function useLibraryAccess(libraryId: Ref<number | null>) {
     if (libraryId.value === null) return false
     const id = libraryId.value
     return mutate(
-      () => api(`/api/v1/libraries/${id}/access/${userId}`, jsonRequest('PATCH', { accessLevel })),
+      () => api(scoped(`/api/v1/libraries/${id}/access/${userId}`), jsonRequest('PATCH', { accessLevel })),
       'library.creator.access.errors.updateLevel',
     )
   }
@@ -114,30 +151,33 @@ export function useLibraryAccess(libraryId: Ref<number | null>) {
     }
     if (libraryId.value === null) return false
     const id = libraryId.value
-    return mutate(() => api(`/api/v1/libraries/${id}/access/${userId}`, { method: 'DELETE' }), 'library.creator.access.errors.revoke')
+    return mutate(() => api(scoped(`/api/v1/libraries/${id}/access/${userId}`), { method: 'DELETE' }), 'library.creator.access.errors.revoke')
   }
 
   /** Sends queued grants one at a time. Returns how many could not be added. */
-  async function applyPending(): Promise<number> {
+  async function applyPending(grants: readonly PendingGrant[] = pending.value): Promise<number> {
     const id = libraryId.value
-    if (id === null || pending.value.length === 0) return 0
+    if (id === null || busy.value || grants.length === 0) return pending.value.length
+    const requestEpoch = epoch
+    const url = scoped(`/api/v1/libraries/${id}/access`)
     busy.value = true
     const remaining: PendingGrant[] = []
     try {
-      for (const grant of pending.value) {
+      for (const grant of grants) {
         try {
-          const res = await api(`/api/v1/libraries/${id}/access`, jsonRequest('POST', { userId: grant.userId, accessLevel: grant.accessLevel }))
+          const res = await api(url, jsonRequest('POST', { userId: grant.userId, accessLevel: grant.accessLevel }))
           if (!res.ok) remaining.push({ ...grant, failed: true })
         } catch {
           remaining.push({ ...grant, failed: true })
         }
+        if (requestEpoch !== epoch) return 0
       }
-    } finally {
       pending.value = remaining
-      busy.value = false
+      await load()
+      return remaining.length
+    } finally {
+      if (requestEpoch === epoch) busy.value = false
     }
-    await load()
-    return remaining.length
   }
 
   return {

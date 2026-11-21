@@ -1,5 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { ref } from 'vue'
+import { ADMINISTRATIVE_STORAGE } from '../../composables/useLibraryPathApi'
 import FolderPickerModal from '../FolderPickerModal.vue'
 
 const apiMock = vi.hoisted(() => vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>())
@@ -15,7 +17,12 @@ const entry = (path: string, extra: Record<string, unknown> = {}) => ({
   ...extra,
 })
 const LISTINGS: Record<string, unknown[]> = {
-  '/': [entry('/books', { mount: true, hasChildren: true }), entry('/data', { appData: true }), entry('/usr', { system: true, hasChildren: true })],
+  '/': [
+    entry('/books', { mount: true, hasChildren: true }),
+    entry('/data', { appData: true, hasChildren: true }),
+    entry('/usr', { system: true, hasChildren: true }),
+  ],
+  '/data': [entry('/data/book-dock', { appData: true })],
   '/books': [entry('/books/Fiction', { hasChildren: true }), entry('/books/Science Fiction'), entry('/books/Unsorted')],
 }
 const FILES: Record<string, number> = { '/books': 300, '/books/Fiction': 139, '/books/Science Fiction': 45, '/books/Unsorted': 12, '/data': 0 }
@@ -89,8 +96,12 @@ function pressEscape(target: EventTarget = window) {
   target.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
 }
 
-function mountPicker(props: Record<string, unknown> = {}) {
-  return mount(FolderPickerModal, { props: { libraryName: 'Science Fiction', ...props }, global: { stubs }, attachTo: document.body })
+function mountPicker(props: Record<string, unknown> = {}, administrative = false) {
+  return mount(FolderPickerModal, {
+    props: { libraryName: 'Science Fiction', ...props },
+    global: { stubs, provide: { [ADMINISTRATIVE_STORAGE]: ref(administrative) } },
+    attachTo: document.body,
+  })
 }
 
 const row = (wrapper: ReturnType<typeof mountPicker>, path: string) => wrapper.find(`[role="treeitem"][data-path="${path}"]`)
@@ -128,9 +139,25 @@ describe('FolderPickerModal', () => {
     expect(row(wrapper, '/books').attributes('aria-expanded')).toBe('true')
     expect(row(wrapper, '/books/Fiction').text()).toContain('Novels')
     expect(row(wrapper, '/data').text()).toContain('BookOrbit data')
+    expect(row(wrapper, '/data').get('input').element.disabled).toBe(true)
     expect(row(wrapper, '/usr').exists()).toBe(false)
     expect(wrapper.text()).toContain('1 system folder hidden at /')
     expect(wrapper.text()).toContain('Not in any library yet')
+  })
+
+  it.each(['/data', '/data/book-dock'])('can select %s in explicit administrator mode', async (path) => {
+    const wrapper = mountPicker({}, true)
+    await settle()
+    expect(apiMock).toHaveBeenCalledWith('/api/v1/path/places?scope=admin')
+    if (path !== '/data') {
+      await row(wrapper, '/data').get('button[aria-label="Expand data"]').trigger('click')
+      await settle()
+    }
+    const checkbox = row(wrapper, path).get('input')
+    expect(checkbox.element.disabled).toBe(false)
+    await checkbox.trigger('click')
+    await button(wrapper, 'Add 1 folder').trigger('click')
+    expect(wrapper.emitted('select')).toEqual([[[path]]])
   })
 
   it('adds the ticked folders and remembers where they were', async () => {

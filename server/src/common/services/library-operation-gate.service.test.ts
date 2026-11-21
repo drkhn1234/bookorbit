@@ -10,16 +10,18 @@ describe('LibraryOperationGate', () => {
   describe.each(LIBRARY_OPERATION_KINDS.flatMap((held) => LIBRARY_OPERATION_KINDS.map((requested) => [held, requested] as const)))(
     'while %s holds a library',
     (held, requested) => {
-      it(`refuses ${requested} on that library and allows it on another`, () => {
+      it(`applies the ${requested} conflict rules across libraries`, () => {
         const release = gate.tryAcquire(1, held);
         expect(release).not.toBeNull();
 
         expect(gate.tryAcquire(1, requested)).toBeNull();
         expect(gate.current(1)).toBe(held);
 
+        const sharedRegistryConflict = (held === 'scan' && requested === 'library_rebind') || (held === 'library_rebind' && requested === 'scan');
+        expect(gate.current(2)).toBeNull();
         const other = gate.tryAcquire(2, requested);
-        expect(other).not.toBeNull();
-        expect(gate.current(2)).toBe(requested);
+        expect(other === null).toBe(sharedRegistryConflict);
+        expect(gate.current(2)).toBe(sharedRegistryConflict ? null : requested);
       });
     },
   );

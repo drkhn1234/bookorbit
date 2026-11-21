@@ -22,7 +22,7 @@ import { UploadValidatorService } from './upload-validator.service';
 import { UploadStorageService } from './upload-storage.service';
 import { UploadProcessorService } from './upload-processor.service';
 import { FileRenameService } from '../file-write/file-rename.service';
-import { isAudioFormat, resolveUploadPath } from '@bookorbit/types';
+import { isAudioFormat, Permission, resolveUploadPath } from '@bookorbit/types';
 import type { AddBookFileResult, UploadResult } from '@bookorbit/types';
 import { extractEpubMetadata } from '../metadata/lib/epub';
 import { extractCbzMetadata, extractCbrMetadata, extractCb7Metadata } from '../metadata/lib/cbz-metadata';
@@ -74,8 +74,15 @@ export class UploadService {
     });
   }
 
-  async upload(libraryId: number, folderId: number | undefined, rawFilename: string, fileStream: Readable, user: RequestUser): Promise<UploadResult> {
-    const stored = await this.storeUpload(libraryId, folderId, rawFilename, fileStream, user);
+  async upload(
+    libraryId: number,
+    folderId: number | undefined,
+    rawFilename: string,
+    fileStream: Readable,
+    user: RequestUser,
+    scope?: string,
+  ): Promise<UploadResult> {
+    const stored = await this.storeUpload(libraryId, folderId, rawFilename, fileStream, user, undefined, scope);
     if (stored.created) {
       this.processor.processNewBookImportAsync(stored.bookId, stored.libraryId, stored.absolutePath, stored.format);
     } else {
@@ -110,6 +117,7 @@ export class UploadService {
     fileStream: Readable,
     user: RequestUser,
     uploadSessionId?: string,
+    scope?: string,
   ): Promise<StoredUploadResult> {
     const event = 'upload.book';
     const startedAt = Date.now();
@@ -118,7 +126,7 @@ export class UploadService {
     );
 
     const library = await this.findLibraryOrFail(libraryId);
-    await this.libraryService.verifyAccess(user, libraryId);
+    await this.libraryService.verifyPermission(user, libraryId, Permission.LibraryUpload, scope);
 
     const folder = await this.resolveFolder(libraryId, folderId);
 
@@ -218,7 +226,7 @@ export class UploadService {
 
     if (!bookRow) throw new NotFoundException(`Book ${bookId} not found`);
 
-    await this.libraryService.verifyAccess(user, bookRow.libraryId);
+    await this.libraryService.verifyPermission(user, bookRow.libraryId, Permission.LibraryUpload);
 
     if (bookRow.organizationMode === 'book_per_file') {
       throw new BadRequestException('Cannot add files to a book in a single-file library. Upload a new book instead.');
@@ -435,7 +443,7 @@ export class UploadService {
 
     if (!bookRow) throw new NotFoundException(`Book ${bookId} not found`);
 
-    await this.libraryService.verifyAccessLevel(user, bookRow.libraryId, 'editor');
+    await this.libraryService.verifyPermission(user, bookRow.libraryId, Permission.LibraryEditMetadata);
 
     const fileRenameService = this.resolveFileRenameService();
     if (!fileRenameService) {

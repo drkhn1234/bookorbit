@@ -24,6 +24,7 @@ import { RouteConfig } from '@nestjs/platform-fastify';
 import { KeyReadSafe } from '../../common/decorators/api-key-policy.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
+import { RequireScopedPermission } from '../../common/decorators/require-scoped-permission.decorator';
 import { contentDispositionHeader } from '../../common/utils/content-disposition.utils';
 import { fileValidators, planFileResponse, type FileConditionalHeaders } from '../../common/utils/file-range.utils';
 import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
@@ -116,7 +117,6 @@ export class BookController {
 
   @Delete()
   @HttpCode(HttpStatus.NO_CONTENT)
-  @RequirePermission(Permission.LibraryDeleteBooks)
   @Auditable({
     action: AuditAction.BookBulkDelete,
     resource: AuditResource.Book,
@@ -159,7 +159,6 @@ export class BookController {
   }
 
   @Post('bulk-refresh-metadata')
-  @RequirePermission(Permission.LibraryEditMetadata)
   @ForbidPermission(Permission.DemoRestricted, 'Demo-restricted account cannot perform bulk edits')
   @Auditable({
     action: AuditAction.BookBulkMetadataRefresh,
@@ -170,7 +169,7 @@ export class BookController {
     },
   })
   async bulkRefreshMetadata(@Body() dto: BulkRefreshMetadataDto, @CurrentUser() user: RequestUser, @Res() reply: FastifyReply) {
-    const ids = await this.bookService.resolveSelectionToIds(dto, user, 'editor');
+    const ids = await this.bookService.resolveSelectionToIds(dto, user, 'editor', Permission.LibraryEditMetadata);
     const stream = this.createSseStream(reply);
     try {
       const result = await this.bookService.bulkRefreshMetadata(
@@ -190,7 +189,6 @@ export class BookController {
   }
 
   @Post('bulk-re-extract-cover')
-  @RequirePermission(Permission.LibraryEditMetadata)
   @ForbidPermission(Permission.DemoRestricted, 'Demo-restricted account cannot perform bulk edits')
   @Auditable({
     action: AuditAction.BookBulkCoverReextract,
@@ -201,7 +199,7 @@ export class BookController {
     },
   })
   async bulkReExtractCover(@Body() dto: BulkBookIdsDto, @CurrentUser() user: RequestUser, @Res() reply: FastifyReply) {
-    const ids = await this.bookService.resolveSelectionToIds(dto, user, 'editor');
+    const ids = await this.bookService.resolveSelectionToIds(dto, user, 'editor', Permission.LibraryEditMetadata);
     const stream = this.createSseStream(reply);
     try {
       const result = await this.bookService.bulkReExtractCover(
@@ -221,14 +219,13 @@ export class BookController {
   }
 
   @Post(':id/re-extract-cover')
-  @RequirePermission(Permission.LibraryEditMetadata)
+  @RequireScopedPermission(Permission.LibraryEditMetadata, 'book')
   reExtractCover(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: RequestUser, @Query() query?: CoverMediumQueryDto) {
     return this.bookService.reExtractCover(id, user, query?.medium);
   }
 
   @Post('export')
   @KeyReadSafe()
-  @RequirePermission(Permission.LibraryDownload)
   @ForbidPermission(Permission.DemoRestricted, 'Demo-restricted account cannot perform bulk downloads')
   async exportBooks(@Body() dto: ExportBooksDto, @CurrentUser() user: RequestUser, @Res() reply: FastifyReply) {
     const scope = dto.audioOnly ? 'audio' : dto.allFormats ? 'all' : 'primary';
@@ -236,7 +233,6 @@ export class BookController {
   }
 
   @Get('export/download')
-  @RequirePermission(Permission.LibraryDownload)
   @ForbidPermission(Permission.DemoRestricted, 'Demo-restricted account cannot perform bulk downloads')
   async exportBooksDownload(
     @Query('bookIds') bookIdsQuery: string | undefined,
@@ -251,7 +247,6 @@ export class BookController {
 
   @Post('metadata-export/preflight')
   @KeyReadSafe()
-  @RequirePermission(Permission.LibraryDownload)
   @ForbidPermission(Permission.DemoRestricted, 'Demo-restricted account cannot perform bulk downloads')
   metadataExportPreflight(@Body() dto: MetadataExportDto, @CurrentUser() user: RequestUser) {
     return this.bookService.getMetadataExportPreflight(dto, user);
@@ -259,7 +254,6 @@ export class BookController {
 
   @Post('metadata-export/download')
   @KeyReadSafe()
-  @RequirePermission(Permission.LibraryDownload)
   @ForbidPermission(Permission.DemoRestricted, 'Demo-restricted account cannot perform bulk downloads')
   async downloadMetadataExport(@Body() dto: MetadataExportDto, @CurrentUser() user: RequestUser, @Res() reply: FastifyReply) {
     const event = 'book.export_metadata';
@@ -361,7 +355,7 @@ export class BookController {
 
     const { mtimeMs } = await stat(coverPath);
     const etag = `"${Math.floor(mtimeMs)}"`;
-    const cacheControl = query.t ? 'public, max-age=31536000, immutable' : 'private, max-age=86400';
+    const cacheControl = 'private, no-cache';
 
     if (ifNoneMatch === etag) {
       reply.status(304).header('Cache-Control', cacheControl).header('ETag', etag).send();
@@ -390,7 +384,7 @@ export class BookController {
 
     const { mtimeMs } = await stat(thumbnailPath);
     const etag = `"${Math.floor(mtimeMs)}"`;
-    const cacheControl = query.t ? 'public, max-age=31536000, immutable' : 'private, max-age=86400';
+    const cacheControl = 'private, no-cache';
 
     if (ifNoneMatch === etag) {
       reply.status(304).header('Cache-Control', cacheControl).header('ETag', etag).send();
@@ -425,7 +419,7 @@ export class BookController {
   }
 
   @Get('files/:fileId/download')
-  @RequirePermission(Permission.LibraryDownload)
+  @RequireScopedPermission(Permission.LibraryDownload, 'file', 'fileId')
   @RouteConfig({ compress: false })
   async downloadFile(
     @Param('fileId', ParseIntPipe) fileId: number,
@@ -465,7 +459,7 @@ export class BookController {
   }
 
   @Get('files/:fileId/audioless-epub/download')
-  @RequirePermission(Permission.LibraryDownload)
+  @RequireScopedPermission(Permission.LibraryDownload, 'file', 'fileId')
   @RouteConfig({ compress: false })
   async downloadAudiolessEpub(@Param('fileId', ParseIntPipe) fileId: number, @CurrentUser() user: RequestUser, @Res() reply: FastifyReply) {
     const event = 'book.download_audioless_epub';
@@ -564,7 +558,7 @@ export class BookController {
    */
   @Patch('files/:fileId')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @RequirePermission(Permission.LibraryEditMetadata)
+  @RequireScopedPermission(Permission.LibraryEditMetadata, 'file', 'fileId')
   async renameFile(@Param('fileId', ParseIntPipe) fileId: number, @Body() dto: UpdateBookFileDto, @CurrentUser() user: RequestUser) {
     await this.bookService.renameFile(fileId, dto, user);
   }
@@ -575,7 +569,7 @@ export class BookController {
    */
   @Delete('files/:fileId')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @RequirePermission(Permission.LibraryDeleteBooks)
+  @RequireScopedPermission(Permission.LibraryDeleteBooks, 'file', 'fileId')
   async deleteFile(@Param('fileId', ParseIntPipe) fileId: number, @CurrentUser() user: RequestUser) {
     await this.bookService.deleteFile(fileId, user);
   }
@@ -599,7 +593,7 @@ export class BookController {
   }
 
   @Patch(':id/metadata')
-  @RequirePermission(Permission.LibraryEditMetadata)
+  @RequireScopedPermission(Permission.LibraryEditMetadata, 'book')
   @Auditable({
     action: AuditAction.BookMetadataUpdate,
     resource: AuditResource.Book,
@@ -618,7 +612,7 @@ export class BookController {
   }
 
   @Patch(':id/added-at')
-  @RequirePermission(Permission.LibraryEditMetadata)
+  @RequireScopedPermission(Permission.LibraryEditMetadata, 'book')
   @Auditable({
     action: AuditAction.BookMetadataUpdate,
     resource: AuditResource.Book,
@@ -630,7 +624,7 @@ export class BookController {
   }
 
   @Patch(':id/metadata-and-locks')
-  @RequirePermission(Permission.LibraryEditMetadata)
+  @RequireScopedPermission(Permission.LibraryEditMetadata, 'book')
   @Auditable({
     action: AuditAction.BookMetadataUpdate,
     resource: AuditResource.Book,
@@ -649,7 +643,7 @@ export class BookController {
   }
 
   @Patch(':id/metadata-locks')
-  @RequirePermission(Permission.LibraryEditMetadata)
+  @RequireScopedPermission(Permission.LibraryEditMetadata, 'book')
   @Auditable({
     action: AuditAction.BookMetadataLocksUpdate,
     resource: AuditResource.Book,
@@ -661,7 +655,7 @@ export class BookController {
   }
 
   @Post(':id/refresh-metadata')
-  @RequirePermission(Permission.LibraryEditMetadata)
+  @RequireScopedPermission(Permission.LibraryEditMetadata, 'book')
   @Auditable({
     action: AuditAction.BookMetadataUpdate,
     resource: AuditResource.Book,
@@ -675,19 +669,19 @@ export class BookController {
   }
 
   @Get(':id/metadata-from-file')
-  @RequirePermission(Permission.LibraryEditMetadata)
+  @RequireScopedPermission(Permission.LibraryEditMetadata, 'book')
   getMetadataFromFile(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: RequestUser) {
     return this.bookService.getMetadataFromFile(id, user);
   }
 
   @Get(':id/isbn-candidates')
-  @RequirePermission(Permission.LibraryEditMetadata)
+  @RequireScopedPermission(Permission.LibraryEditMetadata, 'book')
   getIsbnCandidates(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: RequestUser): Promise<BookIsbnCandidates> {
     return this.bookService.getIsbnCandidates(id, user);
   }
 
   @Post(':id/write-and-rename')
-  @RequirePermission(Permission.LibraryEditMetadata)
+  @RequireScopedPermission(Permission.LibraryEditMetadata, 'book')
   @Auditable({
     action: AuditAction.BookWriteAndRename,
     resource: AuditResource.Book,
@@ -699,7 +693,7 @@ export class BookController {
   }
 
   @Get(':id/write-log')
-  @RequirePermission(Permission.LibraryEditMetadata)
+  @RequireScopedPermission(Permission.LibraryEditMetadata, 'book')
   async getWriteLog(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: RequestUser) {
     await this.bookService.verifyBookAccess(id, user);
     const entries = await this.fileWriteService.findWriteLog(id);
@@ -747,7 +741,6 @@ export class BookController {
 
   @Post('bulk-set-rating')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @RequirePermission(Permission.LibraryEditMetadata)
   @ForbidPermission(Permission.DemoRestricted, 'Demo-restricted account cannot perform bulk edits')
   @Auditable({
     action: AuditAction.BookBulkSetRating,
@@ -759,13 +752,12 @@ export class BookController {
     },
   })
   async bulkSetRating(@Body() dto: BulkSetRatingDto, @CurrentUser() user: RequestUser) {
-    const ids = await this.bookService.resolveSelectionToIds(dto, user);
+    const ids = await this.bookService.resolveSelectionToIds(dto, user, 'editor', Permission.LibraryEditMetadata);
     return this.bookService.bulkSetRating(ids, dto.rating ?? null, user);
   }
 
   @Post('bulk-set-metadata')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @RequirePermission(Permission.LibraryEditMetadata)
   @ForbidPermission(Permission.DemoRestricted, 'Demo-restricted account cannot perform bulk edits')
   @Auditable({
     action: AuditAction.BookBulkSetMetadata,
@@ -777,13 +769,12 @@ export class BookController {
     },
   })
   async bulkSetMetadata(@Body() dto: BulkSetMetadataDto, @CurrentUser() user: RequestUser) {
-    const ids = await this.bookService.resolveSelectionToIds(dto, user);
+    const ids = await this.bookService.resolveSelectionToIds(dto, user, 'editor', Permission.LibraryEditMetadata);
     return this.bookService.bulkSetMetadata(ids, dto.field, dto.value ?? null, user);
   }
 
   @Post('bulk-update-tags')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @RequirePermission(Permission.LibraryEditMetadata)
   @ForbidPermission(Permission.DemoRestricted, 'Demo-restricted account cannot perform bulk edits')
   @Auditable({
     action: AuditAction.BookBulkUpdateTags,
@@ -795,13 +786,12 @@ export class BookController {
     },
   })
   async bulkUpdateTags(@Body() dto: BulkUpdateTagsDto, @CurrentUser() user: RequestUser) {
-    const ids = await this.bookService.resolveSelectionToIds(dto, user);
+    const ids = await this.bookService.resolveSelectionToIds(dto, user, 'editor', Permission.LibraryEditMetadata);
     return this.bookService.bulkUpdateTags(ids, dto.mode, dto.tags, user);
   }
 
   @Post('bulk-set-metadata-lock')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @RequirePermission(Permission.LibraryEditMetadata)
   @ForbidPermission(Permission.DemoRestricted, 'Demo-restricted account cannot perform bulk edits')
   @Auditable({
     action: AuditAction.BookBulkSetMetadataLock,
@@ -813,12 +803,11 @@ export class BookController {
     },
   })
   async bulkSetMetadataLock(@Body() dto: BulkSetMetadataLockDto, @CurrentUser() user: RequestUser) {
-    const ids = await this.bookService.resolveSelectionToIds(dto, user);
+    const ids = await this.bookService.resolveSelectionToIds(dto, user, 'editor', Permission.LibraryEditMetadata);
     return this.bookService.bulkSetMetadataLock(ids, dto.locked, user);
   }
 
   @Post('bulk-edit-metadata')
-  @RequirePermission(Permission.LibraryEditMetadata)
   @ForbidPermission(Permission.DemoRestricted, 'Demo-restricted account cannot perform bulk edits')
   @Auditable({
     action: AuditAction.BookBulkEditMetadata,
@@ -831,7 +820,7 @@ export class BookController {
     },
   })
   async bulkEditMetadata(@Body() dto: BulkEditMetadataDto, @CurrentUser() user: RequestUser) {
-    const ids = await this.bookService.resolveSelectionToIds(dto, user);
+    const ids = await this.bookService.resolveSelectionToIds(dto, user, 'editor', Permission.LibraryEditMetadata);
     return this.bookService.bulkEditMetadata(ids, dto.fields, user);
   }
 
