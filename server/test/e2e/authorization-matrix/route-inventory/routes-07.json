@@ -5,7 +5,9 @@
     "methodName": "setLibraries",
     "httpMethod": "PUT",
     "path": "/users/:id/libraries",
-    "permissions": ["Permission.ManageUsers"],
+    "permissions": [
+      "Permission.ManageUsers"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -18,7 +20,9 @@
     "methodName": "adminResetPassword",
     "httpMethod": "POST",
     "path": "/users/:id/reset-password",
-    "permissions": ["Permission.ManageUsers"],
+    "permissions": [
+      "Permission.ManageUsers"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -31,7 +35,9 @@
     "methodName": "unlockUser",
     "httpMethod": "POST",
     "path": "/users/:id/unlock",
-    "permissions": ["Permission.ManageUsers"],
+    "permissions": [
+      "Permission.ManageUsers"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -265,7 +271,9 @@
     "methodName": "createCredentials",
     "httpMethod": "POST",
     "path": "/koreader/credentials",
-    "permissions": ["Permission.KoreaderSync"],
+    "permissions": [
+      "Permission.KoreaderSync"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -278,7 +286,9 @@
     "methodName": "updateCredentials",
     "httpMethod": "PATCH",
     "path": "/koreader/credentials",
-    "permissions": ["Permission.KoreaderSync"],
+    "permissions": [
+      "Permission.KoreaderSync"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -291,7 +301,9 @@
     "methodName": "deleteCredentials",
     "httpMethod": "DELETE",
     "path": "/koreader/credentials",
-    "permissions": ["Permission.KoreaderSync"],
+    "permissions": [
+      "Permission.KoreaderSync"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -304,7 +316,9 @@
     "methodName": "getCredentials",
     "httpMethod": "GET",
     "path": "/koreader/credentials",
-    "permissions": ["Permission.KoreaderSync"],
+    "permissions": [
+      "Permission.KoreaderSync"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -317,7 +331,9 @@
     "methodName": "getSyncStatus",
     "httpMethod": "GET",
     "path": "/koreader/sync-status",
-    "permissions": ["Permission.KoreaderSync"],
+    "permissions": [
+      "Permission.KoreaderSync"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -330,7 +346,9 @@
     "methodName": "getDevices",
     "httpMethod": "GET",
     "path": "/koreader/devices",
-    "permissions": ["Permission.KoreaderSync"],
+    "permissions": [
+      "Permission.KoreaderSync"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -343,7 +361,9 @@
     "methodName": "setDeviceName",
     "httpMethod": "PUT",
     "path": "/koreader/devices/:deviceId/name",
-    "permissions": ["Permission.KoreaderSync"],
+    "permissions": [
+      "Permission.KoreaderSync"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -356,7 +376,9 @@
     "methodName": "clearDeviceName",
     "httpMethod": "DELETE",
     "path": "/koreader/devices/:deviceId/name",
-    "permissions": ["Permission.KoreaderSync"],
+    "permissions": [
+      "Permission.KoreaderSync"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -369,7 +391,9 @@
     "methodName": "getBookProgress",
     "httpMethod": "GET",
     "path": "/koreader/books/:bookId/progress",
-    "permissions": ["Permission.KoreaderSync"],
+    "permissions": [
+      "Permission.KoreaderSync"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -382,7 +406,9 @@
     "methodName": "testConnection",
     "httpMethod": "POST",
     "path": "/koreader/test-connection",
-    "permissions": ["Permission.KoreaderSync"],
+    "permissions": [
+      "Permission.KoreaderSync"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -395,7 +421,9 @@
     "methodName": "list",
     "httpMethod": "GET",
     "path": "/notifications",
-    "permissions": ["Permission.NotificationAccess", "Permission.DemoRestricted"],
+    "permissions": [
+      "Permission.NotificationAccess"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -408,7 +436,9 @@
     "methodName": "getUnreadCount",
     "httpMethod": "GET",
     "path": "/notifications/unread-count",
-    "permissions": ["Permission.NotificationAccess", "Permission.DemoRestricted"],
+    "permissions": [
+      "Permission.NotificationAccess"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -421,7 +451,9 @@
     "methodName": "markAllAsRead",
     "httpMethod": "PATCH",
     "path": "/notifications/read-all",
-    "permissions": ["Permission.NotificationAccess", "Permission.DemoRestricted"],
+    "permissions": [
+      "Permission.NotificationAccess"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -434,7 +466,9 @@
     "methodName": "markAsRead",
     "httpMethod": "PATCH",
     "path": "/notifications/:id/read",
-    "permissions": ["Permission.NotificationAccess", "Permission.DemoRestricted"],
+    "permissions": [
+      "Permission.NotificationAccess"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -447,7 +481,9 @@
     "methodName": "dismiss",
     "httpMethod": "DELETE",
     "path": "/notifications/:id",
-    "permissions": ["Permission.NotificationAccess", "Permission.DemoRestricted"],
+    "permissions": [
+      "Permission.NotificationAccess"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -460,7 +496,9 @@
     "methodName": "clearAll",
     "httpMethod": "DELETE",
     "path": "/notifications",
-    "permissions": ["Permission.NotificationAccess", "Permission.DemoRestricted"],
+    "permissions": [
+      "Permission.NotificationAccess"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,

@@ -1,6 +1,7 @@
 import { IsOptional, IsString, MaxLength } from 'class-validator';
+import { PathScopeDto } from './path-scope.dto';
 
-export class FolderPathQueryDto {
+export class FolderPathQueryDto extends PathScopeDto {
   @IsOptional()
   @IsString()
   @MaxLength(4096)

@@ -8,6 +8,7 @@ import { AuditAction, AuditResource, BULK_RUN_MAX_UNFINISHED, Permission } from 
 import type { RequestUser } from '../../common/types/request-user';
 import { AUDITABLE_KEY } from '../../common/decorators/auditable.decorator';
 import { FORBIDDEN_PERMISSION_KEY } from '../../common/decorators/forbid-permission.decorator';
+import { SCOPED_PERMISSION_KEY } from '../../common/decorators/require-scoped-permission.decorator';
 import { PERMISSION_KEY } from '../../common/decorators/require-permission.decorator';
 import { BulkRunHandlerRegistry } from '../bulk-runs/bulk-run-handler.registry';
 import { BulkRunStreams } from '../bulk-runs/bulk-run-streams.service';
@@ -219,7 +220,7 @@ describe('BookController', () => {
     expect(bookService.updatePersonalNote).toHaveBeenCalledWith(7, { note: 'private note' }, user);
   });
 
-  it('returns 304 when cover etag matches (unversioned → 24h private cache)', async () => {
+  it('returns 304 when cover etag matches (unversioned URL)', async () => {
     const { controller, bookService } = makeController();
     const { reply, headers } = makeReply();
     bookService.getCoverPath.mockResolvedValue('/tmp/cover.jpg');
@@ -228,7 +229,7 @@ describe('BookController', () => {
     await controller.getCover(7, makeUser(), reply, undefined, '"1234"');
 
     expect(reply.status).toHaveBeenCalledWith(304);
-    expect(headers['Cache-Control']).toBe('private, max-age=86400');
+    expect(headers['Cache-Control']).toBe('private, no-cache');
     expect(headers['ETag']).toBe('"1234"');
     expect(reply.send).toHaveBeenCalled();
     expect(mockCreateReadStream).not.toHaveBeenCalled();
@@ -245,7 +246,7 @@ describe('BookController', () => {
     expect(bookService.getCoverPath).toHaveBeenCalledWith(7, expect.anything(), { medium: undefined, strict: undefined, size: 'display' });
   });
 
-  it('returns 304 with immutable cache when cover etag matches and ?t= present', async () => {
+  it('returns 304 with private revalidation when cover etag matches and ?t= present', async () => {
     const { controller, bookService } = makeController();
     const { reply, headers } = makeReply();
     bookService.getCoverPath.mockResolvedValue('/tmp/cover.jpg');
@@ -254,10 +255,10 @@ describe('BookController', () => {
     await controller.getCover(7, makeUser(), reply, { t: '1234567890' }, '"1234"');
 
     expect(reply.status).toHaveBeenCalledWith(304);
-    expect(headers['Cache-Control']).toBe('public, max-age=31536000, immutable');
+    expect(headers['Cache-Control']).toBe('private, no-cache');
   });
 
-  it('streams cover with 24h private cache when no ?t= param', async () => {
+  it('streams cover with private revalidation when no ?t= param', async () => {
     const { controller, bookService } = makeController();
     const { reply, headers } = makeReply();
     bookService.getCoverPath.mockResolvedValue('/tmp/cover.png');
@@ -265,14 +266,14 @@ describe('BookController', () => {
 
     await controller.getCover(7, makeUser(), reply, undefined, undefined);
 
-    expect(headers['Cache-Control']).toBe('private, max-age=86400');
+    expect(headers['Cache-Control']).toBe('private, no-cache');
     expect(headers['ETag']).toBe('"4321"');
     expect(reply.type).toHaveBeenCalledWith('image/png');
     expect(mockCreateReadStream).toHaveBeenCalledWith('/tmp/cover.png');
     expect(reply.send).toHaveBeenCalled();
   });
 
-  it('streams cover with immutable cache when ?t= param present', async () => {
+  it('streams cover with private revalidation when ?t= param present', async () => {
     const { controller, bookService } = makeController();
     const { reply, headers } = makeReply();
     bookService.getCoverPath.mockResolvedValue('/tmp/cover.jpg');
@@ -280,7 +281,7 @@ describe('BookController', () => {
 
     await controller.getCover(7, makeUser(), reply, { t: '1234567890' }, undefined);
 
-    expect(headers['Cache-Control']).toBe('public, max-age=31536000, immutable');
+    expect(headers['Cache-Control']).toBe('private, no-cache');
     expect(reply.type).toHaveBeenCalledWith('image/jpeg');
   });
 
@@ -503,7 +504,7 @@ describe('BookController', () => {
 
     await controller[method](dto as never, user, reply);
 
-    expect(bookService.resolveSelectionToIds).toHaveBeenCalledWith(dto, user, 'editor');
+    expect(bookService.resolveSelectionToIds).toHaveBeenCalledWith(dto, user, 'editor', Permission.LibraryEditMetadata);
     expect(bulkRuns.startAndStream).toHaveBeenCalledWith(
       reply,
       expect.objectContaining({ kind, subjectIds: [4, 5, 6], actor: user, audit: expect.objectContaining({ action, resource: AuditResource.Book }) }),
@@ -547,7 +548,7 @@ describe('BookController', () => {
 
       await expect(controller[method]({ bookIds: [9] }, user, reply)).rejects.toBe(error);
 
-      expect(bookService.resolveSelectionToIds).toHaveBeenCalledWith({ bookIds: [9] }, user, 'editor');
+      expect(bookService.resolveSelectionToIds).toHaveBeenCalledWith({ bookIds: [9] }, user, 'editor', 'library_edit_metadata');
       expect(bulkRuns.startAndStream).not.toHaveBeenCalled();
       expect(raw.writeHead).not.toHaveBeenCalled();
       expect(raw.write).not.toHaveBeenCalled();
@@ -939,22 +940,22 @@ describe('BookController', () => {
     await controller.getThumbnail(7, makeUser(), first.reply, undefined, '"1000"');
     expect(first.reply.status).toHaveBeenCalledWith(304);
     expect(first.headers['ETag']).toBe('"1000"');
-    expect(first.headers['Cache-Control']).toBe('private, max-age=86400');
+    expect(first.headers['Cache-Control']).toBe('private, no-cache');
 
     await controller.getThumbnail(7, makeUser(), second.reply, undefined, undefined);
     expect(second.reply.type).toHaveBeenCalledWith('image/jpeg');
-    expect(second.headers['Cache-Control']).toBe('private, max-age=86400');
+    expect(second.headers['Cache-Control']).toBe('private, no-cache');
     expect(mockCreateReadStream).toHaveBeenCalledWith('/tmp/thumb.jpg');
   });
 
-  it('uses immutable cache for thumbnail when ?t= param present', async () => {
+  it('revalidates thumbnail when ?t= param present', async () => {
     const { controller, bookService } = makeController();
     const { reply, headers } = makeReply();
     bookService.getThumbnailPath.mockResolvedValue('/tmp/thumb.jpg');
     mockStat.mockResolvedValue({ mtimeMs: 1000 } as never);
 
     await controller.getThumbnail(7, makeUser(), reply, { t: '1234567890' }, undefined);
-    expect(headers['Cache-Control']).toBe('public, max-age=31536000, immutable');
+    expect(headers['Cache-Control']).toBe('private, no-cache');
   });
 
   it('throws NotFoundException when thumbnail is missing', async () => {
@@ -1174,7 +1175,11 @@ describe('BookController', () => {
     expect(updateMetadataAudit.description({ params: { id: '44' } })).toBe('Updated metadata for book #44');
     expect(updateAddedAtAudit.getResourceId({ params: { id: '44' } })).toBe(44);
     expect(updateAddedAtAudit.description({ params: { id: '44' } })).toBe('Updated added date for book #44');
-    expect(Reflect.getMetadata(PERMISSION_KEY, BookController.prototype.updateAddedAt)).toBe(Permission.LibraryEditMetadata);
+    expect(Reflect.getMetadata(SCOPED_PERMISSION_KEY, BookController.prototype.updateAddedAt)).toEqual({
+      permission: Permission.LibraryEditMetadata,
+      resource: 'book',
+      param: 'id',
+    });
     expect(updateMetadataAndLocksAudit.getResourceId({ params: { id: '44' } })).toBe(44);
     expect(updateMetadataAndLocksAudit.description({ params: { id: '44' } })).toBe('Updated metadata and locks for book #44');
     expect(updateLocksAudit.getResourceId({ params: { id: '44' } })).toBe(44);
@@ -1213,8 +1218,16 @@ describe('BookController', () => {
   // Both routes previously verified library access only, so a library editor without delete
   // rights could remove a file from disk, and the web client already assumed otherwise.
   it('gates per-file mutations on the same permissions as the book-level routes', () => {
-    expect(Reflect.getMetadata(PERMISSION_KEY, BookController.prototype.deleteFile)).toBe(Permission.LibraryDeleteBooks);
-    expect(Reflect.getMetadata(PERMISSION_KEY, BookController.prototype.renameFile)).toBe(Permission.LibraryEditMetadata);
+    expect(Reflect.getMetadata(SCOPED_PERMISSION_KEY, BookController.prototype.deleteFile)).toEqual({
+      permission: Permission.LibraryDeleteBooks,
+      resource: 'file',
+      param: 'fileId',
+    });
+    expect(Reflect.getMetadata(SCOPED_PERMISSION_KEY, BookController.prototype.renameFile)).toEqual({
+      permission: Permission.LibraryEditMetadata,
+      resource: 'file',
+      param: 'fileId',
+    });
   });
 
   // Progress is the caller's own, so clearing it stays available to every account with access.
@@ -1235,8 +1248,16 @@ describe('BookController', () => {
   });
 
   it('requires mutation permissions for per-file rename and delete', () => {
-    expect(Reflect.getMetadata(PERMISSION_KEY, BookController.prototype.renameFile)).toBe(Permission.LibraryEditMetadata);
-    expect(Reflect.getMetadata(PERMISSION_KEY, BookController.prototype.deleteFile)).toBe(Permission.LibraryDeleteBooks);
+    expect(Reflect.getMetadata(SCOPED_PERMISSION_KEY, BookController.prototype.renameFile)).toEqual({
+      permission: Permission.LibraryEditMetadata,
+      resource: 'file',
+      param: 'fileId',
+    });
+    expect(Reflect.getMetadata(SCOPED_PERMISSION_KEY, BookController.prototype.deleteFile)).toEqual({
+      permission: Permission.LibraryDeleteBooks,
+      resource: 'file',
+      param: 'fileId',
+    });
   });
 
   it('preserves valid surrogate pairs while stripping lone surrogates in download filenames', async () => {
@@ -1270,15 +1291,12 @@ describe('BookController', () => {
 
       const result = await controller.bulkEditMetadata({ bookIds: [7, 9], fields } as never, user);
 
-      expect(bookService.resolveSelectionToIds).toHaveBeenCalledWith({ bookIds: [7, 9], fields }, user);
+      expect(bookService.resolveSelectionToIds).toHaveBeenCalledWith({ bookIds: [7, 9], fields }, user, 'editor', Permission.LibraryEditMetadata);
       expect(bookService.bulkEditMetadata).toHaveBeenCalledWith([7, 9], fields, user);
       expect(result).toEqual(expectedResult);
     });
 
-    it('has the correct permission and audit decorators', () => {
-      const permission = Reflect.getMetadata('permission', BookController.prototype.bulkEditMetadata);
-      expect(permission).toBe(Permission.LibraryEditMetadata);
-
+    it('preserves audit and demo restrictions for the resource-scoped bulk edit', () => {
       const forbidden = Reflect.getMetadata(FORBIDDEN_PERMISSION_KEY, BookController.prototype.bulkEditMetadata);
       expect(forbidden).toEqual({
         permission: Permission.DemoRestricted,

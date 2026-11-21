@@ -90,7 +90,7 @@ export interface FolderPlaces {
   mounts: string[];
   /** BookOrbit's data folder when it is inside the browse root. */
   appDataPath: string | null;
-  /** Every library and the folders it reads, for landmarks and overlap checks. */
+  /** Library folders visible inside the selected filesystem scope. */
   libraries: FolderPickerLibrary[];
 }
 

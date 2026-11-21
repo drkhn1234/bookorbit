@@ -137,6 +137,9 @@ check that your env vars match the values in `server/.env.example`.
 | `book-api-contract`               | full  | dedicated-db | 60 min  | Book API response shape and field contract                                                                            |
 | `app-settings-oidc-contract`      | full  | dedicated-db | 60 min  | App settings and OIDC configuration contract                                                                          |
 | `library-admin-workflows`         | full  | dedicated-db | 60 min  | Library create/update/delete admin workflows                                                                          |
+| `library-capabilities`            | smoke | dedicated-db | 30 min  | Authenticated capability decisions and GET write invariance                                                           |
+| `library-visibility`              | smoke | dedicated-db | 30 min  | Library grants, collections, API-key scopes, and revocation                                                           |
+| `personal-directories`            | smoke | dedicated-db | 30 min  | Filesystem isolation, owner markers, and transactional creation                                                       |
 | `reader-format-delivery`          | full  | dedicated-db | 60 min  | Book file serving and format delivery                                                                                 |
 | `opds-auth-catalog`               | full  | dedicated-db | 45 min  | OPDS feed authentication and catalog structure                                                                        |
 | `email-lifecycle`                 | full  | dedicated-db | 45 min  | Email provider, template, and send lifecycle                                                                          |
@@ -148,9 +151,46 @@ JUnit XML output for each suite is written to `test-results/server/<suite-id>-e2
 > **Timeout column** is the GitHub Actions job timeout, not a per-test vitest timeout.
 > Individual tests have no configured timeout and use vitest defaults.
 
-**Lanes:** The smoke lane (`guard-mechanics`) always runs on PRs. Full-lane suites run only
-when their `changedPaths` list in the registry matches the files changed in the PR. Nightly
-scheduled runs and manual dispatches always run all suites.
+**Lanes:** Pull requests select smoke-lane suites using the registry's `changedPaths`.
+Global E2E changes or an unavailable comparison base select all smoke suites.
+Scheduled runs select all suites. Run a full-lane suite locally by its ID.
+
+### Personal-library verification
+
+See [Personal Libraries](PERSONAL_LIBRARIES.md) for the expected behavior. Run the related PostgreSQL suites with dedicated disposable databases and temporary storage. The suite runner can reset its configured database, so set `E2E_DATABASE_URL` to a disposable database ending in `_e2e`.
+
+```bash
+pnpm run e2e:run -- personal-directories
+pnpm run e2e:run -- library-capabilities
+pnpm run e2e:run -- library-visibility
+pnpm run e2e:run -- api-key-auth
+pnpm run e2e:run -- library-admin-workflows
+pnpm run e2e:run -- reader-format-delivery
+pnpm --filter server exec vitest run src/modules/scanner/scan.gateway.socket.test.ts src/modules/statistics/statistics.service.test.ts
+pnpm --filter client exec vitest run src/features/library
+```
+
+For placement and processing changes, add `scanner-scenarios`, `scanner-file-operations`, and `metadata-lock`. For code that affects access after merging or moving books, include the applicable `book-merge`, `book-duplicates`, or catalog regression suites. Check the registered suite list with `pnpm run e2e:list`.
+
+#### Integrated baseline
+
+On the personal-library implementation based on `c77966cc529423e993fae8a298aa77048b43bba2`, integrated validation recorded 243 passing selected PostgreSQL tests, 5,672 passing focused server tests, 444 passing focused client tests, and a final rerun of all 11 targeted personal-library UI cases. Lint, format checks, and server, client, and worker type checks passed. The local Beads issue `bo-4s7.6` preserves exact commands, logs, isolation settings, and intermediate failures in `.beads/artifacts/bo-4s7.6/handoff.txt`.
+
+- Native HTTP testing used `pnpm dev`, a disposable database, and synthetic EPUBs. Both `book_per_file` and `book_per_folder` exercised ordinary creation and ownership, multipart upload, physical placement, native scan, embedded EPUB metadata, chapter bytes, and sharing followed by revocation. Live external metadata enrichment was outside that run.
+- Headless Chromium exercised the rendered browser UI against the live API. It verified ordinary creation, owner sharing, recipient visibility and revocation, unmarked-root denial, non-superuser manager defaults, the explicit administrative picker and registration, and the form at 390 px. Headed Chrome could not start because the environment lacked an X server. Headed visual signoff and physical-device verification remain open.
+- The authorization matrix run selected five of its 46 checks. Run `pnpm run e2e:run -- authorization-matrix` without a test-name filter for the full matrix.
+- The merge suite passed 18 cases and skipped the cross-device case because a second-device fixture was unavailable. Supply `E2E_SECOND_DEVICE_PATH` as an existing, writable disposable directory on a different filesystem from the test fixture root, with room for its large-file fixture. Confirm the device numbers differ, for example with `stat -c '%d %n'` on both paths, then run `pnpm run e2e:run -- book-merge` and confirm the cross-device case ran.
+- To establish external metadata enrichment, configure a real provider in a disposable instance, explicitly run a lookup for a known test edition, and verify the selected provider and stored metadata. A successful embedded EPUB title extraction covers local parsing.
+
+#### Headed browser checklist
+
+Use [local development setup](DEVELOPMENT.md#first-time-setup) with an isolated database, a fresh local signing secret, and separate disposable directories for `APP_DATA_PATH` and books. Set `PERSONAL_LIBRARY_ROOT` and `LIBRARY_BROWSE_ROOT` so the latter contains the former. Start `pnpm dev` and open `http://127.0.0.1:6263` in a headed browser with a display. Use synthetic accounts and books. The test needs an ordinary user, a second reader, a non-superuser with `ManageLibraries`, and a superuser.
+
+1. As the ordinary user, open creation from the sidebar or library index. Create a library and confirm the request uses `/api/v1/libraries/personal` and the response gives `owner` access. The form should offer no manual folder selection. Check that upload still needs its global permission.
+2. From the new library's menu, open its settings and share it from the Access panel. Confirm the second reader can open it after the grant and loses access after revocation, including by reloading a previously authorized book URL. The second reader should see no owner controls.
+3. As a superuser, start in personal mode. Select **Use administrative storage** and verify the folder picker, prescan, and registration use `scope=admin`. Confirm the manager account cannot switch to administrative storage.
+4. For a fresh synthetic account, add an empty unmarked directory at its expected root. Confirm creation is unavailable, the reason is visible, and discovery leaves the directory and its marker state intact.
+5. Use browser network throttling to switch accounts with a capability request pending. Check that only the new account's libraries and controls appear. Verify retry after a failed capability request and inspect focus, scrolling, and dialog close behavior at desktop and narrow widths.
 
 ### App harness
 

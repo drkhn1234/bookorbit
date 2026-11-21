@@ -170,7 +170,7 @@ export class MetadataFetchPipeline {
     libraryId?: number,
     options?: MetadataFetchRunOptions,
   ): Promise<ResolvedMetadataFields> {
-    const { resolved } = await this.runInternal(params, existingFields, libraryId, options);
+    const { resolved } = await this.runWithSources(params, existingFields, libraryId, options);
     return resolved;
   }
 
@@ -186,13 +186,17 @@ export class MetadataFetchPipeline {
     diagnostics: MetadataFetchDiagnostics;
     cache: MetadataFetchCacheUsage;
   }> {
-    return this.runInternal(params, existingFields, libraryId, options);
+    const run = () => this.runInternal(params, existingFields, libraryId, options);
+    return libraryId == null ? run() : this.providerConfig.runForLibrary(libraryId, run);
   }
 
   /** The providers the field rules would query, narrowed to a book's media when one is given. */
   async getEffectiveProviderKeys(libraryId?: number, media?: CoverMedia): Promise<MetadataProviderKey[]> {
-    const { preferences, registeredKeys, providerConfig } = await this.resolveProviderPreferenceContext(libraryId);
-    return this.deriveConfiguredProviderSelection(preferences, registeredKeys, providerConfig, media).configuredFieldRuleProviders;
+    const run = async () => {
+      const { preferences, registeredKeys, providerConfig } = await this.resolveProviderPreferenceContext(libraryId);
+      return this.deriveConfiguredProviderSelection(preferences, registeredKeys, providerConfig, media).configuredFieldRuleProviders;
+    };
+    return libraryId == null ? run() : this.providerConfig.runForLibrary(libraryId, run);
   }
 
   private async runInternal(
@@ -599,10 +603,12 @@ export class MetadataFetchPipeline {
   }
 
   private async resolveProviderPreferenceContext(libraryId?: number): Promise<ProviderPreferenceContext> {
-    const [global, providerConfig] = await Promise.all([this.preferencesService.getGlobal(), this.providerConfig.getConfig()]);
-    const overrides = libraryId ? (await this.preferencesService.getForLibrary(libraryId, global)).overrides : null;
+    const [effective, providerConfig] = await Promise.all([
+      libraryId == null ? this.preferencesService.getGlobal() : this.preferencesService.getForLibrary(libraryId).then((result) => result.effective),
+      this.providerConfig.getConfig(),
+    ]);
     const registeredKeys = this.registry.all().map((p) => p.key) as MetadataProviderKey[];
-    const preferences: MetadataFetchPreferences = this.resolver.withForwardCompatibility(this.resolver.resolve(global, overrides), registeredKeys);
+    const preferences: MetadataFetchPreferences = this.resolver.withForwardCompatibility(effective, registeredKeys);
 
     return { preferences, registeredKeys, providerConfig };
   }

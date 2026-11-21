@@ -3,7 +3,6 @@ import { Permission } from '@bookorbit/types';
 
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { ForbidPermission } from '../../common/decorators/forbid-permission.decorator';
-import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import type { RequestUser } from '../../common/types/request-user';
 import { CreateReadAloudJobDto } from './dto/create-read-aloud-job.dto';
 import { ResyncReadAloudJobDto } from './dto/resync-read-aloud-job.dto';
@@ -12,7 +11,6 @@ import { ReadAloudService } from './read-aloud.service';
 const JOB_ID = new ParseUUIDPipe({ version: '4' });
 
 @Controller()
-@RequirePermission(Permission.LibraryGenerateReadAloud)
 @ForbidPermission(Permission.DemoRestricted, 'Demo-restricted account cannot generate read-aloud books')
 export class ReadAloudController {
   constructor(private readonly readAloud: ReadAloudService) {}

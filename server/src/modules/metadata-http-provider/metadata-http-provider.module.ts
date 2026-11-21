@@ -23,6 +23,6 @@ import { MetadataProviderIconController } from './metadata-provider-icon.control
     MetadataProviderDirectoryService,
   ],
   controllers: [MetadataHttpProviderController, MetadataProviderIconController],
-  exports: [MetadataHttpProviderCatalog, HttpProviderClient],
+  exports: [MetadataHttpProviderCatalog, HttpProviderClient, MetadataHttpProviderSecrets],
 })
 export class MetadataHttpProviderModule {}

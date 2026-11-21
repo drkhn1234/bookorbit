@@ -2,6 +2,7 @@ import { toast } from 'vue-sonner'
 import { getCurrentInstance, onUnmounted } from 'vue'
 import type {
   BookLinksChangedEvent,
+  LibraryChangedEvent,
   BookMergedEvent,
   BookMergeJobEvent,
   BookMissingEvent,
@@ -19,6 +20,7 @@ type BookMergedCallback = (event: BookMergedEvent) => void
 type BookMergeJobCallback = (event: BookMergeJobEvent) => void
 type BookLinksChangedCallback = (event: BookLinksChangedEvent) => void
 
+const libraryChangedCallbacks = new Set<(event: LibraryChangedEvent) => void>()
 const missingCallbacks = new Set<BookIdsCallback>()
 const restoredCallbacks = new Set<BookIdsCallback>()
 const movedCallbacks = new Set<BookIdsCallback>()
@@ -97,6 +99,10 @@ function ensureInitialized() {
     for (const cb of progressChangedCallbacks) cb(event)
   })
 
+  socket.on('library:changed', (event: LibraryChangedEvent) => {
+    for (const cb of libraryChangedCallbacks) cb(event)
+  })
+
   socket.on('book:merged', (event: BookMergedEvent) => {
     for (const cb of mergedCallbacks) cb(event)
   })
@@ -162,7 +168,12 @@ export function useBookEvents() {
     return registerCallback(linksChangedCallbacks, cb)
   }
 
+  function onLibraryChanged(cb: (event: LibraryChangedEvent) => void): () => void {
+    return registerCallback(libraryChangedCallbacks, cb)
+  }
+
   return {
+    onLibraryChanged,
     onBookMissing,
     onBookRestored,
     onBookMoved,

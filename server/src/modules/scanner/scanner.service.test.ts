@@ -70,7 +70,7 @@ function makeBookFile(overrides: Record<string, unknown> = {}) {
     ino: 1001n,
     sizeBytes: 1024,
     mtime: new Date('2024-01-01'),
-    fileHash: 'abc123',
+    fileHash: 'hash-abc',
     format: 'epub',
     role: 'content',
     sortOrder: 0,
@@ -1677,6 +1677,7 @@ describe('file identity resolution', () => {
   });
 
   it('reuses an existing book id when a MergerFS folder is renamed via an exact oversized inode match', async () => {
+    mockFingerprint.mockResolvedValue('rename-hash');
     const renamedFile = makeFileStat({
       absolutePath: '/library/Author/NewName/book.epub',
       relPath: 'Author/NewName/book.epub',
@@ -3291,6 +3292,7 @@ describe('cross-library transfer', () => {
   });
 
   it('transfers a missing source book into the destination library via inode match', async () => {
+    mockFingerprint.mockResolvedValue('transfer-hash');
     const destinationFile = makeFileStat({
       absolutePath: '/dest/Inbox/book.epub',
       relPath: 'Inbox/book.epub',
@@ -3358,6 +3360,7 @@ describe('cross-library transfer', () => {
   });
 
   it('transfers a source book when inode matches and the previous path no longer exists', async () => {
+    mockFingerprint.mockResolvedValue('transfer-hash');
     const destinationFile = makeFileStat({
       absolutePath: '/dest/Inbox/book.epub',
       relPath: 'Inbox/book.epub',
@@ -3418,6 +3421,7 @@ describe('cross-library transfer', () => {
   });
 
   it('transfers a source book when the previous file path is now a directory', async () => {
+    mockFingerprint.mockResolvedValue('transfer-hash');
     const destinationFile = makeFileStat({
       absolutePath: '/dest/Inbox/book.epub',
       relPath: 'Inbox/book.epub',
@@ -3537,6 +3541,7 @@ describe('cross-library transfer', () => {
   });
 
   it('does not emit a transfer event when a racing scan reports no library change', async () => {
+    mockFingerprint.mockResolvedValue('transfer-hash');
     const destinationFile = makeFileStat({
       absolutePath: '/dest/Inbox/book.epub',
       relPath: 'Inbox/book.epub',
@@ -3926,12 +3931,13 @@ describe('reassigned file metadata extraction', () => {
     expect(mockMetadata.extractAndSave).not.toHaveBeenCalled();
   });
 
-  it('extracts metadata when a content file is renamed and changed via inode match', async () => {
+  it('registers and extracts a different file at a new path even when the inode matches', async () => {
+    mockFingerprint.mockResolvedValue('replacement-fingerprint');
     const fileStat = makeFileStat({
       absolutePath: '/library/Author/Book/new-title.epub',
       relPath: 'Author/Book/new-title.epub',
       ino: 7778n,
-      sizeBytes: 2048,
+      sizeBytes: 1024,
       mtime: new Date('2024-01-02'),
     });
     const repo = makeRepo({
@@ -3962,6 +3968,10 @@ describe('reassigned file metadata extraction', () => {
     await service.startScan(1, 'manual');
     await done;
 
+    expect(repo.createBookFile).toHaveBeenCalledWith(
+      expect.objectContaining({ bookId: 1, absolutePath: fileStat.absolutePath, fileHash: 'replacement-fingerprint' }),
+    );
+    expect(repo.updateBookFile).not.toHaveBeenCalledWith(5, expect.objectContaining({ absolutePath: fileStat.absolutePath }));
     expect(mockMetadata.extractAndSave).toHaveBeenCalledWith(expect.any(Number), fileStat.absolutePath, 'epub');
   });
 

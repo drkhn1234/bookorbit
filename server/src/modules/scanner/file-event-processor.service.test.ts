@@ -2,7 +2,9 @@ import { FileEventProcessorService } from './file-event-processor.service';
 import type { Mocked, MockedFunction } from 'vitest';
 import { ScannerRepository } from './scanner.repository';
 import { Logger } from '@nestjs/common';
+import { computeFileHash } from './lib/hash';
 
+vi.mock('./lib/hash', () => ({ computeFileHash: vi.fn<typeof computeFileHash>() }));
 vi.mock('fs/promises', () => ({
   stat: vi.fn(),
   readdir: vi.fn(),
@@ -109,6 +111,7 @@ beforeEach(() => {
   mockRepo.findPresentDuplicateBookFilesByHash.mockResolvedValue([]);
   mockRepo.replaceDuplicateBookWithMovedBook.mockResolvedValue(null);
   mockPathsReferToSameEntry.mockResolvedValue(false);
+  vi.mocked(computeFileHash).mockResolvedValue('move-fingerprint');
   mockReaddir.mockResolvedValue([]);
   mockRepo.updateBookPrimaryFile.mockResolvedValue(undefined);
 });
@@ -708,7 +711,7 @@ describe('handleCreate — move detection', () => {
     mockRepo.findBookFileByAbsolutePath.mockResolvedValue(null);
     mockRepo.findMissingBookByFolderPath.mockResolvedValue(null);
     mockRepo.findBookFileWithContextByIno.mockResolvedValue({
-      file: { id: 50, bookId: 30, absolutePath: '/books/OldAuthor/book.epub' },
+      file: { id: 50, bookId: 30, absolutePath: '/books/OldAuthor/book.epub', fileHash: 'move-fingerprint', sizeBytes: Number(fileStat.size) },
       libraryId: 2,
       folderPath: '/books/OldAuthor',
       libraryFolderPath: '/books',
@@ -752,7 +755,7 @@ describe('handleCreate — move detection', () => {
     mockRepo.findBookFileByAbsolutePath.mockResolvedValue(null);
     mockRepo.findMissingBookByFolderPath.mockResolvedValue(null);
     mockRepo.findBookFileWithContextByIno.mockResolvedValue({
-      file: { id: 50, bookId: 30, absolutePath: '/books/Author/old.epub' },
+      file: { id: 50, bookId: 30, absolutePath: '/books/Author/old.epub', fileHash: 'move-fingerprint', sizeBytes: Number(fileStat.size) },
       libraryId: 2,
       folderPath: '/books/Author',
       libraryFolderPath: '/books',
@@ -774,7 +777,7 @@ describe('handleCreate — move detection', () => {
     mockRepo.findBookFileByAbsolutePath.mockResolvedValue(null);
     mockRepo.findMissingBookByFolderPath.mockResolvedValue(null);
     mockRepo.findBookFileWithContextByIno.mockResolvedValue({
-      file: { id: 51, bookId: 31, absolutePath: oldPath },
+      file: { id: 51, bookId: 31, absolutePath: oldPath, fileHash: 'move-fingerprint', sizeBytes: Number(fileStat.size) },
       libraryId: 2,
       folderPath: '/books/Author',
       libraryFolderPath: '/books',
@@ -795,7 +798,7 @@ describe('handleCreate — move detection', () => {
     mockRepo.findBookFileByAbsolutePath.mockResolvedValue(null);
     mockRepo.findMissingBookByFolderPath.mockResolvedValue(null);
     mockRepo.findBookFileWithContextByIno.mockResolvedValue({
-      file: { id: 60, bookId: 40, absolutePath: '/books/old.epub' },
+      file: { id: 60, bookId: 40, absolutePath: '/books/old.epub', fileHash: 'move-fingerprint', sizeBytes: Number(fileStat.size) },
       libraryId: 3,
       folderPath: '/books/old.epub',
       libraryFolderPath: '/books',
@@ -815,7 +818,7 @@ describe('handleCreate — move detection', () => {
     mockRepo.findMissingBookByFolderPath.mockResolvedValue(null);
     mockRepo.findLibrarySettings.mockResolvedValue({ organizationMode: 'book_per_file', formatPriority: ['epub'] } as any);
     mockRepo.findBookFileWithContextByIno.mockResolvedValue({
-      file: { id: 61, bookId: 41, absolutePath: '/books/old.epub' },
+      file: { id: 61, bookId: 41, absolutePath: '/books/old.epub', fileHash: 'move-fingerprint', sizeBytes: Number(fileStat.size) },
       libraryId: 3,
       folderPath: '/books/old.epub',
       libraryFolderPath: '/books',
@@ -853,7 +856,7 @@ describe('handleCreate — directory move detection', () => {
     mockRepo.findMissingBooksByFolderPath.mockResolvedValue([]);
     mockReaddir.mockResolvedValue([{ isFile: () => true, name: 'book.epub', parentPath: '/books/NewAuthor' }] as any);
     mockRepo.findBookFileWithContextByIno.mockResolvedValue({
-      file: { id: 70, bookId: 50, absolutePath: '/books/OldAuthor/book.epub' },
+      file: { id: 70, bookId: 50, absolutePath: '/books/OldAuthor/book.epub', fileHash: 'move-fingerprint', sizeBytes: 90000 },
       libraryId: 4,
       folderPath: '/books/OldAuthor',
       libraryFolderPath: '/books',

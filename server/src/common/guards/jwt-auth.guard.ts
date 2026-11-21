@@ -1,3 +1,4 @@
+import { NO_API_KEY_USAGE_TRACKING } from '../decorators/api-key-policy.decorator';
 import { ExecutionContext, ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { AuthGuard } from '@nestjs/passport';
@@ -57,7 +58,10 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     if (apiKey.kind === 'conflict') throw new UnauthorizedException('Conflicting credentials');
     if (apiKey.kind === 'key') {
       // Never the default-password gate: a key is not a sign-in and cannot change a password (C3).
-      request.user = await this.authenticator.authenticateApiKey(apiKey.token, request.ip ?? null);
+      const noTracking = this.reflector.getAllAndOverride<boolean>(NO_API_KEY_USAGE_TRACKING, [context.getHandler(), context.getClass()]);
+      request.user = noTracking
+        ? await this.authenticator.authenticateApiKey(apiKey.token, request.ip ?? null, false)
+        : await this.authenticator.authenticateApiKey(apiKey.token, request.ip ?? null);
       return true;
     }
 

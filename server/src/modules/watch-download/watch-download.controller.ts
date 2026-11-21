@@ -1,13 +1,11 @@
 import { Body, Controller, Get, Headers, NotFoundException, Param, ParseIntPipe, Post, Res } from '@nestjs/common';
 import { RouteConfig } from '@nestjs/platform-fastify';
-import { Permission } from '@bookorbit/types';
 import { createReadStream } from 'fs';
 import { stat } from 'fs/promises';
 import type { FastifyReply } from 'fastify';
 
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
-import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { ResolvesMergedBook } from '../../common/decorators/resolves-merged-book.decorator';
 import { imageContentTypeFromPath } from '../../common/image-content-type';
 import type { RequestUser } from '../../common/types/request-user';
@@ -38,7 +36,6 @@ export class WatchDownloadController {
   @ResolvesMergedBook({ body: ['bookId'] })
   @Post()
   @RequireAppAttest()
-  @RequirePermission(Permission.LibraryDownload)
   create(@Body() dto: CreateWatchDownloadDto, @CurrentUser() user: RequestUser) {
     return this.watchDownloads.issue(dto.bookId, dto.fileIds, user);
   }
@@ -46,7 +43,6 @@ export class WatchDownloadController {
   @ResolvesMergedBook({ body: ['bookId'] })
   @Post('media-overlay')
   @RequireAppAttest()
-  @RequirePermission(Permission.LibraryDownload)
   createMediaOverlay(@Body() dto: CreateWatchMediaOverlayDownloadDto, @CurrentUser() user: RequestUser) {
     return this.watchDownloads.issueMediaOverlay(dto.bookId, dto.fileId, dto.hrefs, user);
   }

@@ -13,6 +13,7 @@ import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fa
 import { Test } from '@nestjs/testing';
 import { DEFAULT_FORMAT_PRIORITY } from '@bookorbit/types';
 
+import { ScannerService } from '../../src/modules/scanner/scanner.service';
 import { AppModule } from '../../src/app.module';
 import { GlobalExceptionFilter } from '../../src/common/filters/http-exception.filter';
 import { DB } from '../../src/db';
@@ -204,22 +205,9 @@ export async function seedLibrary(db: Db, input: SeedLibraryInput): Promise<{ li
   return { libraryId: library.id, libraryFolderId: libraryFolder.id };
 }
 
-export async function triggerLibraryScan(ctx: E2EContext, libraryId: number): Promise<number> {
-  const response = await ctx.app.inject({
-    method: 'POST',
-    url: `/api/v1/scanner/libraries/${libraryId}/scan`,
-    headers: { authorization: `Bearer ${ctx.adminToken}` },
-  });
-
-  if (response.statusCode !== 202) {
-    throw new Error(`Scan endpoint failed: ${response.statusCode} ${response.body}`);
-  }
-
-  const body = response.json() as { jobId?: number };
-  if (!body.jobId) {
-    throw new Error(`Scan endpoint returned no jobId: ${response.body}`);
-  }
-  return body.jobId;
+export async function triggerLibraryScan(ctx: Pick<E2EContext, 'app'>, libraryId: number): Promise<number> {
+  const { jobId } = await ctx.app.get(ScannerService).startScan(libraryId, 'manual');
+  return jobId;
 }
 
 export async function triggerAndWaitForLibraryScan(ctx: E2EContext, libraryId: number, timeoutMs = 30_000): Promise<typeof scanJobs.$inferSelect> {

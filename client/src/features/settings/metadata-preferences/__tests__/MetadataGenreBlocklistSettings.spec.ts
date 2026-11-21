@@ -8,9 +8,7 @@ const apiMock = vi.hoisted(() => vi.fn<(...args: unknown[]) => Promise<{ ok: boo
 const toastSuccess = vi.hoisted(() => vi.fn<(message: string) => void>())
 const toastError = vi.hoisted(() => vi.fn<(message: string) => void>())
 
-vi.mock('@/lib/api', () => ({
-  api: (...args: unknown[]) => apiMock(...args),
-}))
+vi.mock('@/lib/api', () => ({ setOnAuthFailure: vi.fn(), api: (...args: unknown[]) => apiMock(...args) }))
 
 vi.mock('vue-sonner', () => ({
   toast: {

@@ -8,12 +8,29 @@ import { toast } from 'vue-sonner'
 import ToggleSwitch from '@/components/ui/ToggleSwitch.vue'
 import SettingsPageHeader from './SettingsPageHeader.vue'
 import MigrationModal from '@/features/migration/components/MigrationModal.vue'
-import { api } from '@/lib/api'
+import { useLibrarySettingsApi, useLibrarySettingsMode } from '@/features/settings/composables/useLibrarySettingsMode'
+import { useLibraries } from '@/features/library/composables/useLibraries'
+import { useLibraryScan } from '@/features/scanner/composables/useLibraryScan'
 import { getWorkflowState, type MigrationWorkflowState } from '@/features/migration/lib/migration-api'
 import { usePermissions } from '@/features/auth/composables/usePermissions'
 import { useAppInfo } from './composables/useAppInfo'
 
 const { t } = useI18n()
+const api = useLibrarySettingsApi()
+const administratorMode = useLibrarySettingsMode()
+const { libraries, fetchLibraries } = useLibraries()
+const { startScanRequest } = useLibraryScan()
+const ownedLibraries = computed(() => libraries.value.filter((library) => library.accessLevel === 'owner'))
+
+async function scanOwnedLibrary(id: number) {
+  try {
+    const response = await startScanRequest({ id })
+    if (!response.ok) throw new Error('Scan request rejected')
+    toast.success('Scan requested')
+  } catch {
+    toast.error('Unable to start scan')
+  }
+}
 
 const props = withDefaults(defineProps<{ embedded?: boolean }>(), {
   embedded: false,
@@ -53,6 +70,10 @@ const migrationCardState = computed(() => {
 })
 
 onMounted(async () => {
+  if (!administratorMode.value) {
+    await fetchLibraries()
+    return
+  }
   try {
     migrationState.value = await getWorkflowState()
   } catch {
@@ -210,283 +231,293 @@ function formatDate(iso: string | null | undefined): string {
 </script>
 
 <template>
-  <MigrationModal v-if="showMigrationModal" @close="onMigrationModalClose" />
-  <SettingsPageHeader
-    v-if="!props.embedded"
-    class="hidden md:flex"
-    :title="t('settings.admin.maintenance.title')"
-    :subtitle="t('settings.admin.maintenance.subtitle')"
-  />
-  <div v-if="!props.embedded" class="md:hidden px-1">
-    <h1 class="text-xl font-semibold tracking-tight text-foreground">
-      {{ t('settings.admin.maintenance.title') }}
-    </h1>
-    <p
-      class="mt-1 text-sm text-muted-foreground leading-5 overflow-hidden text-ellipsis [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical]"
-    >
-      {{ t('settings.admin.maintenance.subtitle') }}
-    </p>
-  </div>
-
-  <div class="space-y-6" :class="{ 'mt-5 md:mt-0': !props.embedded }">
-    <!-- Uploads -->
-    <div v-if="isSuperuser">
-      <p class="settings-group-label">
-        {{ t('settings.admin.maintenance.uploadsGroup') }}
+  <section v-if="!administratorMode" class="space-y-3">
+    <h3 class="text-sm font-semibold">Scan owned libraries</h3>
+    <p v-if="!ownedLibraries.length" class="text-sm text-muted-foreground">You do not own any libraries.</p>
+    <div v-for="library in ownedLibraries" :key="library.id" class="flex items-center justify-between gap-3 rounded-md border border-border p-3">
+      <span>{{ library.name }}</span>
+      <Button size="sm" variant="outline" @click="scanOwnedLibrary(library.id)">Scan library</Button>
+    </div>
+  </section>
+  <template v-else>
+    <MigrationModal v-if="showMigrationModal" @close="onMigrationModalClose" />
+    <SettingsPageHeader
+      v-if="!props.embedded"
+      class="hidden md:flex"
+      :title="t('settings.admin.maintenance.title')"
+      :subtitle="t('settings.admin.maintenance.subtitle')"
+    />
+    <div v-if="!props.embedded" class="md:hidden px-1">
+      <h1 class="text-xl font-semibold tracking-tight text-foreground">
+        {{ t('settings.admin.maintenance.title') }}
+      </h1>
+      <p
+        class="mt-1 text-sm text-muted-foreground leading-5 overflow-hidden text-ellipsis [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical]"
+      >
+        {{ t('settings.admin.maintenance.subtitle') }}
       </p>
-      <div class="settings-card">
-        <div class="settings-row">
-          <div class="flex items-start gap-3">
-            <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-              <Upload :size="16" class="text-primary" />
+    </div>
+
+    <div class="space-y-6" :class="{ 'mt-5 md:mt-0': !props.embedded }">
+      <!-- Uploads -->
+      <div v-if="isSuperuser">
+        <p class="settings-group-label">
+          {{ t('settings.admin.maintenance.uploadsGroup') }}
+        </p>
+        <div class="settings-card">
+          <div class="settings-row">
+            <div class="flex items-start gap-3">
+              <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                <Upload :size="16" class="text-primary" />
+              </div>
+              <div class="min-w-0">
+                <p class="settings-label">
+                  {{ t('settings.admin.maintenance.maxUploadSize') }}
+                </p>
+                <p class="settings-hint">
+                  {{ t('settings.admin.maintenance.maxUploadSizeHint') }}
+                </p>
+              </div>
             </div>
-            <div class="min-w-0">
-              <p class="settings-label">
-                {{ t('settings.admin.maintenance.maxUploadSize') }}
-              </p>
-              <p class="settings-hint">
-                {{ t('settings.admin.maintenance.maxUploadSizeHint') }}
-              </p>
+            <div class="flex items-center gap-3">
+              <div class="flex items-center gap-2">
+                <input
+                  type="number"
+                  v-model.number="localMaxUploadSizeMb"
+                  min="1"
+                  max="10000"
+                  class="w-24 rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                  :disabled="maxUploadSizeSaving"
+                />
+                <span class="text-sm text-muted-foreground">MB</span>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                :disabled="maxUploadSizeSaving || localMaxUploadSizeMb === maxUploadSizeMb"
+                @click="saveMaxUploadSize"
+                type="button"
+              >
+                {{ t('settings.admin.maintenance.save') }}
+              </Button>
             </div>
           </div>
-          <div class="flex items-center gap-3">
-            <div class="flex items-center gap-2">
-              <input
-                type="number"
-                v-model.number="localMaxUploadSizeMb"
-                min="1"
-                max="10000"
-                class="w-24 rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
-                :disabled="maxUploadSizeSaving"
-              />
-              <span class="text-sm text-muted-foreground">MB</span>
+        </div>
+      </div>
+
+      <!-- Booklore Import -->
+      <div>
+        <p class="settings-group-label">
+          {{ t('settings.admin.maintenance.importGroup') }}
+        </p>
+        <div class="border border-border rounded-lg bg-card px-4 py-4 md:px-5 md:py-5 shadow-xs">
+          <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between md:gap-6">
+            <div class="flex items-start gap-3">
+              <div
+                class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
+                :class="
+                  migrationCardState === 'completed'
+                    ? 'bg-emerald-500/10'
+                    : migrationCardState === 'failed'
+                      ? 'bg-red-500/10'
+                      : migrationCardState === 'running'
+                        ? 'bg-sky-500/10'
+                        : 'bg-primary/10'
+                "
+              >
+                <Loader2
+                  v-if="migrationCardState === 'loading' || migrationCardState === 'running'"
+                  :size="16"
+                  class="animate-spin"
+                  :class="migrationCardState === 'running' ? 'text-sky-600' : 'text-muted-foreground'"
+                />
+                <CheckCircle2 v-else-if="migrationCardState === 'completed'" :size="16" class="text-emerald-600" />
+                <AlertCircle v-else-if="migrationCardState === 'failed'" :size="16" class="text-red-600" />
+                <ArrowUpFromLine v-else :size="16" class="text-primary" />
+              </div>
+
+              <div class="min-w-0">
+                <p class="settings-label">
+                  <template v-if="migrationCardState === 'none' || migrationCardState === 'loading'">{{
+                    t('settings.admin.maintenance.importLibraryData')
+                  }}</template>
+                  <template v-else-if="migrationCardState === 'configured'">{{ t('settings.admin.maintenance.migrationConfigured') }}</template>
+                  <template v-else-if="migrationCardState === 'running'">{{ t('settings.admin.maintenance.migrationRunning') }}</template>
+                  <template v-else-if="migrationCardState === 'completed'">{{ t('settings.admin.maintenance.migrationCompleted') }}</template>
+                  <template v-else-if="migrationCardState === 'failed'">{{ t('settings.admin.maintenance.migrationFailed') }}</template>
+                </p>
+
+                <p
+                  class="settings-hint leading-relaxed max-w-sm mt-0.5 md:[display:block] overflow-hidden text-ellipsis [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical]"
+                >
+                  <template v-if="migrationCardState === 'none' || migrationCardState === 'loading'">
+                    {{ t('settings.admin.maintenance.migrationDescription') }}
+                  </template>
+                  <template v-else-if="migrationCardState === 'configured'">
+                    {{
+                      t('settings.admin.maintenance.configuredDescription', {
+                        name: migrationSource!.name,
+                      })
+                    }}
+                  </template>
+                  <template v-else-if="migrationCardState === 'running'">
+                    {{
+                      t('settings.admin.maintenance.runningDescription', {
+                        stage: migrationRun!.currentStage ?? t('settings.admin.maintenance.stageInitializing'),
+                        started: migrationRun!.startedAt ? formatDate(migrationRun!.startedAt) : t('settings.admin.maintenance.recently'),
+                      })
+                    }}
+                  </template>
+                  <template v-else-if="migrationCardState === 'completed'">
+                    {{
+                      t('settings.admin.maintenance.completedDescription', {
+                        name: migrationSource!.name,
+                        date: formatDate(migrationRun!.endedAt),
+                      })
+                    }}
+                  </template>
+                  <template v-else-if="migrationCardState === 'failed'">
+                    {{ migrationRun!.errorMessage ?? t('settings.admin.maintenance.migrationErrorGeneric') }}
+                  </template>
+                </p>
+              </div>
             </div>
+
             <Button
-              variant="outline"
-              size="sm"
-              :disabled="maxUploadSizeSaving || localMaxUploadSizeMb === maxUploadSizeMb"
-              @click="saveMaxUploadSize"
+              v-if="migrationCardState !== 'loading'"
               type="button"
+              size="sm"
+              :variant="migrationCardState === 'none' ? 'default' : 'outline'"
+              class="self-start md:w-auto md:shrink-0"
+              @click="goToMigration"
             >
-              {{ t('settings.admin.maintenance.save') }}
+              <template v-if="migrationCardState === 'none'">
+                <ArrowUpFromLine :size="13" />
+                {{ t('settings.admin.maintenance.getStarted') }}
+              </template>
+              <template v-else-if="migrationCardState === 'configured'">{{ t('settings.admin.maintenance.continueSetup') }}</template>
+              <template v-else>{{ t('settings.admin.maintenance.viewDetails') }}</template>
             </Button>
           </div>
         </div>
       </div>
-    </div>
 
-    <!-- Booklore Import -->
-    <div>
-      <p class="settings-group-label">
-        {{ t('settings.admin.maintenance.importGroup') }}
-      </p>
-      <div class="border border-border rounded-lg bg-card px-4 py-4 md:px-5 md:py-5 shadow-xs">
-        <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between md:gap-6">
-          <div class="flex items-start gap-3">
-            <div
-              class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
-              :class="
-                migrationCardState === 'completed'
-                  ? 'bg-emerald-500/10'
-                  : migrationCardState === 'failed'
-                    ? 'bg-red-500/10'
-                    : migrationCardState === 'running'
-                      ? 'bg-sky-500/10'
-                      : 'bg-primary/10'
-              "
+      <!-- Recommendations -->
+      <div>
+        <p class="settings-group-label">
+          {{ t('settings.admin.maintenance.recommendationsGroup') }}
+        </p>
+        <div class="border border-border rounded-lg bg-card px-4 py-4 md:px-5 md:py-5 shadow-xs">
+          <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between md:gap-6">
+            <div class="flex items-start gap-3">
+              <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                <Sparkles :size="16" class="text-primary" />
+              </div>
+              <div class="min-w-0">
+                <p class="settings-label">
+                  {{ t('settings.admin.maintenance.refreshRecommendationIndex') }}
+                </p>
+                <p
+                  class="settings-hint leading-relaxed max-w-sm md:[display:block] overflow-hidden text-ellipsis [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical]"
+                >
+                  {{ t('settings.admin.maintenance.refreshRecommendationHint') }}
+                </p>
+                <p v-if="queued !== null" class="flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400 mt-2">
+                  <Check :size="12" />
+                  {{
+                    t('settings.admin.maintenance.booksQueuedForProcessing', {
+                      count: queued,
+                    })
+                  }}
+                </p>
+                <p v-if="embeddingError" class="text-xs text-destructive mt-2">
+                  {{ embeddingError }}
+                </p>
+              </div>
+            </div>
+            <Button variant="outline" size="sm" class="self-start md:w-auto md:shrink-0" :disabled="running" @click="rebuildEmbeddings" type="button">
+              <RefreshCw :size="13" :class="running ? 'animate-spin' : ''" />
+              {{ running ? t('settings.admin.maintenance.running') : t('settings.admin.maintenance.run') }}
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Achievements -->
+      <div v-if="isSuperuser">
+        <p class="settings-group-label">
+          {{ t('settings.admin.maintenance.achievementsGroup') }}
+        </p>
+        <div class="border border-border rounded-lg bg-card px-4 py-4 md:px-5 md:py-5 shadow-xs">
+          <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between md:gap-6">
+            <div class="flex items-start gap-3 min-w-0">
+              <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                <Award :size="16" class="text-primary" />
+              </div>
+
+              <div class="min-w-0 flex-1">
+                <p class="settings-label">
+                  {{ t('settings.admin.maintenance.backfillAchievements') }}
+                </p>
+                <p
+                  class="settings-hint leading-relaxed max-w-sm md:[display:block] overflow-hidden text-ellipsis [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical]"
+                >
+                  {{ t('settings.admin.maintenance.backfillAchievementsHint') }}
+                </p>
+
+                <p v-if="achievementBackfillResult" class="mt-2 text-xs text-green-600 dark:text-green-400">
+                  {{
+                    t('settings.admin.maintenance.backfillResult', {
+                      users: achievementBackfillResult.usersProcessed,
+                      awards: achievementBackfillResult.awardsGranted,
+                    })
+                  }}
+                </p>
+                <p v-if="achievementBackfillError" class="mt-2 text-xs text-destructive">
+                  {{ achievementBackfillError }}
+                </p>
+              </div>
+            </div>
+
+            <Button
+              variant="outline"
+              size="sm"
+              class="self-start md:w-auto md:shrink-0"
+              :disabled="achievementBackfillRunning"
+              @click="runAchievementBackfill"
+              type="button"
             >
-              <Loader2
-                v-if="migrationCardState === 'loading' || migrationCardState === 'running'"
-                :size="16"
-                class="animate-spin"
-                :class="migrationCardState === 'running' ? 'text-sky-600' : 'text-muted-foreground'"
-              />
-              <CheckCircle2 v-else-if="migrationCardState === 'completed'" :size="16" class="text-emerald-600" />
-              <AlertCircle v-else-if="migrationCardState === 'failed'" :size="16" class="text-red-600" />
-              <ArrowUpFromLine v-else :size="16" class="text-primary" />
-            </div>
-
-            <div class="min-w-0">
-              <p class="settings-label">
-                <template v-if="migrationCardState === 'none' || migrationCardState === 'loading'">{{
-                  t('settings.admin.maintenance.importLibraryData')
-                }}</template>
-                <template v-else-if="migrationCardState === 'configured'">{{ t('settings.admin.maintenance.migrationConfigured') }}</template>
-                <template v-else-if="migrationCardState === 'running'">{{ t('settings.admin.maintenance.migrationRunning') }}</template>
-                <template v-else-if="migrationCardState === 'completed'">{{ t('settings.admin.maintenance.migrationCompleted') }}</template>
-                <template v-else-if="migrationCardState === 'failed'">{{ t('settings.admin.maintenance.migrationFailed') }}</template>
-              </p>
-
-              <p
-                class="settings-hint leading-relaxed max-w-sm mt-0.5 md:[display:block] overflow-hidden text-ellipsis [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical]"
-              >
-                <template v-if="migrationCardState === 'none' || migrationCardState === 'loading'">
-                  {{ t('settings.admin.maintenance.migrationDescription') }}
-                </template>
-                <template v-else-if="migrationCardState === 'configured'">
-                  {{
-                    t('settings.admin.maintenance.configuredDescription', {
-                      name: migrationSource!.name,
-                    })
-                  }}
-                </template>
-                <template v-else-if="migrationCardState === 'running'">
-                  {{
-                    t('settings.admin.maintenance.runningDescription', {
-                      stage: migrationRun!.currentStage ?? t('settings.admin.maintenance.stageInitializing'),
-                      started: migrationRun!.startedAt ? formatDate(migrationRun!.startedAt) : t('settings.admin.maintenance.recently'),
-                    })
-                  }}
-                </template>
-                <template v-else-if="migrationCardState === 'completed'">
-                  {{
-                    t('settings.admin.maintenance.completedDescription', {
-                      name: migrationSource!.name,
-                      date: formatDate(migrationRun!.endedAt),
-                    })
-                  }}
-                </template>
-                <template v-else-if="migrationCardState === 'failed'">
-                  {{ migrationRun!.errorMessage ?? t('settings.admin.maintenance.migrationErrorGeneric') }}
-                </template>
-              </p>
-            </div>
+              <RefreshCw :size="13" :class="achievementBackfillRunning ? 'animate-spin' : ''" />
+              {{ achievementBackfillRunning ? t('settings.admin.maintenance.running') : t('settings.admin.maintenance.runBackfill') }}
+            </Button>
           </div>
+        </div>
+      </div>
 
-          <Button
-            v-if="migrationCardState !== 'loading'"
-            type="button"
-            size="sm"
-            :variant="migrationCardState === 'none' ? 'default' : 'outline'"
-            class="self-start md:w-auto md:shrink-0"
-            @click="goToMigration"
-          >
-            <template v-if="migrationCardState === 'none'">
-              <ArrowUpFromLine :size="13" />
-              {{ t('settings.admin.maintenance.getStarted') }}
-            </template>
-            <template v-else-if="migrationCardState === 'configured'">{{ t('settings.admin.maintenance.continueSetup') }}</template>
-            <template v-else>{{ t('settings.admin.maintenance.viewDetails') }}</template>
-          </Button>
+      <!-- Update checks -->
+      <div>
+        <p class="settings-group-label">
+          {{ t('settings.admin.maintenance.updatesGroup') }}
+        </p>
+        <div class="settings-card">
+          <div class="settings-row">
+            <div class="flex items-start gap-3">
+              <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                <Bell :size="16" class="text-primary" />
+              </div>
+              <div class="min-w-0">
+                <p class="settings-label">
+                  {{ t('settings.admin.maintenance.checkForUpdates') }}
+                </p>
+                <p class="settings-hint">
+                  {{ t('settings.admin.maintenance.checkForUpdatesHint') }}
+                </p>
+              </div>
+            </div>
+            <ToggleSwitch :model-value="updateCheckEnabled" :disabled="updateCheckLoading" @update:model-value="toggleUpdateCheck" />
+          </div>
         </div>
       </div>
     </div>
-
-    <!-- Recommendations -->
-    <div>
-      <p class="settings-group-label">
-        {{ t('settings.admin.maintenance.recommendationsGroup') }}
-      </p>
-      <div class="border border-border rounded-lg bg-card px-4 py-4 md:px-5 md:py-5 shadow-xs">
-        <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between md:gap-6">
-          <div class="flex items-start gap-3">
-            <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-              <Sparkles :size="16" class="text-primary" />
-            </div>
-            <div class="min-w-0">
-              <p class="settings-label">
-                {{ t('settings.admin.maintenance.refreshRecommendationIndex') }}
-              </p>
-              <p
-                class="settings-hint leading-relaxed max-w-sm md:[display:block] overflow-hidden text-ellipsis [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical]"
-              >
-                {{ t('settings.admin.maintenance.refreshRecommendationHint') }}
-              </p>
-              <p v-if="queued !== null" class="flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400 mt-2">
-                <Check :size="12" />
-                {{
-                  t('settings.admin.maintenance.booksQueuedForProcessing', {
-                    count: queued,
-                  })
-                }}
-              </p>
-              <p v-if="embeddingError" class="text-xs text-destructive mt-2">
-                {{ embeddingError }}
-              </p>
-            </div>
-          </div>
-          <Button variant="outline" size="sm" class="self-start md:w-auto md:shrink-0" :disabled="running" @click="rebuildEmbeddings" type="button">
-            <RefreshCw :size="13" :class="running ? 'animate-spin' : ''" />
-            {{ running ? t('settings.admin.maintenance.running') : t('settings.admin.maintenance.run') }}
-          </Button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Achievements -->
-    <div v-if="isSuperuser">
-      <p class="settings-group-label">
-        {{ t('settings.admin.maintenance.achievementsGroup') }}
-      </p>
-      <div class="border border-border rounded-lg bg-card px-4 py-4 md:px-5 md:py-5 shadow-xs">
-        <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between md:gap-6">
-          <div class="flex items-start gap-3 min-w-0">
-            <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-              <Award :size="16" class="text-primary" />
-            </div>
-
-            <div class="min-w-0 flex-1">
-              <p class="settings-label">
-                {{ t('settings.admin.maintenance.backfillAchievements') }}
-              </p>
-              <p
-                class="settings-hint leading-relaxed max-w-sm md:[display:block] overflow-hidden text-ellipsis [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical]"
-              >
-                {{ t('settings.admin.maintenance.backfillAchievementsHint') }}
-              </p>
-
-              <p v-if="achievementBackfillResult" class="mt-2 text-xs text-green-600 dark:text-green-400">
-                {{
-                  t('settings.admin.maintenance.backfillResult', {
-                    users: achievementBackfillResult.usersProcessed,
-                    awards: achievementBackfillResult.awardsGranted,
-                  })
-                }}
-              </p>
-              <p v-if="achievementBackfillError" class="mt-2 text-xs text-destructive">
-                {{ achievementBackfillError }}
-              </p>
-            </div>
-          </div>
-
-          <Button
-            variant="outline"
-            size="sm"
-            class="self-start md:w-auto md:shrink-0"
-            :disabled="achievementBackfillRunning"
-            @click="runAchievementBackfill"
-            type="button"
-          >
-            <RefreshCw :size="13" :class="achievementBackfillRunning ? 'animate-spin' : ''" />
-            {{ achievementBackfillRunning ? t('settings.admin.maintenance.running') : t('settings.admin.maintenance.runBackfill') }}
-          </Button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Update checks -->
-    <div>
-      <p class="settings-group-label">
-        {{ t('settings.admin.maintenance.updatesGroup') }}
-      </p>
-      <div class="settings-card">
-        <div class="settings-row">
-          <div class="flex items-start gap-3">
-            <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-              <Bell :size="16" class="text-primary" />
-            </div>
-            <div class="min-w-0">
-              <p class="settings-label">
-                {{ t('settings.admin.maintenance.checkForUpdates') }}
-              </p>
-              <p class="settings-hint">
-                {{ t('settings.admin.maintenance.checkForUpdatesHint') }}
-              </p>
-            </div>
-          </div>
-          <ToggleSwitch :model-value="updateCheckEnabled" :disabled="updateCheckLoading" @update:model-value="toggleUpdateCheck" />
-        </div>
-      </div>
-    </div>
-  </div>
+  </template>
 </template>

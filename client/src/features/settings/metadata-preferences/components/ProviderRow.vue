@@ -2,7 +2,7 @@
 import { computed, useId } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ChevronDown, Loader2, Plug, SlidersHorizontal, TriangleAlert } from '@lucide/vue'
-import type { ProviderConnectionTestResult } from '@bookorbit/types'
+import type { ProviderConnectionTestResult, ProviderStatus } from '@bookorbit/types'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { SECRET_INPUT_ATTRS } from '@/lib/secret-input'
@@ -17,6 +17,7 @@ const props = defineProps<{
   provider: ProviderDraftEntry
   chip: ProviderChipView | null
   expanded: boolean
+  credentialSource?: ProviderStatus['credentialSource']
   testable: boolean
   testing: boolean
   testResult: ProviderConnectionTestResult | null
@@ -27,6 +28,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   toggle: []
   test: []
+  removeCredential: [field: string]
   'update:expanded': [value: boolean]
   'update:field': [payload: { key: string; value: string }]
 }>()
@@ -51,6 +53,19 @@ const testResultClass = computed(() => {
   if (status === 'warning') return 'border-amber-500/35 bg-amber-500/10 text-amber-600 dark:text-amber-400'
   return 'border-destructive/30 bg-destructive/10 text-destructive'
 })
+
+function removeCredential(field: ProviderFieldDef) {
+  emit('removeCredential', field.key)
+}
+
+function fieldPlaceholder(field: ProviderFieldDef): string {
+  if (field.type === 'password') {
+    if (props.credentialSource === 'administrator') return 'Using administrator-provided credential'
+    if (props.credentialSource === 'personal') return 'Personal credential saved'
+    if (props.credentialSource === 'instance') return 'Instance credential saved'
+  }
+  return field.placeholder ?? field.label
+}
 
 function fieldId(field: ProviderFieldDef): string {
   return `provider-${props.row.key}-${field.key}-${uid}`
@@ -182,13 +197,21 @@ function handleExpandToggle() {
               :type="field.type === 'password' ? 'text' : field.type"
               :name="`metadata-${row.key}-${field.key}`"
               :value="fieldValue(field)"
-              :placeholder="field.placeholder ?? field.label"
+              :placeholder="fieldPlaceholder(field)"
               :disabled="!canEditField(field)"
               class="h-9 w-full min-w-0 rounded-md border border-input bg-background px-2.5 text-sm transition-shadow placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
               :class="{ 'input-secret': field.type === 'password' }"
               @input="onFieldInput(field, $event)"
             />
 
+            <button
+              v-if="field.type === 'password' && (credentialSource === 'personal' || credentialSource === 'instance')"
+              type="button"
+              class="self-start text-xs text-muted-foreground underline"
+              @click="removeCredential(field)"
+            >
+              Remove saved credential
+            </button>
             <p v-if="field.helper" class="text-[11px] leading-snug text-muted-foreground">{{ field.helper }}</p>
           </div>
         </div>

@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
   toastError: vi.fn<(message: string) => void>(),
 }))
 
-vi.mock('@/lib/api', () => ({ api: mocks.api }))
+vi.mock('@/lib/api', () => ({ setOnAuthFailure: vi.fn(), api: mocks.api }))
 vi.mock('vue-sonner', () => ({ toast: { success: mocks.toastSuccess, error: mocks.toastError } }))
 
 function response(config: MetadataCacheConfig): MetadataCacheConfigResponse {

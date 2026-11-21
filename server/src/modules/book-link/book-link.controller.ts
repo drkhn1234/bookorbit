@@ -1,10 +1,9 @@
 import { Body, Controller, Delete, HttpCode, HttpStatus, Param, ParseIntPipe, Patch, Post } from '@nestjs/common';
 
-import { AuditAction, AuditResource, Permission } from '@bookorbit/types';
+import { AuditAction, AuditResource } from '@bookorbit/types';
 
 import { Auditable } from '../../common/decorators/auditable.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import type { RequestUser } from '../../common/types/request-user';
 import { BookLinkService } from './book-link.service';
 import { BookLinkDto, BookLinkLeadDto } from './dto/book-link.dto';
@@ -14,7 +13,6 @@ export class BookLinkController {
   constructor(private readonly bookLinkService: BookLinkService) {}
 
   @Post('links')
-  @RequirePermission(Permission.LibraryMergeBooks)
   @Auditable({
     action: AuditAction.BookLink,
     resource: AuditResource.Book,
@@ -27,14 +25,12 @@ export class BookLinkController {
   }
 
   @Patch('links/:groupId')
-  @RequirePermission(Permission.LibraryMergeBooks)
   setLead(@Param('groupId', ParseIntPipe) groupId: number, @Body() dto: BookLinkLeadDto, @CurrentUser() user: RequestUser) {
     return this.bookLinkService.setLead(groupId, dto, user);
   }
 
   @Delete(':id/link')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @RequirePermission(Permission.LibraryMergeBooks)
   @Auditable({
     action: AuditAction.BookUnlink,
     resource: AuditResource.Book,

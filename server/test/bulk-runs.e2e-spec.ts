@@ -342,6 +342,9 @@ describe('Bulk runs (e2e)', { timeout: 180_000 }, () => {
   it('keeps moving books after the tab closes, and records a cancelled move as cancelled', async () => {
     const source = await createLibraryWithFolder(ctx, { mode: 'book_per_file' });
     const target = await createLibraryWithFolder(ctx, { mode: 'book_per_file' });
+    const scopedOwner = await createUserAndLogin(ctx);
+    await grantLibraryAccess(ctx, scopedOwner.userId, source.libraryId, 'owner');
+    await grantLibraryAccess(ctx, scopedOwner.userId, target.libraryId, 'owner');
     const titles = ['Move One', 'Move Two', 'Move Three'].map((title) => `${title} ${randomUUID().slice(0, 6)}`);
     const paths: string[] = [];
     for (const title of titles) paths.push(await createEpubFixture(source.folderPath, `${title}.epub`, { title, uid: title }));
@@ -350,7 +353,7 @@ describe('Bulk runs (e2e)', { timeout: 180_000 }, () => {
     for (const path of paths) moving.push((await locateBookByAbsolutePath(ctx, path)).bookId);
 
     const held = holdItems('book-move');
-    const followed = await start('/api/v1/books/move', authHeader(ctx.adminToken), {
+    const followed = await start('/api/v1/books/move', authHeader(scopedOwner.accessToken), {
       selection: { bookIds: moving },
       targetLibraryId: target.libraryId,
       targetFolderId: target.libraryFolderId,
@@ -362,7 +365,7 @@ describe('Bulk runs (e2e)', { timeout: 180_000 }, () => {
     await new Promise((resolve) => setTimeout(resolve, 200));
     expect((await run(followed.runId)).status).toBe('running');
 
-    expect(await act(ctx.adminToken, 'cancel', followed.runId)).toMatchObject({ outcome: 'done' });
+    expect(await act(scopedOwner.accessToken, 'cancel', followed.runId)).toMatchObject({ outcome: 'done' });
     held.release();
 
     await waitForStatus(followed.runId, 'cancelled');

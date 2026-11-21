@@ -659,26 +659,10 @@ describe('UserService', () => {
     expect(userRepo.findLibraryGrantsByUserId).toHaveBeenCalledWith(4);
   });
 
-  it('setLibraries rejects unknown libraries', async () => {
-    userRepo.findByIdWithPermissions.mockResolvedValue({ id: 2, isSuperuser: false });
-    userRepo.findExistingLibraryIds.mockResolvedValue([3]);
-
-    await expect(service.setLibraries(2, [3, 7], reqUser({ isSuperuser: true }))).rejects.toBeInstanceOf(BadRequestException);
-  });
-
-  it('setLibraries blocks non-superuser updates to superuser targets', async () => {
-    userRepo.findByIdWithPermissions.mockResolvedValue({ id: 2, isSuperuser: true });
-
-    await expect(service.setLibraries(2, [3], reqUser({ isSuperuser: false }))).rejects.toBeInstanceOf(ForbiddenException);
-  });
-
-  it('setLibraries deduplicates IDs before replacing access rows', async () => {
-    userRepo.findByIdWithPermissions.mockResolvedValue({ id: 2, isSuperuser: false });
-    userRepo.findExistingLibraryIds.mockResolvedValue([3, 7]);
-
-    await service.setLibraries(2, [3, 7, 3], reqUser({ isSuperuser: true }));
-
-    expect(userRepo.replaceLibraries).toHaveBeenCalledWith(2, [3, 7]);
+  it('passes the authenticated actor and deduplicates IDs before replacing access rows', async () => {
+    const actor = reqUser({ isSuperuser: true });
+    await service.setLibraries(2, [3, 7, 3], actor);
+    expect(userRepo.replaceLibraries).toHaveBeenCalledWith(2, [3, 7], actor);
   });
 
   it('getContentFilters throws when the target user does not exist', async () => {

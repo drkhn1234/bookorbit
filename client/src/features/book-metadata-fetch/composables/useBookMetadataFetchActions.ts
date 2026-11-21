@@ -1,7 +1,8 @@
-import { api } from '@/lib/api'
+import { useLibrarySettingsApi } from '@/features/settings/composables/useLibrarySettingsMode'
 import { ignoreCachePostInit, type IgnoreCacheOptions } from '@/features/metadata-cache/lib/metadata-cache'
 
 export function useBookMetadataFetchActions() {
+  const api = useLibrarySettingsApi()
   async function triggerGlobal(options: IgnoreCacheOptions = {}): Promise<{ queued: number }> {
     const res = await api('/api/v1/book-metadata-fetch/run', ignoreCachePostInit(options))
     if (!res.ok) throw new Error('Failed to trigger run')

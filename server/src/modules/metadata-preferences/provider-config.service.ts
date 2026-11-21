@@ -1,4 +1,6 @@
 import { BadRequestException, Inject, Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { createHmac, randomBytes } from 'node:crypto';
 import { eq, isNotNull, sql } from 'drizzle-orm';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import {
@@ -6,6 +8,7 @@ import {
   MetadataProviderKey,
   MOVED_METADATA_PROVIDERS,
   type MovedMetadataProviderKey,
+  type ExternalMetadataProviderKey,
   ProviderConfigurations,
   ProviderConnectionTestResult,
   ProviderStatus,
@@ -13,8 +16,10 @@ import {
 
 import { stripBearerPrefix, toBearerAuthorization } from '../../common/utils/bearer-token.utils';
 import { amazonRequestHeaders, isAmazonBotChallenge } from '../../common/utils/amazon-http.utils';
-import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
 import { amazonOrigin, normalizeAmazonDomain, normalizeAudibleDomain } from '../../common/utils/metadata-provider-hosts.utils';
+import { BUILTIN_PROVIDER_CONFIG_KEY, LibraryDefaultsService } from '../../common/library-scope/library-defaults.service';
+import { metadataOperationScope } from '../../common/provider-cache/metadata-operation-scope';
+import { MetadataHttpProviderSecrets } from '../metadata-http-provider/metadata-http-provider-secrets.service';
 import { DB } from '../../db';
 import * as schema from '../../db/schema';
 import { MetadataHttpProviderCatalog } from '../metadata-http-provider/metadata-http-provider.catalog';
@@ -25,7 +30,10 @@ type ProviderConfigPatch = {
   [K in keyof ProviderConfigurations]?: Partial<ProviderConfigurations[K]>;
 };
 
-const PROVIDER_CONFIG_KEY = 'metadata_provider_config';
+const PROVIDER_CONFIG_KEY = BUILTIN_PROVIDER_CONFIG_KEY;
+const SECRET_PREFIX = 'encrypted:';
+const CREDENTIAL_FIELDS = { google: 'apiKey', amazon: 'cookie', hardcover: 'apiKey', comicvine: 'apiKey' } as const;
+const CACHE_PARTITION_KEY = randomBytes(32);
 const PROVIDER_TEST_EVENT = 'metadata_provider_config.test_provider';
 const HARDCOVER_GRAPHQL_URL = 'https://api.hardcover.app/v1/graphql';
 const HARDCOVER_TEST_QUERY = 'query { me { username } }';
@@ -159,6 +167,9 @@ export class ProviderConfigService implements OnModuleInit {
     @Inject(DB) private readonly db: Db,
     @Optional() private readonly httpProviders?: MetadataHttpProviderCatalog,
     @Optional() private readonly preferences?: MetadataPreferencesService,
+    @Optional() private readonly defaults?: LibraryDefaultsService,
+    @Optional() private readonly secrets?: MetadataHttpProviderSecrets,
+    @Optional() private readonly configService?: ConfigService,
   ) {}
 
   /**
@@ -328,34 +339,146 @@ export class ProviderConfigService implements OnModuleInit {
     return normalized || fallback;
   }
 
-  private parsePersistedConfig(
-    rawValue: string,
-    fallback: ProviderConfigurations,
-    source: 'get' | 'update',
-    startedAt: number,
-  ): ProviderConfigurations {
+  private parsePatch(raw: string | undefined): Record<string, unknown> {
+    if (!raw) return {};
     try {
-      return this.mergeConfig(fallback, JSON.parse(rawValue));
-    } catch (error) {
-      const durationMs = Date.now() - startedAt;
-      const errorClass = error instanceof Error ? error.name : 'UnknownError';
-      const rawMessage = error instanceof Error ? error.message : 'unknown error';
-      const errorMessage = sanitizeLogValue(rawMessage);
-      this.logger.warn(
-        `[metadata_provider_config.parse] [fail] key=${PROVIDER_CONFIG_KEY} source=${source} durationMs=${durationMs} errorClass=${errorClass} error="${errorMessage}" - failed to parse persisted provider config`,
-      );
-      return fallback;
+      return asObject(JSON.parse(raw));
+    } catch {
+      this.logger.warn('[metadata_provider_config.parse] [fail] stored configuration invalid');
+      return {};
     }
   }
 
+  private mapCredentials(value: Record<string, unknown>, fn: (credential: string, provider: string) => string): Record<string, unknown> {
+    const mapped = { ...value };
+    for (const [provider, field] of Object.entries(CREDENTIAL_FIELDS)) {
+      const config = asObject(value[provider]);
+      const credential = config[field];
+      if (typeof credential === 'string') mapped[provider] = { ...config, [field]: fn(credential, provider) };
+    }
+    return mapped;
+  }
+
+  private decode(raw: string | undefined): Record<string, unknown> {
+    return this.mapCredentials(this.parsePatch(raw), (value, provider) =>
+      value.startsWith(SECRET_PREFIX) ? (this.secrets?.decrypt(value.slice(SECRET_PREFIX.length), provider) ?? '') : value,
+    );
+  }
+
+  private async readInstance(): Promise<ProviderConfigurations> {
+    const row = await this.db.query.appSettings.findFirst({ where: eq(schema.appSettings.key, PROVIDER_CONFIG_KEY) });
+    return this.normalizeConfig(this.mergeConfig(this.createDefaultConfig(), this.decode(row?.value)));
+  }
+
+  private removeInheritedSecrets(patch: Record<string, unknown>): Record<string, unknown> {
+    for (const [provider, field] of Object.entries(CREDENTIAL_FIELDS)) {
+      const config = asObject(patch[provider]);
+      if (typeof config[field] === 'string' && !String(config[field]).trim()) delete config[field];
+    }
+    return patch;
+  }
+
+  private async resolve(accountId: number | null): Promise<ProviderConfigurations> {
+    const instance = await this.readInstance();
+    if (accountId === null) return instance;
+    const personal = this.decode(await this.defaults?.read(accountId, 'provider_config'));
+    return this.resolvePersonalConfig(instance, personal);
+  }
+
+  private resolvePersonalConfig(instance: ProviderConfigurations, personal: Record<string, unknown>): ProviderConfigurations {
+    const config = this.normalizeConfig(this.mergeConfig(instance, this.removeInheritedSecrets(personal)));
+    if (!asObject(personal.amazon).cookie && config.amazon.domain !== instance.amazon.domain) config.amazon.cookie = '';
+    return config;
+  }
+
   async getConfig(): Promise<ProviderConfigurations> {
-    const startedAt = Date.now();
-    const defaults = this.createDefaultConfig();
-    const row = await this.db.query.appSettings.findFirst({
-      where: eq(schema.appSettings.key, PROVIDER_CONFIG_KEY),
+    return metadataOperationScope.getStore()?.config ?? this.readInstance();
+  }
+
+  private async resolveExternalAuthorization(accountId: number | null) {
+    const result = new Map<number, { baseUrl: string; authorization: string }>();
+    if (accountId === null || !this.defaults) return result;
+    const providers = this.httpProviders?.active() ?? [];
+    const settings = await this.defaults.readMany(
+      accountId,
+      providers.map((provider) => `external_provider_${provider.id}` as const),
+    );
+    for (const provider of providers) {
+      const baseUrl = provider.target.baseUrl;
+      const stored = this.parsePatch(settings.get(LibraryDefaultsService.key(accountId, `external_provider_${provider.id}`)));
+      if (typeof stored.authorization !== 'string' || stored.baseUrl !== baseUrl) continue;
+      const authorization = this.secrets?.decrypt(stored.authorization, provider.key);
+      if (authorization) result.set(provider.id, { baseUrl, authorization });
+    }
+    return result;
+  }
+
+  async runForAccount<T>(accountId: number | null, run: () => T): Promise<T> {
+    const [config, externalAuthorization] = await Promise.all([this.resolve(accountId), this.resolveExternalAuthorization(accountId)]);
+    const partitionKey = this.configService?.get<string>('auth.jwtSecret') ?? CACHE_PARTITION_KEY;
+    const cachePartition = createHmac('sha256', partitionKey)
+      .update(JSON.stringify(['metadata-scope-v1', accountId, config]))
+      .digest('hex');
+    return metadataOperationScope.run({ accountId, config, externalAuthorization, cachePartition }, run);
+  }
+
+  async runForLibrary<T>(libraryId: number, run: () => T): Promise<T> {
+    return this.runForAccount((await this.defaults?.ownerFor(libraryId)) ?? null, run);
+  }
+
+  async getSettingsView(accountId: number | null) {
+    const config = await this.resolve(accountId);
+    const external = new Map((this.httpProviders?.active() ?? []).map((provider) => [provider.key, provider]));
+    const personal = accountId === null ? {} : this.decode(await this.defaults?.read(accountId, 'provider_config'));
+    const sources = new Map(
+      Object.entries(CREDENTIAL_FIELDS).map(
+        ([provider, field]) =>
+          [
+            provider,
+            !asObject(config[provider as keyof ProviderConfigurations])[field]
+              ? 'not-configured'
+              : accountId === null
+                ? 'instance'
+                : asObject(personal[provider])[field]
+                  ? 'personal'
+                  : 'administrator',
+          ] as const,
+      ),
+    );
+    const personalHeaders = await this.resolveExternalAuthorization(accountId);
+    const statuses = (await this.getProviderStatuses(config)).map((status) => {
+      const provider = external.get(status.key as ExternalMetadataProviderKey);
+      const credentialSource =
+        sources.get(status.key) ??
+        (provider
+          ? personalHeaders.has(provider.id)
+            ? 'personal'
+            : provider.target.authorization
+              ? accountId === null
+                ? 'instance'
+                : 'administrator'
+              : 'not-configured'
+          : undefined);
+      return { ...status, ...(credentialSource ? { credentialSource } : {}) };
     });
-    if (!row) return defaults;
-    return this.normalizeConfig(this.parsePersistedConfig(row.value, defaults, 'get', startedAt));
+    return { config: this.mapCredentials({ ...config }, () => ''), statuses };
+  }
+
+  async setExternalAuthorization(accountId: number, key: string, authorization: string): Promise<void> {
+    const provider = this.httpProviders?.active().find((entry) => entry.key === key);
+    if (!provider) throw new BadRequestException('Provider is unavailable');
+    const setting = `external_provider_${provider.id}` as const;
+    const value = authorization.trim();
+    if (!value) return this.defaults!.remove(accountId, setting);
+    if (/[^\x20-\x7e]/.test(value)) throw new BadRequestException('Authorization must be a single HTTP header value');
+    await this.defaults!.write(
+      accountId,
+      setting,
+      JSON.stringify({
+        baseUrl: provider.target.baseUrl,
+        authorization: this.secrets!.encrypt(value),
+      }),
+    );
   }
 
   async getLinkSettings() {
@@ -363,24 +486,48 @@ export class ProviderConfigService implements OnModuleInit {
     return { amazonDomain: config.amazon.domain };
   }
 
-  async updateConfig(patch: ProviderConfigPatch): Promise<ProviderConfigurations> {
-    const startedAt = Date.now();
+  async updateConfig(patch: ProviderConfigPatch, accountId: number | null = null): Promise<ProviderConfigurations> {
+    const key = accountId === null ? PROVIDER_CONFIG_KEY : LibraryDefaultsService.key(accountId, 'provider_config');
     return this.db.transaction(async (tx) => {
-      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${PROVIDER_CONFIG_KEY})::bigint)`);
-
-      const defaults = this.createDefaultConfig();
-      const row = await tx.query.appSettings.findFirst({
-        where: eq(schema.appSettings.key, PROVIDER_CONFIG_KEY),
-      });
-      const current = row ? this.normalizeConfig(this.parsePersistedConfig(row.value, defaults, 'update', startedAt)) : defaults;
-      const next = this.normalizeConfig(this.mergeConfig(current, patch));
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${key})::bigint)`);
+      const row = await tx.query.appSettings.findFirst({ where: eq(schema.appSettings.key, key) });
+      const instance = accountId === null ? this.createDefaultConfig() : await this.readInstance();
+      const stored = this.decode(row?.value);
+      const current = accountId === null ? this.normalizeConfig(this.mergeConfig(instance, stored)) : this.resolvePersonalConfig(instance, stored);
+      const updated: Record<string, unknown> = { ...stored };
+      for (const provider of Object.keys(DEFAULT_CONFIG) as (keyof ProviderConfigurations)[]) {
+        if (patch[provider]) updated[provider] = { ...asObject(stored[provider]), ...patch[provider] };
+      }
+      if (accountId !== null) this.removeInheritedSecrets(updated);
+      const next = accountId === null ? this.normalizeConfig(this.mergeConfig(instance, updated)) : this.resolvePersonalConfig(instance, updated);
       this.validateConfig(next);
       await this.validateExternalEnableChecks(current, next);
-      const value = JSON.stringify(next);
-      await tx
-        .insert(schema.appSettings)
-        .values({ key: PROVIDER_CONFIG_KEY, value })
-        .onConflictDoUpdate({ target: schema.appSettings.key, set: { value } });
+
+      const before = this.parsePatch(row?.value);
+      // An instance save canonicalizes its stored settings. Personal saves only persist override fields.
+      const normalized =
+        accountId === null
+          ? { ...next }
+          : Object.fromEntries(
+              Object.entries(updated).map(([provider, config]) => [
+                provider,
+                Object.fromEntries(
+                  Object.keys(asObject(config)).map((field) => [field, asObject(next[provider as keyof ProviderConfigurations])[field]]),
+                ),
+              ]),
+            );
+      const value = JSON.stringify(
+        this.mapCredentials(normalized, (credential, provider) => {
+          if (!credential.trim()) return '';
+          const field = CREDENTIAL_FIELDS[provider as keyof typeof CREDENTIAL_FIELDS];
+          const previous = asObject(before[provider])[field];
+          const replacement = asObject(patch[provider as keyof ProviderConfigurations])[field];
+          if (replacement === undefined && credential === asObject(stored[provider])[field] && typeof previous === 'string') return previous;
+          if (!this.secrets) throw new BadRequestException('Provider credential encryption is unavailable');
+          return SECRET_PREFIX + this.secrets.encrypt(credential);
+        }),
+      );
+      await tx.insert(schema.appSettings).values({ key, value }).onConflictDoUpdate({ target: schema.appSettings.key, set: { value } });
       return next;
     });
   }
@@ -546,7 +693,9 @@ export class ProviderConfigService implements OnModuleInit {
     this.logger.log(`[${PROVIDER_TEST_EVENT}] [start] provider=${key} hasPatch=${patch !== undefined} - provider connection test started`);
     try {
       const current = await this.getConfig();
-      const effective = patch ? this.normalizeConfig(this.mergeConfig(current, patch)) : current;
+      const updated = patch ? this.normalizeConfig(this.mergeConfig(current, patch)) : current;
+      if (patch?.amazon?.domain && updated.amazon.domain !== current.amazon.domain && !patch.amazon.cookie) updated.amazon.cookie = '';
+      const effective = updated;
       const result = await this.runProviderTest(key, effective);
       this.logger.log(
         `[${PROVIDER_TEST_EVENT}] [end] provider=${key} durationMs=${Date.now() - startedAt} ok=${result.ok} status=${result.status} - provider connection test completed`,
@@ -555,10 +704,8 @@ export class ProviderConfigService implements OnModuleInit {
     } catch (error) {
       const durationMs = Date.now() - startedAt;
       const errorClass = error instanceof Error ? error.name : 'UnknownError';
-      const rawMessage = error instanceof Error ? error.message : String(error);
-      const message = sanitizeLogValue(rawMessage);
       this.logger.warn(
-        `[${PROVIDER_TEST_EVENT}] [fail] provider=${key} durationMs=${durationMs} errorClass=${errorClass} error="${message}" - provider connection test failed`,
+        `[${PROVIDER_TEST_EVENT}] [fail] provider=${key} durationMs=${durationMs} errorClass=${errorClass} - provider connection test failed`,
       );
       if (error instanceof BadRequestException) throw error;
       throw new BadRequestException('Failed to test provider connection');
@@ -657,12 +804,11 @@ export class ProviderConfigService implements OnModuleInit {
     };
 
     if (body.errors?.length) {
-      const firstError = body.errors[0]?.message;
       return {
         key: MetadataProviderKey.HARDCOVER,
         ok: false,
         status: 'fail',
-        message: firstError ? `Hardcover API error: ${firstError}` : 'Hardcover API returned an error.',
+        message: 'Hardcover API returned an error.',
       };
     }
 
@@ -680,7 +826,7 @@ export class ProviderConfigService implements OnModuleInit {
       key: MetadataProviderKey.HARDCOVER,
       ok: true,
       status: 'success',
-      message: `Connected as ${username}.`,
+      message: 'Hardcover accepted the credential.',
     };
   }
 }

@@ -161,7 +161,9 @@
     "methodName": "searchCovers",
     "httpMethod": "GET",
     "path": "/books/cover/search",
-    "permissions": ["Permission.LibraryEditMetadata"],
+    "permissions": [
+      "Permission.LibraryEditMetadata"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -174,7 +176,9 @@
     "methodName": "proxyImage",
     "httpMethod": "GET",
     "path": "/books/cover/proxy",
-    "permissions": ["Permission.LibraryEditMetadata"],
+    "permissions": [
+      "Permission.LibraryEditMetadata"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -187,12 +191,17 @@
     "methodName": "uploadCover",
     "httpMethod": "POST",
     "path": "/books/:id/cover",
-    "permissions": ["Permission.LibraryEditMetadata"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
-    "apiKey": "write"
+    "apiKey": "write",
+    "scopedPermission": {
+      "permission": "Permission.LibraryEditMetadata",
+      "resource": "book",
+      "param": "id"
+    }
   },
   {
     "file": "server/src/modules/cover/cover.controller.ts",
@@ -200,12 +209,17 @@
     "methodName": "uploadCoverFromUrl",
     "httpMethod": "POST",
     "path": "/books/:id/cover/from-url",
-    "permissions": ["Permission.LibraryEditMetadata"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
-    "apiKey": "write"
+    "apiKey": "write",
+    "scopedPermission": {
+      "permission": "Permission.LibraryEditMetadata",
+      "resource": "book",
+      "param": "id"
+    }
   },
   {
     "file": "server/src/modules/cover/cover.controller.ts",
@@ -213,12 +227,17 @@
     "methodName": "deleteCover",
     "httpMethod": "DELETE",
     "path": "/books/:id/cover",
-    "permissions": ["Permission.LibraryEditMetadata"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
-    "apiKey": "write"
+    "apiKey": "write",
+    "scopedPermission": {
+      "permission": "Permission.LibraryEditMetadata",
+      "resource": "book",
+      "param": "id"
+    }
   },
   {
     "file": "server/src/modules/dashboard/dashboard.controller.ts",
@@ -252,7 +271,9 @@
     "methodName": "findAll",
     "httpMethod": "GET",
     "path": "/email/admin/log",
-    "permissions": ["Permission.ManageEmail"],
+    "permissions": [
+      "Permission.ManageEmail"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -265,7 +286,9 @@
     "methodName": "findForUser",
     "httpMethod": "GET",
     "path": "/email/preferences",
-    "permissions": ["Permission.EmailSend"],
+    "permissions": [
+      "Permission.EmailSend"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -278,7 +301,9 @@
     "methodName": "upsert",
     "httpMethod": "PUT",
     "path": "/email/preferences",
-    "permissions": ["Permission.EmailSend"],
+    "permissions": [
+      "Permission.EmailSend"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -291,7 +316,9 @@
     "methodName": "findAll",
     "httpMethod": "GET",
     "path": "/email/providers",
-    "permissions": ["Permission.EmailSend"],
+    "permissions": [
+      "Permission.EmailSend"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -304,7 +331,9 @@
     "methodName": "findOne",
     "httpMethod": "GET",
     "path": "/email/providers/:id",
-    "permissions": ["Permission.EmailSend"],
+    "permissions": [
+      "Permission.EmailSend"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -317,7 +346,9 @@
     "methodName": "create",
     "httpMethod": "POST",
     "path": "/email/providers",
-    "permissions": ["Permission.ManageEmail"],
+    "permissions": [
+      "Permission.ManageEmail"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -330,7 +361,9 @@
     "methodName": "update",
     "httpMethod": "PUT",
     "path": "/email/providers/:id",
-    "permissions": ["Permission.ManageEmail"],
+    "permissions": [
+      "Permission.ManageEmail"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -343,7 +376,9 @@
     "methodName": "remove",
     "httpMethod": "DELETE",
     "path": "/email/providers/:id",
-    "permissions": ["Permission.ManageEmail"],
+    "permissions": [
+      "Permission.ManageEmail"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -356,7 +391,9 @@
     "methodName": "setDefault",
     "httpMethod": "PATCH",
     "path": "/email/providers/:id/default",
-    "permissions": ["Permission.EmailSend"],
+    "permissions": [
+      "Permission.EmailSend"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -369,7 +406,9 @@
     "methodName": "toggleShared",
     "httpMethod": "PATCH",
     "path": "/email/providers/:id/share",
-    "permissions": ["Permission.ManageEmail"],
+    "permissions": [
+      "Permission.ManageEmail"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -382,7 +421,9 @@
     "methodName": "testConnection",
     "httpMethod": "POST",
     "path": "/email/providers/:id/test",
-    "permissions": ["Permission.ManageEmail"],
+    "permissions": [
+      "Permission.ManageEmail"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -395,7 +436,9 @@
     "methodName": "setSystemProvider",
     "httpMethod": "PATCH",
     "path": "/email/providers/:id/system",
-    "permissions": ["Permission.ManageEmail"],
+    "permissions": [
+      "Permission.ManageEmail"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -408,7 +451,9 @@
     "methodName": "clearSystemProvider",
     "httpMethod": "DELETE",
     "path": "/email/providers/system",
-    "permissions": ["Permission.ManageEmail"],
+    "permissions": [
+      "Permission.ManageEmail"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -421,7 +466,9 @@
     "methodName": "findAll",
     "httpMethod": "GET",
     "path": "/email/recipient-groups",
-    "permissions": ["Permission.EmailSend"],
+    "permissions": [
+      "Permission.EmailSend"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -434,7 +481,9 @@
     "methodName": "findOne",
     "httpMethod": "GET",
     "path": "/email/recipient-groups/:id",
-    "permissions": ["Permission.EmailSend"],
+    "permissions": [
+      "Permission.EmailSend"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -447,7 +496,9 @@
     "methodName": "create",
     "httpMethod": "POST",
     "path": "/email/recipient-groups",
-    "permissions": ["Permission.EmailSend"],
+    "permissions": [
+      "Permission.EmailSend"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -460,7 +511,9 @@
     "methodName": "update",
     "httpMethod": "PUT",
     "path": "/email/recipient-groups/:id",
-    "permissions": ["Permission.EmailSend"],
+    "permissions": [
+      "Permission.EmailSend"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -473,7 +526,9 @@
     "methodName": "remove",
     "httpMethod": "DELETE",
     "path": "/email/recipient-groups/:id",
-    "permissions": ["Permission.EmailSend"],
+    "permissions": [
+      "Permission.EmailSend"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -486,7 +541,9 @@
     "methodName": "addMember",
     "httpMethod": "POST",
     "path": "/email/recipient-groups/:id/members",
-    "permissions": ["Permission.EmailSend"],
+    "permissions": [
+      "Permission.EmailSend"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -499,7 +556,9 @@
     "methodName": "removeMember",
     "httpMethod": "DELETE",
     "path": "/email/recipient-groups/:id/members/:recipientId",
-    "permissions": ["Permission.EmailSend"],
+    "permissions": [
+      "Permission.EmailSend"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -512,7 +571,9 @@
     "methodName": "findAll",
     "httpMethod": "GET",
     "path": "/email/recipients",
-    "permissions": ["Permission.EmailSend"],
+    "permissions": [
+      "Permission.EmailSend"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -525,7 +586,9 @@
     "methodName": "findOne",
     "httpMethod": "GET",
     "path": "/email/recipients/:id",
-    "permissions": ["Permission.EmailSend"],
+    "permissions": [
+      "Permission.EmailSend"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -538,7 +601,9 @@
     "methodName": "create",
     "httpMethod": "POST",
     "path": "/email/recipients",
-    "permissions": ["Permission.EmailSend"],
+    "permissions": [
+      "Permission.EmailSend"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -551,7 +616,9 @@
     "methodName": "update",
     "httpMethod": "PUT",
     "path": "/email/recipients/:id",
-    "permissions": ["Permission.EmailSend"],
+    "permissions": [
+      "Permission.EmailSend"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -564,7 +631,9 @@
     "methodName": "remove",
     "httpMethod": "DELETE",
     "path": "/email/recipients/:id",
-    "permissions": ["Permission.EmailSend"],
+    "permissions": [
+      "Permission.EmailSend"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -577,7 +646,9 @@
     "methodName": "sendTest",
     "httpMethod": "POST",
     "path": "/email/recipients/:id/test",
-    "permissions": ["Permission.EmailSend"],
+    "permissions": [
+      "Permission.EmailSend"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -590,7 +661,9 @@
     "methodName": "setDefault",
     "httpMethod": "PATCH",
     "path": "/email/recipients/:id/default",
-    "permissions": ["Permission.EmailSend"],
+    "permissions": [
+      "Permission.EmailSend"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -603,7 +676,9 @@
     "methodName": "findForUser",
     "httpMethod": "GET",
     "path": "/email/log",
-    "permissions": ["Permission.EmailSend"],
+    "permissions": [
+      "Permission.EmailSend"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -616,7 +691,9 @@
     "methodName": "summary",
     "httpMethod": "GET",
     "path": "/email/log/summary",
-    "permissions": ["Permission.EmailSend"],
+    "permissions": [
+      "Permission.EmailSend"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -629,7 +706,9 @@
     "methodName": "attention",
     "httpMethod": "GET",
     "path": "/email/log/attention",
-    "permissions": ["Permission.EmailSend"],
+    "permissions": [
+      "Permission.EmailSend"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -642,7 +721,9 @@
     "methodName": "remove",
     "httpMethod": "DELETE",
     "path": "/email/log/:id",
-    "permissions": ["Permission.EmailSend"],
+    "permissions": [
+      "Permission.EmailSend"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -655,7 +736,9 @@
     "methodName": "resend",
     "httpMethod": "POST",
     "path": "/email/log/:id/resend",
-    "permissions": ["Permission.EmailSend"],
+    "permissions": [
+      "Permission.EmailSend"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -668,7 +751,9 @@
     "methodName": "send",
     "httpMethod": "POST",
     "path": "/email/send",
-    "permissions": ["Permission.EmailSend"],
+    "permissions": [
+      "Permission.EmailSend"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -681,7 +766,9 @@
     "methodName": "quickSend",
     "httpMethod": "POST",
     "path": "/email/send/quick/:bookId",
-    "permissions": ["Permission.EmailSend"],
+    "permissions": [
+      "Permission.EmailSend"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -694,7 +781,9 @@
     "methodName": "findAll",
     "httpMethod": "GET",
     "path": "/email/templates",
-    "permissions": ["Permission.EmailSend"],
+    "permissions": [
+      "Permission.EmailSend"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,

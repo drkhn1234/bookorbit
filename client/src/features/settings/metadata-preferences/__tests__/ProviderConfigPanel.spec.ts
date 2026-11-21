@@ -116,7 +116,7 @@ describe('ProviderConfigPanel secret fields', () => {
 
     const saved = wrapper.emitted('save')?.[0]?.[0] as ProviderConfigurations
     expect(saved.google.apiKey).toBe('rotated-google-key')
-    expect(saved.hardcover.apiKey).toBe('hardcover-secret-key')
+    expect(saved.hardcover).toBeUndefined()
   })
 
   it('reflects a configuration reload back into the masked field', async () => {

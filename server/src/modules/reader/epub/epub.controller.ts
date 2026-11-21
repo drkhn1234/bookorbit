@@ -1,4 +1,4 @@
-import { BadRequestException, Controller, Get, Param, ParseIntPipe, Query, Req, Res } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Header, Param, ParseIntPipe, Query, Req, Res } from '@nestjs/common';
 import { RouteConfig } from '@nestjs/platform-fastify';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 
@@ -11,11 +11,13 @@ export class EpubController {
   constructor(private readonly epubService: EpubService) {}
 
   @Get(':bookId/info')
+  @Header('Cache-Control', 'private, no-store')
   getBookInfo(@Param('bookId', ParseIntPipe) bookId: number, @Query('fileId') fileId: string | undefined, @CurrentUser() user: RequestUser) {
     return this.epubService.getBookInfo(bookId, this.parseFileId(fileId), user);
   }
 
   @Get(':bookId/media-overlay')
+  @Header('Cache-Control', 'private, no-store')
   getMediaOverlay(@Param('bookId', ParseIntPipe) bookId: number, @Query('fileId') fileId: string | undefined, @CurrentUser() user: RequestUser) {
     return this.epubService.getMediaOverlayPlaylist(bookId, this.parseFileId(fileId), user);
   }
@@ -46,7 +48,7 @@ export class EpubController {
     reply.header('Content-Length', length);
     if (contentRange) reply.header('Content-Range', contentRange);
     if (!contentRange && size > 0) reply.header('X-Content-Length-Full', size);
-    reply.header('Cache-Control', 'private, max-age=3600');
+    reply.header('Cache-Control', 'private, no-store');
     reply.send(body);
   }
 
@@ -64,7 +66,7 @@ export class EpubController {
 
     reply.header('Content-Type', contentType);
     if (size > 0) reply.header('Content-Length', size);
-    reply.header('Cache-Control', 'public, max-age=3600');
+    reply.header('Cache-Control', 'private, no-store');
     reply.send(stream);
   }
 

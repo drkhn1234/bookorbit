@@ -1,3 +1,4 @@
+import type { RequestUser } from '../../common/types/request-user';
 import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Permission, UploadErrorCode } from '@bookorbit/types';
 import { createHash } from 'crypto';
@@ -101,7 +102,10 @@ describe('UploadSessionService', () => {
     };
     library = {
       findAccessibleLibraryIds: vi.fn(() => [1]),
-      verifyAccess: vi.fn(() => undefined),
+      verifyPermission: vi.fn((actor: RequestUser) => {
+        if (!actor.permissions.includes(Permission.LibraryUpload)) throw new ForbiddenException();
+      }),
+      hasLibraryPermission: vi.fn((actor: RequestUser) => actor.permissions.includes(Permission.LibraryUpload)),
     };
     bookDockIngest = { ingestUpload: vi.fn(() => 31) };
     libraryDocks = {

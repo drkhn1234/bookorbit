@@ -111,6 +111,13 @@ describe('ApiKeyAuthenticator', () => {
     expect(user).toMatchObject({ id: 5, permissions: [Permission.LibraryDownload], credential: { kind: 'api_key', keyId: 9 } });
   });
 
+  it('validates credentials without recording usage for read-only discovery', async () => {
+    const { authenticator, repo } = setup();
+    expect((await authenticator.authenticate(token, '10.0.0.1', false)).id).toBe(5);
+    expect(repo.findByHash).toHaveBeenCalledWith(hashApiKeyToken(token));
+    expect(repo.touchLastUsed).not.toHaveBeenCalled();
+  });
+
   it('refuses a malformed key without a query', async () => {
     const { authenticator, repo } = setup();
     const typo = token.slice(0, 10) + (token[10] === 'a' ? 'b' : 'a') + token.slice(11);

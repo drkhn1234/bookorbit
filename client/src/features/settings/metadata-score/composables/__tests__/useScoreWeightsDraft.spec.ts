@@ -12,6 +12,7 @@ let getOk = true
 let stored: Record<string, number> = { ...DEFAULT_METADATA_SCORE_WEIGHTS, tags: 5 }
 
 vi.mock('@/lib/api', () => ({
+  setOnAuthFailure: vi.fn(),
   api: vi.fn<(url: string, init?: RequestInit) => Promise<unknown>>((url, init) => {
     const method = init?.method ?? 'GET'
     requests.push({ url, method, body: init?.body ? JSON.parse(String(init.body)) : undefined })

@@ -8,14 +8,14 @@ import { useLibraryCreationRedirect } from '@/features/library/composables/useLi
 // Only opened to create a library, so it stays out of every page's first load.
 const LibraryCreatorModal = defineAsyncComponent(() => import('@/features/library/components/LibraryCreatorModal.vue'))
 
-defineProps<{ canCreate: boolean }>()
+const props = defineProps<{ canCreate: boolean }>()
 
 const { t } = useI18n()
 const { handleLibraryCreated } = useLibraryCreationRedirect()
 const createOpen = ref(false)
 
 function handleOpenCreate() {
-  createOpen.value = true
+  if (props.canCreate) createOpen.value = true
 }
 
 function handleClose() {
@@ -63,7 +63,7 @@ async function handleSaved(library: Library) {
 
         <!-- CTA -->
         <button
-          v-if="canCreate"
+          v-show="canCreate"
           class="inline-flex items-center gap-2 rounded-md bg-primary px-5 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
           @click="handleOpenCreate"
         >

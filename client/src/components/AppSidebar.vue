@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onScopeDispose, ref, watch } from 'vue'
+import { useLibraryCapabilities } from '@/features/library/composables/useLibraryCapabilities'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import { Orbit } from '@lucide/vue'
@@ -137,9 +138,11 @@ function handleNavigate() {
   if (isMobile.value) setOpenMobile(false)
 }
 
+const { canCreate: canCreateLibrary } = useLibraryCapabilities()
 const openCreateDialog = ref<SidebarListKind | null>(null)
 
 function handleAdd(section: SidebarSection) {
+  if (section.kind === 'library' && !canCreateLibrary.value) return
   openCreateDialog.value = section.kind
 }
 

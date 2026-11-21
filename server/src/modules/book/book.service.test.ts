@@ -6,6 +6,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 
 import type { RequestUser } from '../../common/types/request-user';
+import { LibraryOperationGate } from '../../common/services/library-operation-gate.service';
 import { SelfWriteRegistry } from '../../common/services/self-write-registry.service';
 import { FileWatcherService, WATCHER_DEBOUNCE_MS } from '../scanner/file-watcher.service';
 import {
@@ -185,7 +186,7 @@ function makeService(
     deleteByIdsAndInvalidateScanState: vi.fn(),
     findAllIds: vi.fn(),
     findIdsByWhere: vi.fn(),
-    findDistinctLibraryIdsByWhere: vi.fn(),
+    findDistinctLibraryIdsByWhere: vi.fn().mockResolvedValue([]),
     findCardsCollapsed: vi.fn(),
     findCardsLinkCollapsed: vi.fn(),
     hasCollapsibleLinks: vi.fn().mockResolvedValue(false),
@@ -199,6 +200,7 @@ function makeService(
   };
   const libraryService = {
     verifyAccess: vi.fn().mockResolvedValue(undefined),
+    verifyPermission: vi.fn().mockResolvedValue(undefined),
     verifyAccessLevel: vi.fn().mockResolvedValue(undefined),
     findAll: vi.fn().mockResolvedValue([]),
     findOne: vi.fn().mockResolvedValue({ readingThreshold: 1, markAsFinishedPercentComplete: 99 }),
@@ -812,6 +814,7 @@ describe('BookService', () => {
         accessibleLibraryIds: [5],
         implicitLibraryId: 5,
         userId: 12,
+        contentFilters: user.contentFilters,
         q: 'dune',
         timeZone: 'UTC',
       });
@@ -2984,8 +2987,16 @@ describe('BookService', () => {
         bufferBookMissingEvent: vi.fn(),
         bufferBooksUnavailableNotification: vi.fn(),
       };
-      const watcher = new FileWatcherService({} as never, processor as never, {} as never, scanner as never, selfWriteRegistry);
+      const watcher = new FileWatcherService(
+        {} as never,
+        processor as never,
+        {} as never,
+        scanner as never,
+        selfWriteRegistry,
+        new LibraryOperationGate(),
+      );
       (watcher as any).subscriptions.set(7, []);
+      (watcher as any).watchedLibraryPaths.set(7, ['/path/to/library']);
       let release!: () => void;
       const pending = new Promise<void>((resolve) => {
         release = resolve;
@@ -3178,7 +3189,7 @@ describe('BookService', () => {
         { id: 4, libraryId: 9 },
       ]);
       libraryService.verifyAccess.mockRejectedValue(new ForbiddenException());
-      await expect(service.deleteBooks([3, 4], makeUser())).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(service.deleteBooks([3, 4], makeUser())).rejects.toBeInstanceOf(NotFoundException);
       expect(bookRepo.findAllFilesByBookIds).not.toHaveBeenCalled();
       expect(bookRepo.deleteByIdsAndInvalidateScanState).not.toHaveBeenCalled();
       expect(mockRm).not.toHaveBeenCalled();
@@ -6740,15 +6751,18 @@ describe('BookService', () => {
       expect(bookRepo.findLibraryIdsByBookIds).not.toHaveBeenCalled();
     });
 
-    it('skips the matched-library lookup for superusers resolving a query selection for editing', async () => {
+    it('checks superuser library roles before resolving a query selection for editing', async () => {
       const { service, bookRepo, libraryService, queryBuilder } = makeService();
       const user = makeUser({ isSuperuser: true });
       libraryService.findAll.mockResolvedValue([{ id: 5 }]);
       queryBuilder.buildWhere.mockReturnValue('where-clause');
-      bookRepo.findIdsByWhere.mockResolvedValue([10, 11]);
+      bookRepo.findDistinctLibraryIdsByWhere.mockResolvedValue([5]);
+      libraryService.verifyAccessLevel.mockRejectedValue(new ForbiddenException('Insufficient library access level'));
 
-      await expect(service.resolveSelectionToIds({ query: {} }, user, 'editor')).resolves.toEqual([10, 11]);
-      expect(bookRepo.findDistinctLibraryIdsByWhere).not.toHaveBeenCalled();
+      await expect(service.resolveSelectionToIds({ query: {} }, user, 'editor')).rejects.toThrow(ForbiddenException);
+      expect(bookRepo.findDistinctLibraryIdsByWhere).toHaveBeenCalledWith('where-clause');
+      expect(libraryService.verifyAccessLevel).toHaveBeenCalledWith(user, 5, 'editor');
+      expect(bookRepo.findIdsByWhere).not.toHaveBeenCalled();
     });
 
     it('rejects explicit selections when any requested book id is missing', async () => {

@@ -1,3 +1,4 @@
+import { metadataOperationScope } from '../../common/provider-cache/metadata-operation-scope';
 import { Injectable, Logger } from '@nestjs/common';
 import type { MetadataCacheEntryStatus, MetadataCacheNamespace } from '@bookorbit/types';
 
@@ -134,7 +135,9 @@ export class ProviderOperationExecutor {
   async resolveContext(spec: ProviderCacheSpec<unknown> | undefined): Promise<ProviderCacheContext | null> {
     if (!spec) return null;
     try {
-      return await spec.context();
+      const context = await spec.context();
+      const partition = metadataOperationScope.getStore()?.cachePartition;
+      return partition ? { ...context, fingerprint: JSON.stringify([partition, context.fingerprint]) } : context;
     } catch {
       return null;
     }

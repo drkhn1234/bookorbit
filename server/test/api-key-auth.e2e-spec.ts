@@ -118,11 +118,11 @@ describe('API key authentication (e2e)', () => {
   }
 
   beforeAll(async () => {
-    ctx = await createE2EContext();
+    ctx = await createE2EContext({ isolateAppData: true });
   });
 
   afterAll(async () => {
-    await closeE2EContext(ctx);
+    if (ctx) await closeE2EContext(ctx);
   });
 
   describe('lifecycle', () => {
@@ -330,7 +330,12 @@ describe('API key authentication (e2e)', () => {
       expect((await withKey(plain.token, { method: 'GET', url: '/api/v1/audit-log' })).statusCode).toBe(403);
       for (const token of [plain.token, powerful.token]) {
         const libraries = (await withKey(token, { method: 'GET', url: '/api/v1/libraries' })).json() as Array<{ id: number }>;
-        expect(libraries.map((library) => library.id)).toContain(libraryId);
+        expect(libraries.map((library) => library.id)).not.toContain(libraryId);
+        expect((await withKey(token, { method: 'POST', url: `/api/v1/libraries/${libraryId}/books`, payload: {} })).statusCode).toBe(403);
+      }
+      await ctx.db.insert(schema.userLibraryAccess).values({ userId: admin.id, libraryId, accessLevel: 'viewer' });
+      for (const token of [plain.token, powerful.token]) {
+        expect((await withKey(token, { method: 'POST', url: `/api/v1/libraries/${libraryId}/books`, payload: {} })).statusCode).toBe(201);
       }
       expect((await withKey(powerful.token, { method: 'GET', url: '/api/v1/auth/me' })).json()).toMatchObject({ isSuperuser: true });
       expect((await withKey(powerful.token, { method: 'GET', url: '/api/v1/audit-log' })).statusCode).toBe(200);

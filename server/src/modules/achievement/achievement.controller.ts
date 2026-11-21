@@ -1,3 +1,4 @@
+import { LibraryAdministratorModeGuard } from '../../common/library-scope/library-settings-scope';
 import { Controller, Get, Header, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, UseGuards } from '@nestjs/common';
 import type { AchievementCatalogueResponse, AchievementCelebrationClaim, AchievementHintsResponse, Locale } from '@bookorbit/types';
 
@@ -45,6 +46,7 @@ export class AchievementController {
   }
 
   @Post('admin/backfill')
+  @UseGuards(LibraryAdministratorModeGuard)
   async backfill(@CurrentUser() user: RequestUser): Promise<BackfillResult> {
     return this.backfillService.runBackfill(user);
   }

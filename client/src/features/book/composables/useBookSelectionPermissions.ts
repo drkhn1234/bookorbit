@@ -1,6 +1,5 @@
 import { computed, shallowRef, watch, type Ref } from 'vue'
 import { Permission, type BookCard } from '@bookorbit/types'
-import { usePermissions } from '@/features/auth/composables/usePermissions'
 import { useLibraryPermissions } from '@/features/library/composables/useLibraryPermissions'
 import { useLibraries } from '@/features/library/composables/useLibraries'
 import { mergeDisabledReason, type MergeSelectionState } from '../lib/book-merge'
@@ -8,7 +7,6 @@ import { linkDisabledReason, type LinkSelectionState } from '../lib/book-link'
 import type { QuerySelectionState } from './useBookBulkActions'
 
 export function useBookSelectionPermissions(books: Ref<BookCard[]>, selectedIds: Ref<Set<number>>, querySelection?: Ref<QuerySelectionState | null>) {
-  const { hasPermission } = usePermissions()
   const { hasLibraryPermission, hasPermissionInAnyLibrary } = useLibraryPermissions()
   const { libraries } = useLibraries()
   const selectedLibraries = shallowRef(new Map<number, number | undefined>())
@@ -27,19 +25,21 @@ export function useBookSelectionPermissions(books: Ref<BookCard[]>, selectedIds:
     },
     { immediate: true, flush: 'sync' },
   )
-  const canEditSelectionMetadata = computed(() => {
+  function canApplyToSelection(permission: Permission): boolean {
     const query = querySelection?.value
     if (query) {
-      if (query.libraryId != null) return hasLibraryPermission(Permission.LibraryEditMetadata, query.libraryId, 'editor')
-      return (
-        libraries.value.length > 0 && libraries.value.every((library) => hasLibraryPermission(Permission.LibraryEditMetadata, library.id, 'editor'))
-      )
+      if (query.libraryId != null) return hasLibraryPermission(permission, query.libraryId, 'editor')
+      return libraries.value.length > 0 && libraries.value.every((library) => hasLibraryPermission(permission, library.id, 'editor'))
     }
     if (selectedIds.value.size === 0) return false
     return [...selectedIds.value].every(
-      (id) => selectedLibraries.value.has(id) && hasLibraryPermission(Permission.LibraryEditMetadata, selectedLibraries.value.get(id), 'editor'),
+      (id) => selectedLibraries.value.has(id) && hasLibraryPermission(permission, selectedLibraries.value.get(id), 'editor'),
     )
-  })
+  }
+
+  const canEditSelectionMetadata = computed(() => canApplyToSelection(Permission.LibraryEditMetadata))
+  const canDownloadSelection = computed(() => canApplyToSelection(Permission.LibraryDownload))
+  const canDeleteSelection = computed(() => canApplyToSelection(Permission.LibraryDeleteBooks))
 
   /**
    * Null hides Merge: no permission, or editor access to none of the selected libraries. Otherwise
@@ -47,7 +47,6 @@ export function useBookSelectionPermissions(books: Ref<BookCard[]>, selectedIds:
    * sit in different libraries, but every one of them must be editable, as for Link.
    */
   const mergeSelection = computed<MergeSelectionState | null>(() => {
-    if (!hasPermission(Permission.LibraryMergeBooks)) return null
     const query = querySelection?.value
     if (query) {
       const allowed =
@@ -79,7 +78,6 @@ export function useBookSelectionPermissions(books: Ref<BookCard[]>, selectedIds:
    * user only views, or one whose library is unknown, is offered with a reason instead.
    */
   const linkSelection = computed<LinkSelectionState | null>(() => {
-    if (!hasPermission(Permission.LibraryMergeBooks)) return null
     const query = querySelection?.value
     if (query) {
       const allowed =
@@ -94,5 +92,5 @@ export function useBookSelectionPermissions(books: Ref<BookCard[]>, selectedIds:
     return { disabledReason: linkDisabledReason({ queryScoped: false, count: selectedIds.value.size, allEditable }) }
   })
 
-  return { canEditSelectionMetadata, mergeSelection, linkSelection }
+  return { canEditSelectionMetadata, canDownloadSelection, canDeleteSelection, mergeSelection, linkSelection }
 }

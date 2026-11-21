@@ -5,7 +5,7 @@
     "methodName": "updateAccess",
     "httpMethod": "PATCH",
     "path": "/libraries/:libraryId/access/:userId",
-    "permissions": ["Permission.ManageLibraries"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -18,7 +18,7 @@
     "methodName": "revokeAccess",
     "httpMethod": "DELETE",
     "path": "/libraries/:libraryId/access/:userId",
-    "permissions": ["Permission.ManageLibraries"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -44,7 +44,9 @@
     "methodName": "listProviderRuntime",
     "httpMethod": "GET",
     "path": "/metadata-fetch/providers/runtime",
-    "permissions": ["Permission.ManageMetadataConfig"],
+    "permissions": [
+      "Permission.ManageMetadataConfig"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -70,12 +72,12 @@
     "methodName": "getGlobal",
     "httpMethod": "GET",
     "path": "/metadata-preferences/global",
-    "permissions": ["Permission.ManageMetadataConfig"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
-    "apiKey": "read"
+    "apiKey": "interactive"
   },
   {
     "file": "server/src/modules/metadata-preferences/metadata-preferences.controller.ts",
@@ -83,12 +85,12 @@
     "methodName": "setGlobal",
     "httpMethod": "PUT",
     "path": "/metadata-preferences/global",
-    "permissions": ["Permission.ManageMetadataConfig"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
-    "apiKey": "write"
+    "apiKey": "interactive"
   },
   {
     "file": "server/src/modules/metadata-preferences/metadata-preferences.controller.ts",
@@ -96,12 +98,12 @@
     "methodName": "getForLibrary",
     "httpMethod": "GET",
     "path": "/metadata-preferences/libraries/:id",
-    "permissions": ["Permission.ManageMetadataConfig"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
-    "apiKey": "read"
+    "apiKey": "interactive"
   },
   {
     "file": "server/src/modules/metadata-preferences/metadata-preferences.controller.ts",
@@ -109,12 +111,12 @@
     "methodName": "setLibraryOverrides",
     "httpMethod": "PUT",
     "path": "/metadata-preferences/libraries/:id",
-    "permissions": ["Permission.ManageMetadataConfig"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
-    "apiKey": "write"
+    "apiKey": "interactive"
   },
   {
     "file": "server/src/modules/metadata-preferences/metadata-preferences.controller.ts",
@@ -122,12 +124,12 @@
     "methodName": "resetGlobal",
     "httpMethod": "DELETE",
     "path": "/metadata-preferences/global",
-    "permissions": ["Permission.ManageMetadataConfig"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
-    "apiKey": "write"
+    "apiKey": "interactive"
   },
   {
     "file": "server/src/modules/metadata-preferences/metadata-preferences.controller.ts",
@@ -135,12 +137,12 @@
     "methodName": "resetLibraryToGlobal",
     "httpMethod": "DELETE",
     "path": "/metadata-preferences/libraries/:id",
-    "permissions": ["Permission.ManageMetadataConfig"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
-    "apiKey": "write"
+    "apiKey": "interactive"
   },
   {
     "file": "server/src/modules/metadata-preferences/provider-config.controller.ts",
@@ -148,12 +150,12 @@
     "methodName": "getConfig",
     "httpMethod": "GET",
     "path": "/metadata-preferences/providers",
-    "permissions": ["Permission.ManageMetadataConfig"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
-    "apiKey": "read"
+    "apiKey": "interactive"
   },
   {
     "file": "server/src/modules/metadata-preferences/provider-config.controller.ts",
@@ -161,12 +163,12 @@
     "methodName": "updateConfig",
     "httpMethod": "PUT",
     "path": "/metadata-preferences/providers",
-    "permissions": ["Permission.ManageMetadataConfig"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
-    "apiKey": "write"
+    "apiKey": "interactive"
   },
   {
     "file": "server/src/modules/metadata-preferences/provider-link-settings.controller.ts",
@@ -200,11 +202,15 @@
     "methodName": "updateWeights",
     "httpMethod": "PATCH",
     "path": "/metadata-score/weights",
-    "permissions": ["Permission.ManageAppSettings"],
+    "permissions": [
+      "Permission.ManageAppSettings"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "LibraryAdministratorModeGuard"
+    ],
     "apiKey": "write"
   },
   {
@@ -213,11 +219,15 @@
     "methodName": "recalculate",
     "httpMethod": "POST",
     "path": "/metadata-score/recalculate",
-    "permissions": ["Permission.ManageAppSettings"],
+    "permissions": [
+      "Permission.ManageAppSettings"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "LibraryAdministratorModeGuard"
+    ],
     "apiKey": "write"
   },
   {
@@ -226,11 +236,15 @@
     "methodName": "getRecalculationStatus",
     "httpMethod": "GET",
     "path": "/metadata-score/recalculate/status",
-    "permissions": ["Permission.ManageAppSettings"],
+    "permissions": [
+      "Permission.ManageAppSettings"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "LibraryAdministratorModeGuard"
+    ],
     "apiKey": "read"
   },
   {
@@ -239,7 +253,9 @@
     "methodName": "findAll",
     "httpMethod": "GET",
     "path": "/opds-users",
-    "permissions": ["Permission.OpdsAccess"],
+    "permissions": [
+      "Permission.OpdsAccess"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -252,7 +268,9 @@
     "methodName": "create",
     "httpMethod": "POST",
     "path": "/opds-users",
-    "permissions": ["Permission.OpdsAccess"],
+    "permissions": [
+      "Permission.OpdsAccess"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -265,7 +283,9 @@
     "methodName": "update",
     "httpMethod": "PATCH",
     "path": "/opds-users/:id",
-    "permissions": ["Permission.OpdsAccess"],
+    "permissions": [
+      "Permission.OpdsAccess"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -278,7 +298,9 @@
     "methodName": "delete",
     "httpMethod": "DELETE",
     "path": "/opds-users/:id",
-    "permissions": ["Permission.OpdsAccess"],
+    "permissions": [
+      "Permission.OpdsAccess"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -295,7 +317,10 @@
     "libraryAccess": [],
     "isPublic": true,
     "allowDefault": false,
-    "useGuards": ["OpdsEnabledGuard, OpdsAuthGuard"],
+    "useGuards": [
+      "OpdsEnabledGuard",
+      "OpdsAuthGuard"
+    ],
     "apiKey": "public"
   },
   {
@@ -308,7 +333,10 @@
     "libraryAccess": [],
     "isPublic": true,
     "allowDefault": false,
-    "useGuards": ["OpdsEnabledGuard, OpdsAuthGuard"],
+    "useGuards": [
+      "OpdsEnabledGuard",
+      "OpdsAuthGuard"
+    ],
     "apiKey": "public"
   },
   {
@@ -321,20 +349,26 @@
     "libraryAccess": [],
     "isPublic": true,
     "allowDefault": false,
-    "useGuards": ["OpdsEnabledGuard, OpdsAuthGuard"],
+    "useGuards": [
+      "OpdsEnabledGuard",
+      "OpdsAuthGuard"
+    ],
     "apiKey": "public"
   },
   {
     "file": "server/src/modules/opds/opds.controller.ts",
     "className": "OpdsController",
-    "methodName": "smart-scopes",
+    "methodName": "smartScopes",
     "httpMethod": "GET",
     "path": "/opds/smart-scopes",
     "permissions": [],
     "libraryAccess": [],
     "isPublic": true,
     "allowDefault": false,
-    "useGuards": ["OpdsEnabledGuard, OpdsAuthGuard"],
+    "useGuards": [
+      "OpdsEnabledGuard",
+      "OpdsAuthGuard"
+    ],
     "apiKey": "public"
   },
   {
@@ -347,7 +381,10 @@
     "libraryAccess": [],
     "isPublic": true,
     "allowDefault": false,
-    "useGuards": ["OpdsEnabledGuard, OpdsAuthGuard"],
+    "useGuards": [
+      "OpdsEnabledGuard",
+      "OpdsAuthGuard"
+    ],
     "apiKey": "public"
   },
   {
@@ -360,7 +397,10 @@
     "libraryAccess": [],
     "isPublic": true,
     "allowDefault": false,
-    "useGuards": ["OpdsEnabledGuard, OpdsAuthGuard"],
+    "useGuards": [
+      "OpdsEnabledGuard",
+      "OpdsAuthGuard"
+    ],
     "apiKey": "public"
   },
   {
@@ -373,7 +413,10 @@
     "libraryAccess": [],
     "isPublic": true,
     "allowDefault": false,
-    "useGuards": ["OpdsEnabledGuard, OpdsAuthGuard"],
+    "useGuards": [
+      "OpdsEnabledGuard",
+      "OpdsAuthGuard"
+    ],
     "apiKey": "public"
   },
   {
@@ -386,7 +429,10 @@
     "libraryAccess": [],
     "isPublic": true,
     "allowDefault": false,
-    "useGuards": ["OpdsEnabledGuard, OpdsAuthGuard"],
+    "useGuards": [
+      "OpdsEnabledGuard",
+      "OpdsAuthGuard"
+    ],
     "apiKey": "public"
   },
   {
@@ -399,7 +445,10 @@
     "libraryAccess": [],
     "isPublic": true,
     "allowDefault": false,
-    "useGuards": ["OpdsEnabledGuard, OpdsAuthGuard"],
+    "useGuards": [
+      "OpdsEnabledGuard",
+      "OpdsAuthGuard"
+    ],
     "apiKey": "public"
   },
   {
@@ -412,7 +461,10 @@
     "libraryAccess": [],
     "isPublic": true,
     "allowDefault": false,
-    "useGuards": ["OpdsEnabledGuard, OpdsAuthGuard"],
+    "useGuards": [
+      "OpdsEnabledGuard",
+      "OpdsAuthGuard"
+    ],
     "apiKey": "public"
   },
   {
@@ -425,7 +477,10 @@
     "libraryAccess": [],
     "isPublic": true,
     "allowDefault": false,
-    "useGuards": ["OpdsEnabledGuard, OpdsAuthGuard"],
+    "useGuards": [
+      "OpdsEnabledGuard",
+      "OpdsAuthGuard"
+    ],
     "apiKey": "public"
   },
   {
@@ -438,7 +493,10 @@
     "libraryAccess": [],
     "isPublic": true,
     "allowDefault": false,
-    "useGuards": ["OpdsEnabledGuard, OpdsAuthGuard"],
+    "useGuards": [
+      "OpdsEnabledGuard",
+      "OpdsAuthGuard"
+    ],
     "apiKey": "public"
   },
   {
@@ -451,7 +509,10 @@
     "libraryAccess": [],
     "isPublic": true,
     "allowDefault": false,
-    "useGuards": ["OpdsEnabledGuard, OpdsAuthGuard"],
+    "useGuards": [
+      "OpdsEnabledGuard",
+      "OpdsAuthGuard"
+    ],
     "apiKey": "public"
   },
   {
@@ -460,7 +521,7 @@
     "methodName": "getConfig",
     "httpMethod": "GET",
     "path": "/path/config",
-    "permissions": ["Permission.ManageLibraries"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -473,7 +534,7 @@
     "methodName": "listDirectories",
     "httpMethod": "GET",
     "path": "/path",
-    "permissions": ["Permission.ManageLibraries"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -486,7 +547,7 @@
     "methodName": "listFolder",
     "httpMethod": "GET",
     "path": "/path/listing",
-    "permissions": ["Permission.ManageLibraries"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -499,12 +560,12 @@
     "methodName": "summarize",
     "httpMethod": "POST",
     "path": "/path/summaries",
-    "permissions": ["Permission.ManageLibraries"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
-    "apiKey": "write"
+    "apiKey": "read"
   },
   {
     "file": "server/src/modules/path/path.controller.ts",
@@ -512,7 +573,7 @@
     "methodName": "inspect",
     "httpMethod": "GET",
     "path": "/path/inspect",
-    "permissions": ["Permission.ManageLibraries"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -525,7 +586,7 @@
     "methodName": "search",
     "httpMethod": "GET",
     "path": "/path/search",
-    "permissions": ["Permission.ManageLibraries"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -538,7 +599,7 @@
     "methodName": "places",
     "httpMethod": "GET",
     "path": "/path/places",
-    "permissions": ["Permission.ManageLibraries"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -551,7 +612,7 @@
     "methodName": "unclaimed",
     "httpMethod": "GET",
     "path": "/path/unclaimed",
-    "permissions": ["Permission.ManageLibraries"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -564,7 +625,22 @@
     "methodName": "createFolder",
     "httpMethod": "POST",
     "path": "/path",
-    "permissions": ["Permission.ManageLibraries"],
+    "permissions": [],
+    "libraryAccess": [],
+    "isPublic": false,
+    "allowDefault": false,
+    "useGuards": [],
+    "apiKey": "write"
+  },
+  {
+    "file": "server/src/modules/path/path.controller.ts",
+    "className": "PathController",
+    "methodName": "adoptPersonalRoot",
+    "httpMethod": "POST",
+    "path": "/path/adopt-personal-root",
+    "permissions": [
+      "Permission.ManageLibraries"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -759,7 +835,7 @@
     "methodName": "scan",
     "httpMethod": "POST",
     "path": "/scanner/libraries/:id/scan",
-    "permissions": ["Permission.ManageLibraries"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -772,12 +848,17 @@
     "methodName": "scanHistory",
     "httpMethod": "GET",
     "path": "/scanner/libraries/:id/scan-history",
-    "permissions": ["Permission.ManageLibraries"],
-    "libraryAccess": ["'viewer'"],
+    "permissions": [],
+    "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
-    "apiKey": "read"
+    "apiKey": "read",
+    "scopedPermission": {
+      "permission": "Permission.ManageLibraries",
+      "resource": "library",
+      "param": "id"
+    }
   },
   {
     "file": "server/src/modules/scanner/scanner.controller.ts",
@@ -785,12 +866,17 @@
     "methodName": "getRegexReapply",
     "httpMethod": "GET",
     "path": "/scanner/libraries/:id/reapply-regex-metadata",
-    "permissions": ["Permission.ManageLibraries"],
-    "libraryAccess": ["'editor'"],
+    "permissions": [],
+    "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
-    "apiKey": "read"
+    "apiKey": "read",
+    "scopedPermission": {
+      "permission": "Permission.ManageLibraries",
+      "resource": "library",
+      "param": "id"
+    }
   },
   {
     "file": "server/src/modules/scanner/scanner.controller.ts",
@@ -798,12 +884,17 @@
     "methodName": "reapplyRegexMetadata",
     "httpMethod": "POST",
     "path": "/scanner/libraries/:id/reapply-regex-metadata",
-    "permissions": ["Permission.ManageLibraries"],
-    "libraryAccess": ["'editor'"],
+    "permissions": [],
+    "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
-    "apiKey": "write"
+    "apiKey": "write",
+    "scopedPermission": {
+      "permission": "Permission.ManageLibraries",
+      "resource": "library",
+      "param": "id"
+    }
   },
   {
     "file": "server/src/modules/scanner/scanner.controller.ts",
@@ -811,12 +902,17 @@
     "methodName": "refreshCovers",
     "httpMethod": "POST",
     "path": "/scanner/libraries/:id/refresh-covers",
-    "permissions": ["Permission.ManageLibraries"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
-    "apiKey": "write"
+    "apiKey": "write",
+    "scopedPermission": {
+      "permission": "Permission.ManageLibraries",
+      "resource": "library",
+      "param": "id"
+    }
   },
   {
     "file": "server/src/modules/book-dock/book-dock.controller.ts",
@@ -824,11 +920,26 @@
     "methodName": "listFiles",
     "httpMethod": "GET",
     "path": "/book-dock/files",
-    "permissions": ["Permission.BookDockAccess"],
+    "permissions": [
+      "Permission.BookDockAccess"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
     "apiKey": "read"
+  },
+  {
+    "file": "server/src/modules/metadata-preferences/provider-config.controller.ts",
+    "className": "ProviderConfigController",
+    "methodName": "setExternalAuthorization",
+    "httpMethod": "PUT",
+    "path": "/metadata-preferences/providers/external/:key",
+    "permissions": [],
+    "libraryAccess": [],
+    "isPublic": false,
+    "allowDefault": false,
+    "useGuards": [],
+    "apiKey": "interactive"
   }
 ]

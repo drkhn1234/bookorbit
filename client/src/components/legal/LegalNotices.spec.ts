@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 
@@ -20,6 +20,8 @@ describe('LegalNotices', () => {
     useLegalNotices().closeLegalNotices()
   })
 
+  afterEach(() => vi.unstubAllEnvs())
+
   it('keeps the legal notice available without authentication or elevated permission', async () => {
     const wrapper = mount(LegalNotices)
 
@@ -32,7 +34,9 @@ describe('LegalNotices', () => {
     expect(wrapper.get('.legal-dialog').text()).toContain('provided without warranty')
   })
 
-  it('links attribution, source, license, and additional terms to the project', async () => {
+  it('links to the exact build revision while preserving project attribution and terms', async () => {
+    const revision = 'dbc66c81dfb89ecb859e14a698426bc31457dfbe'
+    vi.stubEnv('VITE_BUILD_SOURCE_REVISION', revision)
     const wrapper = mount(LegalNotices)
     useLegalNotices().openLegalNotices()
     await nextTick()
@@ -40,10 +44,21 @@ describe('LegalNotices', () => {
     const links = wrapper.findAll('a')
     expect(links.map((link) => link.attributes('href'))).toEqual([
       'https://github.com/bookorbit/bookorbit',
-      'https://github.com/bookorbit/bookorbit',
+      `https://github.com/no39utopia/bookorbit/tree/${revision}`,
       'https://github.com/bookorbit/bookorbit/blob/main/LICENSE',
       'https://github.com/bookorbit/bookorbit/blob/main/ADDITIONAL_TERMS.md',
     ])
+  })
+
+  it.each([undefined, 'invalid'])('links to the fork branch without an exact revision (%s)', async (revision) => {
+    vi.stubEnv('VITE_BUILD_SOURCE_REVISION', revision)
+    const wrapper = mount(LegalNotices)
+    useLegalNotices().openLegalNotices()
+    await nextTick()
+
+    expect(wrapper.findAll('a')[1]?.attributes('href')).toBe(
+      'https://github.com/no39utopia/bookorbit/tree/feature/upstream-personal-libraries-scoped-settings',
+    )
   })
 
   it('uses an inline linked attribution on public pages', async () => {

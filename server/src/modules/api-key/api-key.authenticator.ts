@@ -68,10 +68,10 @@ export class ApiKeyAuthenticator {
     private readonly limiter: ApiKeyFailureLimiter,
   ) {}
 
-  async authenticate(token: string, address: string | null): Promise<RequestUser> {
+  async authenticate(token: string, address: string | null, recordUsage = true): Promise<RequestUser> {
     this.limiter.assertNotBlocked(address);
     try {
-      return await this.verify(token, address);
+      return await this.verify(token, address, recordUsage);
     } catch (err) {
       if (err instanceof ApiKeyRefusal) {
         this.limiter.recordFailure(address);
@@ -99,7 +99,7 @@ export class ApiKeyAuthenticator {
     return narrowToApiKey(owner, key);
   }
 
-  private async verify(token: string, address: string | null): Promise<RequestUser> {
+  private async verify(token: string, address: string | null, recordUsage: boolean): Promise<RequestUser> {
     if (!hasValidApiKeyChecksum(token)) throw new ApiKeyRefusal('malformed', null);
 
     const settings = await this.appSettings.getApiKeySettings();
@@ -115,11 +115,14 @@ export class ApiKeyAuthenticator {
     if (!owner) throw new ApiKeyRefusal('owner_inactive', key.id);
     if (!this.permissions.userHas(owner, Permission.ApiKeys)) throw new ApiKeyRefusal('owner_not_permitted', key.id);
 
-    this.repo.touchLastUsed(key.id, address).catch((err: unknown) => {
-      const errorClass = err instanceof Error ? err.constructor.name : 'Error';
-      const error = err instanceof Error ? err.message : String(err);
-      this.logger.warn(`[api-key.touch] [fail] keyId=${key.id} errorClass=${errorClass} error="${sanitizeLogValue(error)}" - last use not recorded`);
-    });
+    if (recordUsage)
+      this.repo.touchLastUsed(key.id, address).catch((err: unknown) => {
+        const errorClass = err instanceof Error ? err.constructor.name : 'Error';
+        const error = err instanceof Error ? err.message : String(err);
+        this.logger.warn(
+          `[api-key.touch] [fail] keyId=${key.id} errorClass=${errorClass} error="${sanitizeLogValue(error)}" - last use not recorded`,
+        );
+      });
 
     return narrowToApiKey(owner, key);
   }

@@ -17,10 +17,13 @@ import {
 } from 'drizzle-orm/pg-core';
 import { FieldPreferenceOverrides, BookMetadataFetchConfigOverride, AddedAtSource, RegexMetadataConfig } from '@bookorbit/types';
 
+import { users } from './auth';
+
 export const libraries = pgTable(
   'libraries',
   {
     id: serial('id').primaryKey(),
+    configurationOwnerId: integer('configuration_owner_id').references(() => users.id, { onDelete: 'set null' }),
     name: varchar('name', { length: 255 }).notNull(),
     icon: varchar('icon', { length: 100 }),
     displayOrder: integer('display_order').notNull().default(0),

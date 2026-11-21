@@ -1,8 +1,9 @@
 import { ref } from 'vue'
 import type { MetadataProviderKey, ProviderThrottleRuntimeSnapshot, ProviderThrottleRuntimeState } from '@bookorbit/types'
-import { api } from '@/lib/api'
+import { useLibrarySettingsApi } from '@/features/settings/composables/useLibrarySettingsMode'
 
 export function useProviderThrottleRuntime() {
+  const api = useLibrarySettingsApi()
   const snapshot = ref<ProviderThrottleRuntimeSnapshot | null>(null)
   const runtimeByKey = ref<Partial<Record<MetadataProviderKey, ProviderThrottleRuntimeState>>>({})
   const loading = ref(false)

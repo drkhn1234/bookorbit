@@ -96,12 +96,13 @@ describe('BulkRunJobSource', () => {
     expect(registry.get('bulk-run')).toBe(source);
   });
 
-  it("lets editors see their own runs and app settings managers see everyone's", () => {
+  it("lets accounts see their own runs and app settings managers see everyone's", () => {
     const { source } = makeSource();
     expect(source.access(editor)).toEqual({ own: true, all: false });
-    expect(source.access(manager)).toEqual({ own: false, all: true });
+    expect(source.access(manager)).toEqual({ own: true, all: true });
     expect(source.access(admin)).toEqual({ own: true, all: true });
-    expect(source.access(user(5))).toEqual({ own: false, all: false });
+    expect(source.access(user(5))).toEqual({ own: true, all: false });
+    expect(source.access(user(6, [Permission.DemoRestricted]))).toEqual({ own: false, all: false });
   });
 
   it("shows a waiting run with its place in its account's line", async () => {

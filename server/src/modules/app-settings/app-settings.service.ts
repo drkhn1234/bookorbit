@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { ConfigService, type ConfigType } from '@nestjs/config';
 
 import {
@@ -35,6 +35,34 @@ import { ensureSafeUrl } from '../../common/utils/ssrf.utils';
 import { DEFAULT_MAX_UPLOAD_SIZE_MB, HARD_MAX_UPLOAD_SIZE_MB } from '../../common/constants/upload.constants';
 import { AppSettingsRepository } from './app-settings.repository';
 
+import {
+  BUILTIN_PROVIDER_CONFIG_KEY,
+  PERSONAL_LIBRARY_SETTING_PREFIX,
+  LibraryDefaultsService,
+} from '../../common/library-scope/library-defaults.service';
+
+const NAMING_SETTINGS = {
+  'upload-pattern': [APP_SETTING_KEYS.UPLOAD_FILE_PATTERN, 'upload_pattern', DEFAULT_UPLOAD_PATTERN_BOOK_PER_FILE],
+  'upload-pattern-folder': [APP_SETTING_KEYS.UPLOAD_FILE_PATTERN_BOOK_PER_FOLDER, 'folder_pattern', DEFAULT_UPLOAD_PATTERN_BOOK_PER_FOLDER],
+  'download-pattern': [APP_SETTING_KEYS.DOWNLOAD_FILE_PATTERN, 'download_pattern', DEFAULT_DOWNLOAD_PATTERN],
+} as const;
+const SCOPED_SETTING_KEYS = new Set<string>([
+  BUILTIN_PROVIDER_CONFIG_KEY,
+  APP_SETTING_KEYS.METADATA_SCORE_WEIGHTS,
+  APP_SETTING_KEYS.AUTHORS_AUTO_ENRICHMENT_ENABLED,
+  APP_SETTING_KEYS.AUTHORS_AUTO_ENRICHMENT_WRITE_MODE,
+  APP_SETTING_KEYS.AUTHORS_AUTO_ENRICHMENT_CONFIG,
+  APP_SETTING_KEYS.AUTHORS_PROVIDER_AUDNEXUS_ENABLED,
+  APP_SETTING_KEYS.AUTHORS_ENRICHMENT_PAUSED,
+  APP_SETTING_KEYS.AUTHORS_METADATA_PREFERENCES,
+  'metadata_fetch_preferences',
+  'metadata_cache_config',
+  'book_metadata_fetch_config',
+  'book_metadata_fetch_paused',
+  ...Object.values(NAMING_SETTINGS).map(([key]) => key),
+]);
+export type NamingSetting = keyof typeof NAMING_SETTINGS;
+
 const OIDC_TEST_TIMEOUT_MS = 10_000;
 const RUNTIME_SETTING_CACHE_TTL_MS = 30_000;
 
@@ -69,6 +97,7 @@ export class AppSettingsService {
     private readonly repo: AppSettingsRepository,
     private readonly config: ConfigService,
     @Inject(storageConfig.KEY) private readonly storage: ConfigType<typeof storageConfig>,
+    @Optional() private readonly libraryDefaults?: LibraryDefaultsService,
   ) {}
 
   listSettings() {
@@ -92,6 +121,9 @@ export class AppSettingsService {
   }
 
   async update(key: string, value: string) {
+    if (key.startsWith(PERSONAL_LIBRARY_SETTING_PREFIX) || SCOPED_SETTING_KEYS.has(key)) {
+      throw new BadRequestException('Use the scoped library settings endpoints');
+    }
     if (BOOK_DOCK_MANAGED_SETTING_KEYS.includes(key)) {
       throw new BadRequestException(`Setting '${key}' is managed by the Library Dock endpoints and cannot be written here`);
     }
@@ -203,27 +235,53 @@ export class AppSettingsService {
       : DEFAULT_BOOK_REQUEST_AUTOMATION_SETTINGS.importFormats;
   }
 
-  async getUploadPattern(): Promise<string> {
-    const row = await this.repo.findByKey(APP_SETTING_KEYS.UPLOAD_FILE_PATTERN);
-    return row?.value ?? DEFAULT_UPLOAD_PATTERN_BOOK_PER_FILE;
+  async getNamingDefault(kind: NamingSetting, accountId: number | null): Promise<string> {
+    const [key, personalKey, fallback] = NAMING_SETTINGS[kind];
+    const personal = accountId == null ? undefined : await this.libraryDefaults?.read(accountId, personalKey);
+    return personal ?? (await this.repo.findByKey(key))?.value ?? fallback;
+  }
+
+  async setNamingDefault(kind: NamingSetting, accountId: number | null, pattern: string): Promise<void> {
+    const [key, personalKey] = NAMING_SETTINGS[kind];
+    if (accountId === null) await this.repo.upsert(key, pattern);
+    else await this.libraryDefaults!.write(accountId, personalKey, pattern);
+  }
+
+  async getLibraryNamingDefault(libraryId: number, kind: NamingSetting, accountId: number | null) {
+    const configurationOwner = (await this.libraryDefaults?.ownerFor(libraryId)) ?? null;
+    return {
+      pattern: await this.getNamingDefault(kind, configurationOwner),
+      followsSelectedDefaults: configurationOwner === accountId,
+    };
+  }
+
+  async resetPersonalNamingDefault(kind: NamingSetting, accountId: number): Promise<void> {
+    await this.libraryDefaults!.remove(accountId, NAMING_SETTINGS[kind][1]);
+  }
+
+  private async libraryNamingDefault(kind: NamingSetting, libraryId?: number): Promise<string> {
+    const ownerId = libraryId == null ? null : ((await this.libraryDefaults?.ownerFor(libraryId)) ?? null);
+    return this.getNamingDefault(kind, ownerId);
+  }
+
+  getUploadPattern(libraryId?: number): Promise<string> {
+    return this.libraryNamingDefault('upload-pattern', libraryId);
   }
 
   async setUploadPattern(pattern: string): Promise<void> {
     await this.repo.upsert(APP_SETTING_KEYS.UPLOAD_FILE_PATTERN, pattern);
   }
 
-  async getUploadPatternBookPerFolder(): Promise<string> {
-    const row = await this.repo.findByKey(APP_SETTING_KEYS.UPLOAD_FILE_PATTERN_BOOK_PER_FOLDER);
-    return row?.value ?? DEFAULT_UPLOAD_PATTERN_BOOK_PER_FOLDER;
+  getUploadPatternBookPerFolder(libraryId?: number): Promise<string> {
+    return this.libraryNamingDefault('upload-pattern-folder', libraryId);
   }
 
   async setUploadPatternBookPerFolder(pattern: string): Promise<void> {
     await this.repo.upsert(APP_SETTING_KEYS.UPLOAD_FILE_PATTERN_BOOK_PER_FOLDER, pattern);
   }
 
-  async getDownloadPattern(): Promise<string> {
-    const row = await this.repo.findByKey(APP_SETTING_KEYS.DOWNLOAD_FILE_PATTERN);
-    return row?.value ?? DEFAULT_DOWNLOAD_PATTERN;
+  getDownloadPattern(libraryId?: number): Promise<string> {
+    return this.libraryNamingDefault('download-pattern', libraryId);
   }
 
   async setDownloadPattern(pattern: string): Promise<void> {

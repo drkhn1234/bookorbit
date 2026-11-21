@@ -1,3 +1,5 @@
+import { UseGuards } from '@nestjs/common';
+import { LibraryAdministratorModeGuard } from '../../common/library-scope/library-settings-scope';
 import {
   Body,
   Controller,
@@ -32,24 +34,28 @@ export class CustomMetadataController {
 
   @Get('fields')
   @RequirePermission(Permission.ManageLibraries)
+  @UseGuards(LibraryAdministratorModeGuard)
   listFields(@Query('includeArchived', new DefaultValuePipe(false), ParseBoolPipe) includeArchived: boolean) {
     return this.service.listFields(includeArchived);
   }
 
   @Post('fields')
   @RequirePermission(Permission.ManageLibraries)
+  @UseGuards(LibraryAdministratorModeGuard)
   createField(@Body() dto: CreateCustomMetadataFieldDto) {
     return this.service.createField(dto);
   }
 
   @Patch('fields/reorder')
   @RequirePermission(Permission.ManageLibraries)
+  @UseGuards(LibraryAdministratorModeGuard)
   reorderFields(@Body() dto: ReorderCustomMetadataFieldsDto) {
     return this.service.reorderFields(dto.orderedIds);
   }
 
   @Patch('fields/:id')
   @RequirePermission(Permission.ManageLibraries)
+  @UseGuards(LibraryAdministratorModeGuard)
   updateField(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateCustomMetadataFieldDto) {
     return this.service.updateField(id, dto);
   }
@@ -57,6 +63,7 @@ export class CustomMetadataController {
   @Delete('fields/:id')
   @HttpCode(HttpStatus.NO_CONTENT)
   @RequirePermission(Permission.ManageLibraries)
+  @UseGuards(LibraryAdministratorModeGuard)
   archiveField(@Param('id', ParseIntPipe) id: number) {
     return this.service.archiveField(id);
   }
@@ -64,6 +71,7 @@ export class CustomMetadataController {
   @Post('fields/:id/restore')
   @HttpCode(HttpStatus.NO_CONTENT)
   @RequirePermission(Permission.ManageLibraries)
+  @UseGuards(LibraryAdministratorModeGuard)
   restoreField(@Param('id', ParseIntPipe) id: number) {
     return this.service.restoreField(id);
   }
@@ -71,6 +79,7 @@ export class CustomMetadataController {
   @Delete('fields/:id/permanent')
   @HttpCode(HttpStatus.NO_CONTENT)
   @RequirePermission(Permission.ManageLibraries)
+  @UseGuards(LibraryAdministratorModeGuard)
   deleteFieldPermanently(@Param('id', ParseIntPipe) id: number) {
     return this.service.deleteField(id);
   }

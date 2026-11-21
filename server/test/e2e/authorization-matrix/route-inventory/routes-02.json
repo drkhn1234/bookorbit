@@ -44,7 +44,9 @@
     "methodName": "refreshEnrichment",
     "httpMethod": "POST",
     "path": "/authors/:id/enrichment/refresh",
-    "permissions": ["Permission.LibraryEditMetadata"],
+    "permissions": [
+      "Permission.LibraryEditMetadata"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -57,7 +59,9 @@
     "methodName": "pinMetadataMatch",
     "httpMethod": "PUT",
     "path": "/authors/:id/metadata-match",
-    "permissions": ["Permission.LibraryEditMetadata"],
+    "permissions": [
+      "Permission.LibraryEditMetadata"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -70,7 +74,9 @@
     "methodName": "unpinMetadataMatch",
     "httpMethod": "DELETE",
     "path": "/authors/:id/metadata-match",
-    "permissions": ["Permission.LibraryEditMetadata"],
+    "permissions": [
+      "Permission.LibraryEditMetadata"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -83,7 +89,9 @@
     "methodName": "update",
     "httpMethod": "PATCH",
     "path": "/authors/:id",
-    "permissions": ["Permission.LibraryEditMetadata"],
+    "permissions": [
+      "Permission.LibraryEditMetadata"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -96,7 +104,9 @@
     "methodName": "merge",
     "httpMethod": "POST",
     "path": "/authors/merge",
-    "permissions": ["Permission.LibraryEditMetadata"],
+    "permissions": [
+      "Permission.LibraryEditMetadata"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -109,7 +119,9 @@
     "methodName": "delete",
     "httpMethod": "DELETE",
     "path": "/authors",
-    "permissions": ["Permission.LibraryEditMetadata"],
+    "permissions": [
+      "Permission.LibraryEditMetadata"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -122,11 +134,15 @@
     "methodName": "embedAll",
     "httpMethod": "POST",
     "path": "/books/embed-all",
-    "permissions": ["Permission.ManageAppSettings"],
+    "permissions": [
+      "Permission.ManageAppSettings"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "LibraryAdministratorModeGuard"
+    ],
     "apiKey": "write"
   },
   {
@@ -135,7 +151,7 @@
     "methodName": "deleteBooks",
     "httpMethod": "DELETE",
     "path": "/books",
-    "permissions": ["Permission.LibraryDeleteBooks"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -174,7 +190,7 @@
     "methodName": "bulkRefreshMetadata",
     "httpMethod": "POST",
     "path": "/books/bulk-refresh-metadata",
-    "permissions": ["Permission.LibraryEditMetadata"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -187,7 +203,7 @@
     "methodName": "bulkReExtractCover",
     "httpMethod": "POST",
     "path": "/books/bulk-re-extract-cover",
-    "permissions": ["Permission.LibraryEditMetadata"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -200,7 +216,7 @@
     "methodName": "bulkEmbedAudioCover",
     "httpMethod": "POST",
     "path": "/books/bulk-embed-audio-cover",
-    "permissions": ["Permission.LibraryEditMetadata"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -213,12 +229,17 @@
     "methodName": "reExtractCover",
     "httpMethod": "POST",
     "path": "/books/:id/re-extract-cover",
-    "permissions": ["Permission.LibraryEditMetadata"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
-    "apiKey": "write"
+    "apiKey": "write",
+    "scopedPermission": {
+      "permission": "Permission.LibraryEditMetadata",
+      "resource": "book",
+      "param": "id"
+    }
   },
   {
     "file": "server/src/modules/book/book.controller.ts",
@@ -226,7 +247,9 @@
     "methodName": "embedAudioCover",
     "httpMethod": "POST",
     "path": "/books/:id/embed-audio-cover",
-    "permissions": ["Permission.LibraryEditMetadata"],
+    "permissions": [
+      "Permission.LibraryEditMetadata"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -239,7 +262,7 @@
     "methodName": "exportBooks",
     "httpMethod": "POST",
     "path": "/books/export",
-    "permissions": ["Permission.LibraryDownload"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -343,12 +366,17 @@
     "methodName": "renameFile",
     "httpMethod": "PATCH",
     "path": "/books/files/:fileId",
-    "permissions": ["Permission.LibraryEditMetadata"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
-    "apiKey": "write"
+    "apiKey": "write",
+    "scopedPermission": {
+      "permission": "Permission.LibraryEditMetadata",
+      "resource": "file",
+      "param": "fileId"
+    }
   },
   {
     "file": "server/src/modules/book/book.controller.ts",
@@ -356,12 +384,17 @@
     "methodName": "deleteFile",
     "httpMethod": "DELETE",
     "path": "/books/files/:fileId",
-    "permissions": ["Permission.LibraryDeleteBooks"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
-    "apiKey": "write"
+    "apiKey": "write",
+    "scopedPermission": {
+      "permission": "Permission.LibraryDeleteBooks",
+      "resource": "file",
+      "param": "fileId"
+    }
   },
   {
     "file": "server/src/modules/audiobook/audiobook.controller.ts",
@@ -499,12 +532,17 @@
     "methodName": "save",
     "httpMethod": "PUT",
     "path": "/books/:bookId/chapters",
-    "permissions": ["Permission.LibraryEditMetadata"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
-    "apiKey": "write"
+    "apiKey": "write",
+    "scopedPermission": {
+      "permission": "Permission.LibraryEditMetadata",
+      "resource": "book",
+      "param": "bookId"
+    }
   },
   {
     "file": "server/src/modules/chapter-editor/chapter-editor.controller.ts",
@@ -512,12 +550,17 @@
     "methodName": "revert",
     "httpMethod": "POST",
     "path": "/books/:bookId/chapters/revert",
-    "permissions": ["Permission.LibraryEditMetadata"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
-    "apiKey": "write"
+    "apiKey": "write",
+    "scopedPermission": {
+      "permission": "Permission.LibraryEditMetadata",
+      "resource": "book",
+      "param": "bookId"
+    }
   },
   {
     "file": "server/src/modules/chapter-editor/chapter-editor.controller.ts",
@@ -525,12 +568,17 @@
     "methodName": "writeToFiles",
     "httpMethod": "POST",
     "path": "/books/:bookId/chapters/write",
-    "permissions": ["Permission.LibraryEditMetadata"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
-    "apiKey": "write"
+    "apiKey": "write",
+    "scopedPermission": {
+      "permission": "Permission.LibraryEditMetadata",
+      "resource": "book",
+      "param": "bookId"
+    }
   },
   {
     "file": "server/src/modules/chapter-editor/chapter-editor.controller.ts",
@@ -538,12 +586,17 @@
     "methodName": "readEmbedded",
     "httpMethod": "GET",
     "path": "/books/:bookId/chapters/embedded",
-    "permissions": ["Permission.LibraryEditMetadata"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
-    "apiKey": "read"
+    "apiKey": "read",
+    "scopedPermission": {
+      "permission": "Permission.LibraryEditMetadata",
+      "resource": "book",
+      "param": "bookId"
+    }
   },
   {
     "file": "server/src/modules/chapter-editor/chapter-editor.controller.ts",
@@ -551,12 +604,17 @@
     "methodName": "startWrite",
     "httpMethod": "POST",
     "path": "/books/:bookId/chapters/jobs/write",
-    "permissions": ["Permission.LibraryEditMetadata"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
-    "apiKey": "write"
+    "apiKey": "write",
+    "scopedPermission": {
+      "permission": "Permission.LibraryEditMetadata",
+      "resource": "book",
+      "param": "bookId"
+    }
   },
   {
     "file": "server/src/modules/chapter-editor/chapter-editor.controller.ts",
@@ -564,12 +622,17 @@
     "methodName": "startRead",
     "httpMethod": "POST",
     "path": "/books/:bookId/chapters/jobs/read",
-    "permissions": ["Permission.LibraryEditMetadata"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
-    "apiKey": "write"
+    "apiKey": "write",
+    "scopedPermission": {
+      "permission": "Permission.LibraryEditMetadata",
+      "resource": "book",
+      "param": "bookId"
+    }
   },
   {
     "file": "server/src/modules/chapter-editor/chapter-editor.controller.ts",
@@ -577,12 +640,17 @@
     "methodName": "startRevert",
     "httpMethod": "POST",
     "path": "/books/:bookId/chapters/jobs/revert",
-    "permissions": ["Permission.LibraryEditMetadata"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
-    "apiKey": "write"
+    "apiKey": "write",
+    "scopedPermission": {
+      "permission": "Permission.LibraryEditMetadata",
+      "resource": "book",
+      "param": "bookId"
+    }
   },
   {
     "file": "server/src/modules/chapter-editor/chapter-editor.controller.ts",
@@ -590,12 +658,17 @@
     "methodName": "latestJob",
     "httpMethod": "GET",
     "path": "/books/:bookId/chapters/jobs",
-    "permissions": ["Permission.LibraryEditMetadata"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
-    "apiKey": "read"
+    "apiKey": "read",
+    "scopedPermission": {
+      "permission": "Permission.LibraryEditMetadata",
+      "resource": "book",
+      "param": "bookId"
+    }
   },
   {
     "file": "server/src/modules/chapter-editor/chapter-editor.controller.ts",
@@ -603,12 +676,17 @@
     "methodName": "jobStatus",
     "httpMethod": "GET",
     "path": "/books/:bookId/chapters/jobs/:jobId",
-    "permissions": ["Permission.LibraryEditMetadata"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
-    "apiKey": "read"
+    "apiKey": "read",
+    "scopedPermission": {
+      "permission": "Permission.LibraryEditMetadata",
+      "resource": "book",
+      "param": "bookId"
+    }
   },
   {
     "file": "server/src/modules/chapter-editor/chapter-editor.controller.ts",
@@ -616,12 +694,17 @@
     "methodName": "lookup",
     "httpMethod": "GET",
     "path": "/books/:bookId/chapters/lookup",
-    "permissions": ["Permission.LibraryEditMetadata"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
-    "apiKey": "read"
+    "apiKey": "read",
+    "scopedPermission": {
+      "permission": "Permission.LibraryEditMetadata",
+      "resource": "book",
+      "param": "bookId"
+    }
   },
   {
     "file": "server/src/modules/chapter-editor/chapter-editor.controller.ts",
@@ -629,12 +712,17 @@
     "methodName": "readEbook",
     "httpMethod": "GET",
     "path": "/books/:bookId/chapters/ebook",
-    "permissions": ["Permission.LibraryEditMetadata"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
-    "apiKey": "read"
+    "apiKey": "read",
+    "scopedPermission": {
+      "permission": "Permission.LibraryEditMetadata",
+      "resource": "book",
+      "param": "bookId"
+    }
   },
   {
     "file": "server/src/modules/chapter-editor/chapter-editor.controller.ts",
@@ -642,12 +730,17 @@
     "methodName": "analyze",
     "httpMethod": "POST",
     "path": "/books/:bookId/chapters/analyze",
-    "permissions": ["Permission.LibraryEditMetadata"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
-    "apiKey": "write"
+    "apiKey": "write",
+    "scopedPermission": {
+      "permission": "Permission.LibraryEditMetadata",
+      "resource": "book",
+      "param": "bookId"
+    }
   },
   {
     "file": "server/src/modules/chapter-editor/chapter-editor.controller.ts",
@@ -655,12 +748,17 @@
     "methodName": "waveform",
     "httpMethod": "GET",
     "path": "/books/:bookId/chapters/waveform",
-    "permissions": ["Permission.LibraryEditMetadata"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
-    "apiKey": "read"
+    "apiKey": "read",
+    "scopedPermission": {
+      "permission": "Permission.LibraryEditMetadata",
+      "resource": "book",
+      "param": "bookId"
+    }
   },
   {
     "file": "server/src/modules/chapter-editor/chapter-editor.controller.ts",
@@ -668,12 +766,17 @@
     "methodName": "listVersions",
     "httpMethod": "GET",
     "path": "/books/:bookId/chapters/versions",
-    "permissions": ["Permission.LibraryEditMetadata"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
-    "apiKey": "read"
+    "apiKey": "read",
+    "scopedPermission": {
+      "permission": "Permission.LibraryEditMetadata",
+      "resource": "book",
+      "param": "bookId"
+    }
   },
   {
     "file": "server/src/modules/chapter-editor/chapter-editor.controller.ts",
@@ -681,12 +784,17 @@
     "methodName": "getVersion",
     "httpMethod": "GET",
     "path": "/books/:bookId/chapters/versions/:versionId",
-    "permissions": ["Permission.LibraryEditMetadata"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
-    "apiKey": "read"
+    "apiKey": "read",
+    "scopedPermission": {
+      "permission": "Permission.LibraryEditMetadata",
+      "resource": "book",
+      "param": "bookId"
+    }
   },
   {
     "file": "server/src/modules/book/book.controller.ts",
@@ -694,12 +802,17 @@
     "methodName": "updateMetadata",
     "httpMethod": "PATCH",
     "path": "/books/:id/metadata",
-    "permissions": ["Permission.LibraryEditMetadata"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
-    "apiKey": "write"
+    "apiKey": "write",
+    "scopedPermission": {
+      "permission": "Permission.LibraryEditMetadata",
+      "resource": "book",
+      "param": "id"
+    }
   },
   {
     "file": "server/src/modules/book/book.controller.ts",
@@ -707,12 +820,17 @@
     "methodName": "updateMetadataLocks",
     "httpMethod": "PATCH",
     "path": "/books/:id/metadata-locks",
-    "permissions": ["Permission.LibraryEditMetadata"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
-    "apiKey": "write"
+    "apiKey": "write",
+    "scopedPermission": {
+      "permission": "Permission.LibraryEditMetadata",
+      "resource": "book",
+      "param": "id"
+    }
   },
   {
     "file": "server/src/modules/book/book.controller.ts",
@@ -720,12 +838,17 @@
     "methodName": "refreshMetadata",
     "httpMethod": "POST",
     "path": "/books/:id/refresh-metadata",
-    "permissions": ["Permission.LibraryEditMetadata"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
-    "apiKey": "write"
+    "apiKey": "write",
+    "scopedPermission": {
+      "permission": "Permission.LibraryEditMetadata",
+      "resource": "book",
+      "param": "id"
+    }
   },
   {
     "file": "server/src/modules/book/book.controller.ts",
@@ -733,12 +856,17 @@
     "methodName": "getIsbnCandidates",
     "httpMethod": "GET",
     "path": "/books/:id/isbn-candidates",
-    "permissions": ["Permission.LibraryEditMetadata"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
-    "apiKey": "read"
+    "apiKey": "read",
+    "scopedPermission": {
+      "permission": "Permission.LibraryEditMetadata",
+      "resource": "book",
+      "param": "id"
+    }
   },
   {
     "file": "server/src/modules/book/book.controller.ts",
@@ -746,12 +874,17 @@
     "methodName": "getWriteLog",
     "httpMethod": "GET",
     "path": "/books/:id/write-log",
-    "permissions": ["Permission.LibraryEditMetadata"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
-    "apiKey": "read"
+    "apiKey": "read",
+    "scopedPermission": {
+      "permission": "Permission.LibraryEditMetadata",
+      "resource": "book",
+      "param": "id"
+    }
   },
   {
     "file": "server/src/modules/book/book.controller.ts",
@@ -759,7 +892,9 @@
     "methodName": "getKoboState",
     "httpMethod": "GET",
     "path": "/books/:id/kobo-state",
-    "permissions": ["Permission.KoboSync"],
+    "permissions": [
+      "Permission.KoboSync"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -811,12 +946,12 @@
     "methodName": "getConfig",
     "httpMethod": "GET",
     "path": "/book-metadata-fetch/config",
-    "permissions": ["Permission.ManageMetadataConfig"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
-    "apiKey": "read"
+    "apiKey": "interactive"
   },
   {
     "file": "server/src/modules/book-metadata-fetch/book-metadata-fetch.controller.ts",
@@ -824,12 +959,12 @@
     "methodName": "listLibraryConfigs",
     "httpMethod": "GET",
     "path": "/book-metadata-fetch/config/libraries",
-    "permissions": ["Permission.ManageMetadataConfig"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
-    "apiKey": "read"
+    "apiKey": "interactive"
   },
   {
     "file": "server/src/modules/book-metadata-fetch/book-metadata-fetch.controller.ts",
@@ -837,11 +972,15 @@
     "methodName": "updateConfig",
     "httpMethod": "PUT",
     "path": "/book-metadata-fetch/config",
-    "permissions": ["Permission.ManageMetadataConfig"],
+    "permissions": [
+      "Permission.ManageMetadataConfig"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "LibraryAdministratorModeGuard"
+    ],
     "apiKey": "write"
   },
   {
@@ -850,12 +989,12 @@
     "methodName": "getLibraryConfig",
     "httpMethod": "GET",
     "path": "/book-metadata-fetch/config/libraries/:id",
-    "permissions": ["Permission.ManageMetadataConfig"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
-    "apiKey": "read"
+    "apiKey": "interactive"
   },
   {
     "file": "server/src/modules/book-metadata-fetch/book-metadata-fetch.controller.ts",
@@ -863,12 +1002,12 @@
     "methodName": "updateLibraryConfig",
     "httpMethod": "PUT",
     "path": "/book-metadata-fetch/config/libraries/:id",
-    "permissions": ["Permission.ManageMetadataConfig"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
-    "apiKey": "write"
+    "apiKey": "interactive"
   },
   {
     "file": "server/src/modules/book-metadata-fetch/book-metadata-fetch.controller.ts",
@@ -876,11 +1015,15 @@
     "methodName": "getStatus",
     "httpMethod": "GET",
     "path": "/book-metadata-fetch/status",
-    "permissions": ["Permission.ManageMetadataConfig"],
+    "permissions": [
+      "Permission.ManageMetadataConfig"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "LibraryAdministratorModeGuard"
+    ],
     "apiKey": "read"
   },
   {
@@ -889,11 +1032,15 @@
     "methodName": "triggerGlobal",
     "httpMethod": "POST",
     "path": "/book-metadata-fetch/run",
-    "permissions": ["Permission.ManageMetadataConfig"],
+    "permissions": [
+      "Permission.ManageMetadataConfig"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "LibraryAdministratorModeGuard"
+    ],
     "apiKey": "write"
   },
   {
@@ -902,12 +1049,12 @@
     "methodName": "triggerForLibrary",
     "httpMethod": "POST",
     "path": "/book-metadata-fetch/run/:libraryId",
-    "permissions": ["Permission.ManageMetadataConfig"],
+    "permissions": [],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
-    "apiKey": "write"
+    "apiKey": "interactive"
   },
   {
     "file": "server/src/modules/book-metadata-fetch/book-metadata-fetch.controller.ts",
@@ -915,11 +1062,15 @@
     "methodName": "pause",
     "httpMethod": "POST",
     "path": "/book-metadata-fetch/pause",
-    "permissions": ["Permission.ManageMetadataConfig"],
+    "permissions": [
+      "Permission.ManageMetadataConfig"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "LibraryAdministratorModeGuard"
+    ],
     "apiKey": "write"
   },
   {
@@ -928,11 +1079,15 @@
     "methodName": "resume",
     "httpMethod": "POST",
     "path": "/book-metadata-fetch/resume",
-    "permissions": ["Permission.ManageMetadataConfig"],
+    "permissions": [
+      "Permission.ManageMetadataConfig"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "LibraryAdministratorModeGuard"
+    ],
     "apiKey": "write"
   },
   {
@@ -941,11 +1096,15 @@
     "methodName": "cancel",
     "httpMethod": "POST",
     "path": "/book-metadata-fetch/cancel",
-    "permissions": ["Permission.ManageMetadataConfig"],
+    "permissions": [
+      "Permission.ManageMetadataConfig"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "LibraryAdministratorModeGuard"
+    ],
     "apiKey": "write"
   },
   {
@@ -954,11 +1113,15 @@
     "methodName": "retryFailed",
     "httpMethod": "POST",
     "path": "/book-metadata-fetch/retry-failed",
-    "permissions": ["Permission.ManageMetadataConfig"],
+    "permissions": [
+      "Permission.ManageMetadataConfig"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "LibraryAdministratorModeGuard"
+    ],
     "apiKey": "write"
   },
   {
@@ -967,11 +1130,15 @@
     "methodName": "previewCount",
     "httpMethod": "POST",
     "path": "/book-metadata-fetch/preview-count",
-    "permissions": ["Permission.ManageMetadataConfig"],
+    "permissions": [
+      "Permission.ManageMetadataConfig"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "LibraryAdministratorModeGuard"
+    ],
     "apiKey": "read"
   },
   {
@@ -980,11 +1147,15 @@
     "methodName": "previewBreakdown",
     "httpMethod": "POST",
     "path": "/book-metadata-fetch/preview-breakdown",
-    "permissions": ["Permission.ManageMetadataConfig"],
+    "permissions": [
+      "Permission.ManageMetadataConfig"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "LibraryAdministratorModeGuard"
+    ],
     "apiKey": "read"
   },
   {
@@ -993,11 +1164,15 @@
     "methodName": "previewBooks",
     "httpMethod": "POST",
     "path": "/book-metadata-fetch/preview-books",
-    "permissions": ["Permission.ManageMetadataConfig"],
+    "permissions": [
+      "Permission.ManageMetadataConfig"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "LibraryAdministratorModeGuard"
+    ],
     "apiKey": "read"
   },
   {
@@ -1006,11 +1181,15 @@
     "methodName": "getFailedItems",
     "httpMethod": "GET",
     "path": "/book-metadata-fetch/failed",
-    "permissions": ["Permission.ManageMetadataConfig"],
+    "permissions": [
+      "Permission.ManageMetadataConfig"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "LibraryAdministratorModeGuard"
+    ],
     "apiKey": "read"
   },
   {

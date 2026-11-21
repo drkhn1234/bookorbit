@@ -22,7 +22,8 @@ COPY client/ ./client/
 # re-install is both redundant and wrong: it resolves against a partial
 # workspace. In the server stage it is fatal, because only server/ is present and
 # the patches for packages it does not install then look unused.
-RUN pnpm --config.verify-deps-before-run=false --filter client run build-only
+ARG SOURCE_REVISION
+RUN VITE_BUILD_SOURCE_REVISION="$SOURCE_REVISION" pnpm --config.verify-deps-before-run=false --filter client run build-only
 
 # Stage 2: Build server + create deploy bundle
 FROM base AS server-builder
@@ -48,6 +49,7 @@ RUN mkdir -p /deploy/migrations && cp -r /app/server/src/db/migrations/. /deploy
 FROM ${NODE_IMAGE} AS runtime
 WORKDIR /app
 
+ARG SOURCE_REVISION
 ARG APP_VERSION=dev
 ENV APP_VERSION=${APP_VERSION}
 ENV KOBO_CLOUDSCRAPER_PYTHON=/opt/bookorbit-python/bin/python
@@ -99,6 +101,7 @@ LABEL org.opencontainers.image.title="BookOrbit" \
       org.opencontainers.image.description="Self-hosted library management and reading platform for ebooks, PDFs, audiobooks, and comics" \
       org.opencontainers.image.url="https://bookorbit.app" \
       org.opencontainers.image.documentation="https://github.com/bookorbit/bookorbit#quick-start-docker" \
-      org.opencontainers.image.source="https://github.com/bookorbit/bookorbit" \
+      org.opencontainers.image.source="https://github.com/no39utopia/bookorbit" \
+      org.opencontainers.image.revision="${SOURCE_REVISION}" \
       org.opencontainers.image.licenses="AGPL-3.0-only" \
       org.opencontainers.image.version="${APP_VERSION}"

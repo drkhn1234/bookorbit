@@ -1,12 +1,15 @@
 import { describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
-import { reactive } from 'vue'
+import { reactive, ref } from 'vue'
 import SettingsView from '@/views/SettingsView.vue'
 
 const routeState = reactive<{ name: string; meta: Record<string, unknown> }>({
   name: 'settings-appearance-layout',
   meta: {},
 })
+
+const settingsUser = ref<{ id: number; isSuperuser: boolean } | null>(null)
+vi.mock('@/features/auth/composables/useAuth', () => ({ useAuth: () => ({ user: settingsUser }) }))
 
 vi.mock('vue-router', () => ({
   useRoute: () => routeState,
@@ -25,6 +28,54 @@ function mountView(routeName: string, meta: Record<string, unknown> = {}) {
 }
 
 describe('SettingsView shell', () => {
+  it('omits the scope ribbon and Administrator Mode action for ordinary users', () => {
+    settingsUser.value = { id: 1, isSuperuser: false }
+    const wrapper = mountView('settings-libraries')
+    expect(wrapper.get('[data-testid="settings-page-content"]').text()).toBe('')
+    expect(wrapper.find('button[aria-pressed]').exists()).toBe(false)
+    wrapper.unmount()
+    settingsUser.value = null
+  })
+
+  it('puts Administrator Mode after the existing header actions and keeps it synchronized across Library settings', async () => {
+    settingsUser.value = { id: 1, isSuperuser: true }
+    const wrapper = mountView('settings-libraries')
+    const header = wrapper.get('[data-testid="settings-page-header"]')
+    const button = () => header.get('button[aria-pressed]')
+    expect(header.get('#settings-header-actions').element.nextElementSibling).toBe(button().element)
+    expect(wrapper.get('[data-testid="settings-page-content"]').text()).toBe('')
+    expect(button().text()).toBe('Enable Administrator Mode')
+    expect(button().attributes('aria-pressed')).toBe('false')
+    await button().trigger('click')
+    for (const page of ['settings-metadata-providers', 'settings-metadata-field-rules', 'settings-file-naming', 'settings-maintenance']) {
+      routeState.name = page
+      await wrapper.vm.$nextTick()
+      expect(button().text()).toBe('Disable Administrator Mode')
+      expect(button().attributes('aria-pressed')).toBe('true')
+    }
+
+    settingsUser.value = { id: 2, isSuperuser: true }
+    await wrapper.vm.$nextTick()
+    expect(button().text()).toBe('Enable Administrator Mode')
+
+    await button().trigger('click')
+    settingsUser.value = { id: 2, isSuperuser: false }
+    await wrapper.vm.$nextTick()
+    expect(header.find('button[aria-pressed]').exists()).toBe(false)
+    settingsUser.value = { id: 2, isSuperuser: true }
+    await wrapper.vm.$nextTick()
+    expect(button().text()).toBe('Enable Administrator Mode')
+
+    await button().trigger('click')
+    routeState.name = 'settings-appearance-layout'
+    await wrapper.vm.$nextTick()
+    routeState.name = 'settings-metadata-field-rules'
+    await wrapper.vm.$nextTick()
+    expect(button().text()).toBe('Enable Administrator Mode')
+    settingsUser.value = null
+    wrapper.unmount()
+  })
+
   it('renders a single column page without a second navigation pane', () => {
     const wrapper = mountView('settings-appearance-layout')
     expect(wrapper.find('[data-testid="settings-page-header"]').exists()).toBe(true)

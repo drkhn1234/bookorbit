@@ -77,6 +77,7 @@ export interface MetadataFetchPreferences {
 export interface LibraryMetadataPreferences {
   libraryId: number;
   overrides: FieldPreferenceOverrides | null;
+  inherited?: MetadataFetchPreferences;
   effective: MetadataFetchPreferences;
 }
 
@@ -149,6 +150,7 @@ export interface ProviderStatus {
   configured: boolean;
   enabled: boolean;
   hint?: string;
+  credentialSource?: "personal" | "administrator" | "instance" | "not-configured";
   /** Absent on servers older than external providers, which only had built-ins. */
   source?: MetadataProviderSource;
   /** An external provider's declared fields; built-ins use `METADATA_PROVIDER_SUPPORTED_FIELDS`. */

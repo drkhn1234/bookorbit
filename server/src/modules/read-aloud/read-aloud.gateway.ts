@@ -3,6 +3,7 @@ import { OnGatewayConnection, OnGatewayDisconnect, WebSocketGateway, WebSocketSe
 import { Server, Socket } from 'socket.io';
 import { Permission, READ_ALOUD_JOB_UPDATED_EVENT, READ_ALOUD_SOCKET_NAMESPACE, type ReadAloudJob } from '@bookorbit/types';
 
+import { LibraryScopeService } from '../../common/library-scope/library-scope.service';
 import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
 import { rejectSocketConnection } from '../../common/utils/ws-auth.utils';
 import { wsCorsOrigin } from '../../common/utils/ws-cors.utils';
@@ -21,16 +22,18 @@ export class ReadAloudGateway implements OnGatewayConnection, OnGatewayDisconnec
   @WebSocketServer() server: Server;
   private readonly logger = new Logger(ReadAloudGateway.name);
 
-  constructor(private readonly authenticator: AuthenticatorService) {}
+  constructor(
+    private readonly authenticator: AuthenticatorService,
+    private readonly libraryScope: LibraryScopeService,
+  ) {}
 
   async handleConnection(client: Socket): Promise<void> {
     try {
       const user = await this.authenticator.authenticateSocket(client);
-      // Forbidden, not Unauthorized: a fresh token would be refused the same way, so the client must not retry.
-      if (!user.isSuperuser && !user.permissions.includes(Permission.LibraryGenerateReadAloud)) {
+      if (user.permissions.includes(Permission.DemoRestricted)) throw new ForbiddenException('Demo-restricted account');
+      if (!(await this.libraryScope.permittedIds(user, Permission.LibraryGenerateReadAloud)).length) {
         throw new ForbiddenException('Missing read-aloud permission');
       }
-      if (user.permissions.includes(Permission.DemoRestricted)) throw new ForbiddenException('Demo-restricted account');
       await client.join(userRoom(user.id));
     } catch (err) {
       this.logger.warn(

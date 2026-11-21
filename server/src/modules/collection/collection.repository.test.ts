@@ -147,7 +147,7 @@ describe('CollectionRepository', () => {
     const from = vi.fn().mockReturnValue({ leftJoin: firstLeftJoin });
     db.select.mockReturnValueOnce({ from } as never);
 
-    await repo.findByIdForViewer(10, 5, false, { type: 'visible-books' } as never);
+    await repo.findByIdForViewer(10, 5, { type: 'visible-books' } as never);
 
     expect(where).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -164,7 +164,7 @@ describe('CollectionRepository', () => {
     const from = vi.fn().mockReturnValue({ innerJoin });
     db.select.mockReturnValueOnce({ from } as never);
 
-    repo.buildReadableMembershipWhere(10, 5, false);
+    repo.buildReadableMembershipWhere(10, 5);
 
     expect(where).toHaveBeenCalledWith(
       expect.objectContaining({

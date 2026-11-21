@@ -3,7 +3,7 @@ import { useBookMetadataFetchActions } from './useBookMetadataFetchActions'
 
 const apiMock = vi.hoisted(() => vi.fn<(input: string, init?: RequestInit) => Promise<{ ok: boolean; json: () => Promise<unknown> }>>())
 
-vi.mock('@/lib/api', () => ({ api: apiMock }))
+vi.mock('@/lib/api', () => ({ setOnAuthFailure: vi.fn(), api: apiMock }))
 
 describe('useBookMetadataFetchActions', () => {
   beforeEach(() => {

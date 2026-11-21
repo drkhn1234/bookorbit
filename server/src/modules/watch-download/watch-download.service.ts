@@ -1,10 +1,9 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException, Optional, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, Optional, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Permission, isAudioFormat } from '@bookorbit/types';
 import type { AuthenticationMethod, WatchDownloadTicketResponse, WatchMediaOverlayDownloadTicketResponse } from '@bookorbit/types';
 
 import type { RequestUser } from '../../common/types/request-user';
-import { PermissionService } from '../../common/services/permission.service';
 import { AuthService } from '../auth/auth.service';
 import { BookAliasService } from '../book-alias/book-alias.service';
 import { BookService } from '../book/book.service';
@@ -47,12 +46,12 @@ export class WatchDownloadService {
     private readonly jwtService: JwtService,
     private readonly authService: AuthService,
     private readonly bookService: BookService,
-    private readonly permissionService: PermissionService,
     private readonly epubService: EpubService,
     @Optional() private readonly bookAlias?: BookAliasService,
   ) {}
 
   async issue(bookId: number, requestedFileIds: number[], user: RequestUser): Promise<WatchDownloadTicketResponse> {
+    await this.bookService.verifyBookPermission(bookId, user, Permission.LibraryDownload);
     const fileIds = [...new Set(requestedFileIds)];
     if (fileIds.length !== requestedFileIds.length) {
       throw new BadRequestException('fileIds must be unique');
@@ -107,6 +106,7 @@ export class WatchDownloadService {
     requestedHrefs: string[],
     user: RequestUser,
   ): Promise<WatchMediaOverlayDownloadTicketResponse> {
+    await this.bookService.verifyBookPermission(bookId, user, Permission.LibraryDownload);
     const hrefs = [...new Set(requestedHrefs)];
     if (hrefs.length !== requestedHrefs.length) {
       throw new BadRequestException('hrefs must be unique');
@@ -167,7 +167,7 @@ export class WatchDownloadService {
     if (expectedFileId !== undefined && !claims.fileIds.includes(expectedFileId)) {
       throw new NotFoundException('File is not included in this Watch download');
     }
-    return this.validatedUser(claims);
+    return this.validatedUser(claims, expectedBookId);
   }
 
   /** A ticket minted before its book was merged still covers the book the request was aliased to. */
@@ -220,12 +220,11 @@ export class WatchDownloadService {
     return claims;
   }
 
-  private async validatedUser(claims: WatchDownloadClaims): Promise<RequestUser> {
+  private async validatedUser(claims: WatchDownloadClaims, expectedBookId?: number): Promise<RequestUser> {
     const user = await this.authService.validateUser(Number(claims.sub), claims.ver, claims.amr ?? 'legacy');
     if (!user) throw new UnauthorizedException('Watch download ticket is no longer valid');
-    if (!this.permissionService.userHas(user, Permission.LibraryDownload)) {
-      throw new ForbiddenException(`Missing permission: ${Permission.LibraryDownload}`);
-    }
+    const bookId = expectedBookId ?? (await this.bookAlias?.resolveOne(claims.bookId)) ?? claims.bookId;
+    await this.bookService.verifyBookPermission(bookId, user, Permission.LibraryDownload);
     return user;
   }
 

@@ -42,6 +42,7 @@ export const storageConfig = registerAs('storage', () => {
     appDataPath,
     bookDockPath: resolve(bookDockPath || join(appDataPath, 'book-dock')),
     libraryBrowseRoot: resolve(libraryBrowseRoot || '/'),
+    personalLibraryRoot: resolve(process.env.PERSONAL_LIBRARY_ROOT?.trim() || '/books'),
   };
 });
 

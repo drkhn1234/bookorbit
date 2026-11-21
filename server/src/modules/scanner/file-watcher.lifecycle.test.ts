@@ -5,6 +5,7 @@ vi.mock('chokidar', () => ({
 import { Logger } from '@nestjs/common';
 import type { MockedFunction } from 'vitest';
 import { watch } from 'chokidar';
+import { LibraryOperationGate } from '../../common/services/library-operation-gate.service';
 import { SelfWriteRegistry } from '../../common/services/self-write-registry.service';
 
 import { FileEventProcessorService } from './file-event-processor.service';
@@ -41,7 +42,7 @@ function makeService(db: any = {}) {
     refreshRegexMetadataAfterMoveAsync: vi.fn(),
   } as unknown as ScannerService;
 
-  const service = new FileWatcherService(db, processor, gateway, scannerService, new SelfWriteRegistry());
+  const service = new FileWatcherService(db, processor, gateway, scannerService, new SelfWriteRegistry(), new LibraryOperationGate());
   return { service, processor, gateway, scannerService };
 }
 
@@ -271,11 +272,11 @@ describe('FileWatcherService lifecycle and watcher controls', () => {
   it('logs errors when debounced process execution fails', async () => {
     const { service } = makeService();
     (service as any).subscriptions.set(2, []);
+    (service as any).watchedLibraryPaths.set(2, ['/books']);
     vi.spyOn(service as any, 'process').mockRejectedValue(new Error('process failed'));
 
     (service as any).schedule('delete', '/books/fail.epub', 2);
-    vi.runAllTimers();
-    await Promise.resolve();
+    await vi.runAllTimersAsync();
 
     expect(Logger.prototype.error).toHaveBeenCalledWith(expect.stringContaining('[scanner.watcher.process_event] [fail]'));
   });

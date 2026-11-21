@@ -26,6 +26,7 @@ const props = withDefaults(
     cap?: SidebarCap
     canChangeCap?: boolean
     canReorder?: boolean
+    reorderLabel?: string
     isReordering?: boolean
     /** Rail popovers show the body unconditionally, so the toggle becomes a plain label. */
     collapsible?: boolean
@@ -97,7 +98,7 @@ const showCount = computed(() => !props.isOpen && typeof props.count === 'number
     <p v-else class="sidebar-section-label min-w-0 flex-1 truncate px-2">{{ label }}</p>
 
     <button
-      v-if="canAdd"
+      v-show="canAdd"
       type="button"
       class="flex h-6 w-6 shrink-0 items-center justify-center text-primary outline-hidden transition-colors duration-150 hover:bg-(--shell-accent-wash) focus-visible:ring-2 focus-visible:ring-sidebar-ring"
       :class="iconRadiusClass"
@@ -130,7 +131,7 @@ const showCount = computed(() => !props.isOpen && typeof props.count === 'number
         <DropdownMenuItem v-if="canReorder" @click="handleToggleReorder">
           <Check v-if="isReordering" :size="13" class="text-primary" />
           <GripVertical v-else :size="13" />
-          {{ isReordering ? t('components.sidebar.sectionHeader.doneReordering') : t('components.sidebar.sectionHeader.reorder') }}
+          {{ isReordering ? t('components.sidebar.sectionHeader.doneReordering') : (reorderLabel ?? t('components.sidebar.sectionHeader.reorder')) }}
         </DropdownMenuItem>
         <DropdownMenuSeparator v-if="canCustomize && hasSectionItems" />
         <DropdownMenuItem v-if="canCustomize" @click="handleCustomize">

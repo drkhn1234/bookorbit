@@ -1,11 +1,12 @@
 import { ref } from 'vue'
 import { toast } from 'vue-sonner'
 import { useI18n } from 'vue-i18n'
-import { api } from '@/lib/api'
+import { useLibrarySettingsApi } from '@/features/settings/composables/useLibrarySettingsMode'
 import type { FieldPreferenceOverrides, LibraryMetadataPreferences, MetadataFetchPreferences } from '@bookorbit/types'
 import { ALL_METADATA_FIELDS } from '@bookorbit/types'
 
 export function useMetadataPreferences() {
+  const api = useLibrarySettingsApi()
   const { t } = useI18n()
   const globalPrefs = ref<MetadataFetchPreferences | null>(null)
   const libraryPrefs = ref<Map<number, LibraryMetadataPreferences>>(new Map())

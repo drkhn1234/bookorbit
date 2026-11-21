@@ -5,11 +5,11 @@ import type {
   BookMetadataFetchPreviewBooks,
   BookMetadataFetchPreviewScope,
 } from '@bookorbit/types'
-import { api } from '@/lib/api'
+import { useLibrarySettingsApi } from '@/features/settings/composables/useLibrarySettingsMode'
 
 const DEBOUNCE_MS = 250
 
-async function post<T>(path: string, body: unknown): Promise<T | null> {
+async function post<T>(api: ReturnType<typeof useLibrarySettingsApi>, path: string, body: unknown): Promise<T | null> {
   const res = await api(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
   return res.ok ? ((await res.json()) as T) : null
 }
@@ -19,6 +19,7 @@ async function post<T>(path: string, body: unknown): Promise<T | null> {
  * and an answer that arrives after the rule has moved on is dropped.
  */
 export function useAutoFetchPreview(conditions: Ref<BookMetadataFetchConditions | null>, libraryIds: Ref<number[]>, limit: Ref<number>) {
+  const api = useLibrarySettingsApi()
   const breakdown = ref<BookMetadataFetchBreakdown | null>(null)
   const books = ref<BookMetadataFetchPreviewBooks | null>(null)
   const pending = ref(false)
@@ -34,8 +35,8 @@ export function useAutoFetchPreview(conditions: Ref<BookMetadataFetchConditions 
     const scope: BookMetadataFetchPreviewScope = { conditions: draft, libraryIds: libraryIds.value }
     try {
       const [nextBreakdown, nextBooks] = await Promise.all([
-        post<BookMetadataFetchBreakdown>('/api/v1/book-metadata-fetch/preview-breakdown', scope),
-        post<BookMetadataFetchPreviewBooks>('/api/v1/book-metadata-fetch/preview-books', { ...scope, limit: limit.value }),
+        post<BookMetadataFetchBreakdown>(api, '/api/v1/book-metadata-fetch/preview-breakdown', scope),
+        post<BookMetadataFetchPreviewBooks>(api, '/api/v1/book-metadata-fetch/preview-books', { ...scope, limit: limit.value }),
       ])
       if (current !== request) return
       failed.value = !nextBreakdown || !nextBooks

@@ -1627,7 +1627,7 @@ watch(
           </div>
 
           <div class="flex gap-2">
-            <div v-if="hasPermission('library_download')" class="flex-1">
+            <div v-if="hasLibraryPermission('library_download', book?.libraryId)" class="flex-1">
               <BookDownloadButton :files="book.files" :book-id="book.id" :format-priority="book.formatPriority" />
             </div>
             <button
@@ -1645,7 +1645,13 @@ watch(
               <Send class="size-3.5" />
             </button>
             <Popover
-              v-if="canManageReadingState || canEditMetadata || canMergeBook || canLinkBook || hasPermission('library_delete_books')"
+              v-if="
+                canManageReadingState ||
+                canEditMetadata ||
+                canMergeBook ||
+                canLinkBook ||
+                hasLibraryPermission('library_delete_books', book?.libraryId)
+              "
               :open="moreMenuOpen"
               @update:open="(v) => (moreMenuOpen = v)"
             >
@@ -1712,7 +1718,7 @@ watch(
                   {{ t('book.link.unlink') }}
                 </button>
                 <button
-                  v-if="hasPermission('library_delete_books')"
+                  v-if="hasLibraryPermission('library_delete_books', book?.libraryId)"
                   class="flex w-full items-center gap-2 px-2 py-1.5 text-start rounded-xs text-sm text-destructive hover:bg-destructive/10 transition-colors"
                   @click="handleDeleteFromMenu"
                 >

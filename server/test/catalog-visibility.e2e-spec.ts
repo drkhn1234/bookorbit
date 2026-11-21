@@ -26,6 +26,7 @@ interface CatalogNames {
 }
 
 interface SeededCatalogBook {
+  libraryId: number;
   bookId: number;
   tagId: number;
   genreId: number;
@@ -81,7 +82,7 @@ async function seedCatalogBook(
     ctx.db.insert(schema.bookSeriesMemberships).values({ bookId: book!.id, seriesId: series!.id }),
   ]);
 
-  return { bookId: book!.id, tagId: tag!.id, genreId: genre!.id, names };
+  return { libraryId: library.libraryId, bookId: book!.id, tagId: tag!.id, genreId: genre!.id, names };
 }
 
 describe('Catalog visibility (e2e)', { timeout: SCENARIO_TIMEOUT_MS }, () => {
@@ -89,10 +90,11 @@ describe('Catalog visibility (e2e)', { timeout: SCENARIO_TIMEOUT_MS }, () => {
   let scopedReader!: TestUserSession;
   let noLibraryReader!: TestUserSession;
   let superuser!: TestUserSession;
+  let catalogAdmin!: TestUserSession;
+  let hiddenLibrary!: SeededCatalogBook;
   let queryToken!: string;
   let visible!: SeededCatalogBook;
   let contentFiltered!: SeededCatalogBook;
-  let hiddenLibrary!: SeededCatalogBook;
   let accessibleLibrary!: CreatedLibrary;
   let inaccessibleLibrary!: CreatedLibrary;
   let orphanGenreId!: number;
@@ -138,6 +140,8 @@ describe('Catalog visibility (e2e)', { timeout: SCENARIO_TIMEOUT_MS }, () => {
     noLibraryReader = await createUserAndLogin(ctx);
     superuser = await createUserAndLogin(ctx, { isSuperuser: true });
     await grantLibraryAccess(ctx, scopedReader.userId, accessibleLibrary.libraryId);
+    catalogAdmin = await createUserAndLogin(ctx, { isSuperuser: true });
+    await grantLibraryAccess(ctx, catalogAdmin.userId, inaccessibleLibrary.libraryId);
 
     await ctx.db.insert(schema.userContentFilterTags).values([
       { userId: scopedReader.userId, filterType: 'exclude', tagId: contentFiltered.tagId },
@@ -199,12 +203,15 @@ describe('Catalog visibility (e2e)', { timeout: SCENARIO_TIMEOUT_MS }, () => {
     }
   });
 
-  it('lets superusers search every library while bypassing their content filters', async () => {
-    for (const endpoint of Object.keys(visible.names) as Array<keyof CatalogNames>) {
+  it('lets superusers search only granted libraries while bypassing their content filters', async () => {
+    const endpoints = Object.keys(visible.names) as Array<keyof CatalogNames>;
+    for (const endpoint of endpoints) {
+      expect(await search(endpoint, superuser.accessToken)).toEqual([]);
+    }
+    await grantLibraryAccess(ctx, superuser.userId, visible.libraryId);
+    for (const endpoint of endpoints) {
       const results = await search(endpoint, superuser.accessToken);
-      expect(results.map(({ name }) => name)).toEqual(
-        [contentFiltered.names[endpoint], hiddenLibrary.names[endpoint], visible.names[endpoint]].sort(),
-      );
+      expect(results.map(({ name }) => name)).toEqual([contentFiltered.names[endpoint], visible.names[endpoint]].sort());
     }
   });
 
@@ -280,7 +287,9 @@ describe('Catalog visibility (e2e)', { timeout: SCENARIO_TIMEOUT_MS }, () => {
       );
       await expect(indexNames(segment, noLibraryReader.accessToken, queryToken)).resolves.toEqual(expect.objectContaining({ total: 0, items: [] }));
 
-      const all = await indexNames(segment, superuser.accessToken, `${queryToken} Hidden`);
+      const ungranted = await indexNames(segment, superuser.accessToken, `${queryToken} Hidden`);
+      expect(ungranted.items).toEqual([]);
+      const all = await indexNames(segment, catalogAdmin.accessToken, `${queryToken} Hidden`);
       expect(all.items.map(({ name }) => name)).toEqual([hiddenLibrary.names[segment]]);
     });
 
@@ -300,12 +309,12 @@ describe('Catalog visibility (e2e)', { timeout: SCENARIO_TIMEOUT_MS }, () => {
         expect((await get(`/api/v1/${segment}/${hidden}/similar`, scopedReader.accessToken)).statusCode).toBe(404);
       }
       expect((await get(`/api/v1/${segment}/${visible[idKey]}`, noLibraryReader.accessToken)).statusCode).toBe(404);
-      expect((await get(`/api/v1/${segment}/${hiddenLibrary[idKey]}`, superuser.accessToken)).statusCode).toBe(200);
+      expect((await get(`/api/v1/${segment}/${hiddenLibrary[idKey]}`, catalogAdmin.accessToken)).statusCode).toBe(200);
     });
 
     it('treats a genre no book carries as missing', async () => {
-      expect((await get(`/api/v1/genres/${orphanGenreId}`, superuser.accessToken)).statusCode).toBe(404);
-      expect((await get(`/api/v1/genres/${orphanGenreId}/similar`, superuser.accessToken)).statusCode).toBe(404);
+      expect((await get(`/api/v1/genres/${orphanGenreId}`, catalogAdmin.accessToken)).statusCode).toBe(404);
+      expect((await get(`/api/v1/genres/${orphanGenreId}/similar`, catalogAdmin.accessToken)).statusCode).toBe(404);
     });
 
     it.each(KINDS)('lists only visible books on a %s page, narrowed to a library on request', async (segment, idKey) => {
@@ -325,7 +334,7 @@ describe('Catalog visibility (e2e)', { timeout: SCENARIO_TIMEOUT_MS }, () => {
         expect(response.json()).toEqual(expect.objectContaining({ items: [], total: 0 }));
       }
 
-      const superuserBooks = await queryBooks(segment, hiddenLibrary[idKey], superuser.accessToken);
+      const superuserBooks = await queryBooks(segment, hiddenLibrary[idKey], catalogAdmin.accessToken);
       expect((superuserBooks.json() as { items: Array<{ id: number }> }).items.map(({ id }) => id)).toEqual([hiddenLibrary.bookId]);
     });
 

@@ -58,12 +58,10 @@ describe('Read-aloud jobs (e2e)', { timeout: 240_000 }, () => {
     ctx = await createReaderStateIsolationE2EContext();
     worker.libraryRoots = [ctx.fixture.booksPath];
     library = await createLibraryWithFolder(ctx, { mode: 'book_per_folder' });
-    // Replacing a read-along overwrites a file for good, so it takes the delete permission too.
-    owner = await createUserAndLogin(ctx, {
-      permissions: [Permission.LibraryUpload, Permission.LibraryGenerateReadAloud, Permission.LibraryDeleteBooks],
-    });
+    // Generation and replacement both use the session owner's library-scoped capabilities.
+    owner = await createUserAndLogin(ctx);
     other = await createUserAndLogin(ctx, { permissions: [Permission.LibraryUpload, Permission.LibraryGenerateReadAloud] });
-    await grantLibraryAccess(ctx, owner.userId, library.libraryId, 'editor');
+    await grantLibraryAccess(ctx, owner.userId, library.libraryId, 'owner');
     await grantLibraryAccess(ctx, other.userId, library.libraryId, 'editor');
   });
 
@@ -271,7 +269,10 @@ describe('Read-aloud jobs (e2e)', { timeout: 240_000 }, () => {
     const book = await writeBook();
     worker.outcome = 'hang';
     const created = await call<ReadAloudJob>(owner, 'POST', `/books/${book.bookId}/read-aloud-jobs`, { epubFileId: book.epubFileId, language: 'en' });
-    await waitForJob(created.body.id, (job) => job.status === 'processing' && job.stage !== 'queued');
+    await waitForJob(
+      created.body.id,
+      (job) => job.status === 'processing' && worker.requests.some((request) => request.method === 'GET' && request.path.endsWith(created.body.id)),
+    );
     worker.outcome = 'aligned';
     worker.forgetJobs();
     await waitForJob(created.body.id, (job) => job.status === 'completed');
@@ -391,6 +392,7 @@ describe('Read-aloud jobs (e2e)', { timeout: 240_000 }, () => {
         const items = page.json<JobList>().items.filter((item) => ids.includes(item.id.slice('read-along:'.length)));
         expect(items.map((item) => item.id.slice('read-along:'.length))).toEqual([b2, a2, b1, c2, c1, a1]);
         expect(items.at(-1)).toMatchObject({ status: 'paused', position: null, reason: 'user' });
+        expect(items.every((item) => item.subject.label === null && item.subject.url === null)).toBe(true);
         const running = (
           await ctx.db.select({ id: schema.readAloudJobs.id }).from(schema.readAloudJobs).where(eq(schema.readAloudJobs.status, 'processing'))
         ).length;

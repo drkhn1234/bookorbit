@@ -6,7 +6,6 @@ import { AuditAction, AuditResource, Permission } from '@bookorbit/types';
 import { KeyReadSafe } from '../../common/decorators/api-key-policy.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { ForbidPermission } from '../../common/decorators/forbid-permission.decorator';
-import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import type { RequestUser } from '../../common/types/request-user';
 import { BulkRunsService } from '../bulk-runs/bulk-runs.service';
 import { BookMoveService } from './book-move.service';
@@ -26,7 +25,6 @@ export class BookMoveController {
 
   @Post('preview')
   @KeyReadSafe()
-  @RequirePermission(Permission.LibraryEditMetadata)
   preview(@Body() dto: MovePreviewDto, @CurrentUser() user: RequestUser) {
     return this.bookMoveService.preview(dto, user);
   }
@@ -37,7 +35,6 @@ export class BookMoveController {
    * before the stream starts. Closing the stream leaves the move running; it is cancelled from Jobs.
    */
   @Post()
-  @RequirePermission(Permission.LibraryEditMetadata)
   @ForbidPermission(Permission.DemoRestricted, 'Demo-restricted account cannot move books')
   async move(@Body() dto: MoveBooksDto, @CurrentUser() user: RequestUser, @Res() reply: FastifyReply) {
     const plan = await this.bookMoveService.planRun(dto, user);

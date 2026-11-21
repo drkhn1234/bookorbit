@@ -7,6 +7,7 @@ import { Pool } from 'pg';
 
 import { createPostgresClientConfig } from '../db/postgres-connection-config';
 import { dropUnreleasedMigrationRows, reconcileMigrationLedgerTimestamps } from './migration-ledger-compatibility';
+import { prepareLegacyLibraryOwnership } from './library-ownership-migration-compatibility';
 import { installPostgresExtensions } from './postgres-extensions';
 import { prepareLegacySeriesIndexColumns } from './series-index-migration-compatibility';
 
@@ -40,16 +41,27 @@ async function runMigrations() {
   );
 
   try {
-    await installPostgresExtensions(pool);
-    const migrationsFolder = resolveMigrationsFolder();
-    const migrationFiles = readMigrationFiles({ migrationsFolder });
-    await dropUnreleasedMigrationRows(pool, migrationFiles);
-    await reconcileMigrationLedgerTimestamps(pool, migrationFiles);
-    await prepareLegacySeriesIndexColumns(pool);
+    const client = await pool.connect();
+    try {
+      await client.query("SELECT pg_advisory_lock(hashtext('bookorbit'), hashtext('schema-migrations'))");
+      await installPostgresExtensions(pool);
+      const migrationsFolder = resolveMigrationsFolder();
+      const migrationFiles = readMigrationFiles({ migrationsFolder });
+      await dropUnreleasedMigrationRows(pool, migrationFiles);
+      await reconcileMigrationLedgerTimestamps(pool, migrationFiles);
+      await prepareLegacySeriesIndexColumns(pool);
+      await prepareLegacyLibraryOwnership(client, migrationFiles);
 
-    await migrate(drizzle(pool), { migrationsFolder });
+      await migrate(drizzle(client), { migrationsFolder });
 
-    console.log(`Migrations applied successfully from ${migrationsFolder}`);
+      console.log(`Migrations applied successfully from ${migrationsFolder}`);
+    } finally {
+      try {
+        await client.query("SELECT pg_advisory_unlock(hashtext('bookorbit'), hashtext('schema-migrations'))");
+      } finally {
+        client.release();
+      }
+    }
   } finally {
     await pool.end();
   }

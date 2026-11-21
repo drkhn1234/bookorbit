@@ -1,8 +1,9 @@
-import { Inject, Injectable, Logger, NotFoundException, OnApplicationBootstrap } from '@nestjs/common';
+import { Inject, Injectable, Logger, NotFoundException, OnApplicationBootstrap, Optional } from '@nestjs/common';
 import { eq, isNotNull } from 'drizzle-orm';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { FieldPreferenceOverrides, LibraryMetadataPreferences, MetadataFetchPreferences } from '@bookorbit/types';
 
+import { LibraryDefaultsService } from '../../common/library-scope/library-defaults.service';
 import { DB } from '../../db';
 import * as schema from '../../db/schema';
 import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
@@ -20,6 +21,7 @@ export class MetadataPreferencesService implements OnApplicationBootstrap {
   constructor(
     @Inject(DB) private readonly db: Db,
     private readonly resolver: MetadataPreferenceResolver,
+    @Optional() private readonly defaults?: LibraryDefaultsService,
   ) {}
 
   async onApplicationBootstrap(): Promise<void> {
@@ -121,6 +123,32 @@ export class MetadataPreferencesService implements OnApplicationBootstrap {
       .onConflictDoUpdate({ target: schema.appSettings.key, set: { value } });
   }
 
+  async getDefaults(userId: number | null, instance?: MetadataFetchPreferences): Promise<MetadataFetchPreferences> {
+    const base = instance ?? (await this.getGlobal());
+    if (userId === null) return base;
+    const raw = await this.defaults?.read(userId, 'field_rules');
+    const personal = raw ? this.parseStoredPreferences(raw) : null;
+    return personal ? this.resolver.resolve({ ...base, options: personal.options ?? base.options }, personal.fields) : base;
+  }
+
+  async setDefaults(userId: number | null, prefs: MetadataFetchPreferences): Promise<void> {
+    if (userId === null) return this.setGlobal(prefs);
+    const base = await this.getGlobal();
+    const normalized = this.resolver.resolve(prefs, null);
+    const fields = Object.fromEntries(
+      Object.entries(normalized.fields).filter(
+        ([field, rule]) => JSON.stringify(rule) !== JSON.stringify(base.fields[field as keyof typeof base.fields]),
+      ),
+    );
+    const options = JSON.stringify(normalized.options) === JSON.stringify(base.options) ? undefined : normalized.options;
+    await this.defaults?.write(userId, 'field_rules', JSON.stringify({ fields, options }));
+  }
+
+  async resetDefaults(userId: number | null): Promise<void> {
+    if (userId === null) return this.resetGlobal();
+    await this.defaults?.remove(userId, 'field_rules');
+  }
+
   /** Every provider a field rule names, in the global rules or in any library's overrides. */
   async providersNamedInRules(): Promise<Set<string>> {
     const [global, libraryRows] = await Promise.all([
@@ -144,10 +172,10 @@ export class MetadataPreferencesService implements OnApplicationBootstrap {
     });
     if (!library) throw new NotFoundException(`Library ${libraryId} not found`);
 
-    const globalPrefs = global ?? (await this.getGlobal());
+    const globalPrefs = await this.getDefaults((await this.defaults?.ownerFor(libraryId)) ?? null, global);
     const overrides = library.metadataFetchPreferences ?? null;
     const effective = this.resolver.resolve(globalPrefs, overrides);
-    return { libraryId, overrides, effective };
+    return { libraryId, overrides, inherited: globalPrefs, effective };
   }
 
   async setLibraryOverrides(libraryId: number, overrides: FieldPreferenceOverrides): Promise<void> {

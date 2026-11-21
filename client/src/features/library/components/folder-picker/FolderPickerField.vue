@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Clock, CornerDownLeft, Folder, HardDrive, Library as LibraryIcon, Search, X } from '@lucide/vue'
 import AppIcon from '@/components/AppIcon.vue'
@@ -7,6 +7,7 @@ import { normalizeFolderPath } from '../../composables/folder-paths'
 import { isAtOrInside, leafName, parentPath } from '../../composables/folder-picker/folder-picker-rules'
 import { useFolderPickerContext } from '../../composables/folder-picker/folder-picker-context'
 import { readRecentFolders } from '../../composables/folder-picker/recent-folders'
+import { ADMINISTRATIVE_STORAGE } from '../../composables/useLibraryPathApi'
 import PickerKbd from './PickerKbd.vue'
 
 interface Option {
@@ -26,6 +27,7 @@ const SEARCH_DELAY_MS = 220
 const { t } = useI18n()
 const picker = useFolderPickerContext()
 const tree = picker.tree
+const administrative = inject(ADMINISTRATIVE_STORAGE, null)
 const input = ref<HTMLInputElement | null>(null)
 const root = ref<HTMLElement | null>(null)
 const open = ref(false)
@@ -89,8 +91,10 @@ const options = computed<Option[]>(() => {
       libraryIcon: library.icon,
     })
   }
-  for (const path of recent.filter((folder) => !places || isAtOrInside(folder, places.root))) {
-    out.push({ id: `recent:${path}`, path, section: t('library.folderBrowser.field.recent'), title: path, sub: books(path), icon: 'recent' })
+  if (places && administrative?.value !== false) {
+    for (const path of recent.filter((folder) => isAtOrInside(folder, places.root))) {
+      out.push({ id: `recent:${path}`, path, section: t('library.folderBrowser.field.recent'), title: path, sub: books(path), icon: 'recent' })
+    }
   }
   return out
 })

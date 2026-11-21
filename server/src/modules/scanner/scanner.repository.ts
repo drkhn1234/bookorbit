@@ -27,7 +27,6 @@ import {
   libraryFolders,
   scanJobs,
   userLibraryAccess,
-  users,
 } from '../../db/schema';
 import { rankFileRowsByBook } from '../../common/utils/primary-file-selection.utils';
 import { afterPosition, keysetOrder, microseconds, type JobKey, type JobPosition, type KeysetColumns } from '../jobs/job-keyset';
@@ -343,15 +342,8 @@ export class ScannerRepository {
   }
 
   async findLibraryAccessibleUserIds(libraryId: number): Promise<number[]> {
-    const [accessRows, superuserRows] = await Promise.all([
-      this.db.select({ userId: userLibraryAccess.userId }).from(userLibraryAccess).where(eq(userLibraryAccess.libraryId, libraryId)),
-      this.db.select({ userId: users.id }).from(users).where(eq(users.isSuperuser, true)),
-    ]);
-
-    const userIds = new Set<number>();
-    for (const row of accessRows) userIds.add(row.userId);
-    for (const row of superuserRows) userIds.add(row.userId);
-    return [...userIds];
+    const rows = await this.db.select({ userId: userLibraryAccess.userId }).from(userLibraryAccess).where(eq(userLibraryAccess.libraryId, libraryId));
+    return rows.map((row) => row.userId);
   }
 
   // ── Books ──────────────────────────────────────────────────────────────────

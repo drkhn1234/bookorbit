@@ -55,13 +55,13 @@ describe('KoboBookAccessService', () => {
     await expect(service.assertBookAccessible(7, 99)).rejects.toThrow(NotFoundException);
   });
 
-  it('returns null accessible library ids for superusers and scoped ids for regular users', async () => {
+  it('returns explicit library grants for superusers and regular users', async () => {
     const superuser = createService({
       user: { isSuperuser: true },
       accessRows: [{ libraryId: 10 }],
       book: { id: 42, libraryId: 10 },
     });
-    await expect(superuser.service.getAccessibleLibraryIds(7)).resolves.toBeNull();
+    await expect(superuser.service.getAccessibleLibraryIds(7)).resolves.toEqual([10]);
 
     const regular = createService({
       user: { isSuperuser: false },

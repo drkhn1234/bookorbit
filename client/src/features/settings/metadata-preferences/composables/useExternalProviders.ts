@@ -7,7 +7,7 @@ import type {
   MetadataHttpProviderView,
   UpdateMetadataHttpProviderPayload,
 } from '@bookorbit/types'
-import { api } from '@/lib/api'
+import { useLibrarySettingsApi } from '@/features/settings/composables/useLibrarySettingsMode'
 import { registerProviderAppearance } from '@/lib/provider-appearance'
 
 /** What a failed call said, so the panel can show translated copy for the codes it knows. */
@@ -44,15 +44,17 @@ async function readError(res: Response): Promise<ExternalProviderError> {
   }
 }
 
-async function send<T>(url: string, init?: RequestInit): Promise<ExternalProviderResult<T>> {
-  try {
-    const res = await api(url, init)
-    if (!res.ok) return { ok: false, error: await readError(res) }
-    // Some endpoints answer a successful write with an empty body.
-    const text = await res.text()
-    return { ok: true, value: (text ? JSON.parse(text) : null) as T }
-  } catch {
-    return { ok: false, error: { code: null, message: null } }
+function createSender(api: ReturnType<typeof useLibrarySettingsApi>) {
+  return async function send<T>(url: string, init?: RequestInit): Promise<ExternalProviderResult<T>> {
+    try {
+      const res = await api(url, init)
+      if (!res.ok) return { ok: false, error: await readError(res) }
+      // Some endpoints answer a successful write with an empty body.
+      const text = await res.text()
+      return { ok: true, value: (text ? JSON.parse(text) : null) as T }
+    } catch {
+      return { ok: false, error: { code: null, message: null } }
+    }
   }
 }
 
@@ -73,6 +75,7 @@ export function supportedFieldsOf(provider: MetadataHttpProviderView): MetadataF
 }
 
 export function useExternalProviders() {
+  const send = createSender(useLibrarySettingsApi())
   const providers = ref<MetadataHttpProviderView[]>([])
   const loaded = ref(false)
 

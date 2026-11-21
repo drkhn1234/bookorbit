@@ -6,7 +6,9 @@
     "httpMethod": "POST",
     "path": "/libraries/:id/books/facets",
     "permissions": [],
-    "libraryAccess": ["'viewer'"],
+    "libraryAccess": [
+      "'viewer'"
+    ],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
@@ -19,7 +21,9 @@
     "httpMethod": "POST",
     "path": "/libraries/:id/books/jump-buckets",
     "permissions": [],
-    "libraryAccess": ["'viewer'"],
+    "libraryAccess": [
+      "'viewer'"
+    ],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
@@ -31,12 +35,17 @@
     "methodName": "getBulkRenamePreview",
     "httpMethod": "GET",
     "path": "/libraries/:id/bulk-rename/preview",
-    "permissions": ["Permission.ManageLibraries"],
-    "libraryAccess": ["'editor'"],
+    "permissions": [],
+    "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
-    "apiKey": "read"
+    "apiKey": "read",
+    "scopedPermission": {
+      "permission": "Permission.ManageLibraries",
+      "resource": "library",
+      "param": "id"
+    }
   },
   {
     "file": "server/src/modules/library/library.controller.ts",
@@ -44,12 +53,17 @@
     "methodName": "getBulkRenameStatus",
     "httpMethod": "GET",
     "path": "/libraries/:id/bulk-rename/status",
-    "permissions": ["Permission.ManageLibraries"],
-    "libraryAccess": ["'editor'"],
+    "permissions": [],
+    "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
-    "apiKey": "read"
+    "apiKey": "read",
+    "scopedPermission": {
+      "permission": "Permission.ManageLibraries",
+      "resource": "library",
+      "param": "id"
+    }
   },
   {
     "file": "server/src/modules/library/library.controller.ts",
@@ -57,12 +71,17 @@
     "methodName": "executeBulkRename",
     "httpMethod": "POST",
     "path": "/libraries/:id/bulk-rename/execute",
-    "permissions": ["Permission.ManageLibraries"],
-    "libraryAccess": ["'editor'"],
+    "permissions": [],
+    "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
     "useGuards": [],
-    "apiKey": "write"
+    "apiKey": "write",
+    "scopedPermission": {
+      "permission": "Permission.ManageLibraries",
+      "resource": "library",
+      "param": "id"
+    }
   },
   {
     "file": "server/src/modules/user-preferences/user-preferences.controller.ts",
@@ -74,7 +93,9 @@
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "AppAttestGuard"
+    ],
     "apiKey": "read"
   },
   {
@@ -87,7 +108,9 @@
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
-    "useGuards": [],
+    "useGuards": [
+      "AppAttestGuard"
+    ],
     "apiKey": "write"
   },
   {
@@ -122,7 +145,9 @@
     "methodName": "overview",
     "httpMethod": "GET",
     "path": "/admin/ai",
-    "permissions": ["Permission.ManageAppSettings"],
+    "permissions": [
+      "Permission.ManageAppSettings"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -135,7 +160,9 @@
     "methodName": "listConnections",
     "httpMethod": "GET",
     "path": "/admin/ai/connections",
-    "permissions": ["Permission.ManageAppSettings"],
+    "permissions": [
+      "Permission.ManageAppSettings"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -148,7 +175,9 @@
     "methodName": "createConnection",
     "httpMethod": "POST",
     "path": "/admin/ai/connections",
-    "permissions": ["Permission.ManageAppSettings"],
+    "permissions": [
+      "Permission.ManageAppSettings"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -161,7 +190,9 @@
     "methodName": "updateConnection",
     "httpMethod": "PATCH",
     "path": "/admin/ai/connections/:id",
-    "permissions": ["Permission.ManageAppSettings"],
+    "permissions": [
+      "Permission.ManageAppSettings"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -174,7 +205,9 @@
     "methodName": "deleteConnection",
     "httpMethod": "DELETE",
     "path": "/admin/ai/connections/:id",
-    "permissions": ["Permission.ManageAppSettings"],
+    "permissions": [
+      "Permission.ManageAppSettings"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -187,7 +220,9 @@
     "methodName": "testDraft",
     "httpMethod": "POST",
     "path": "/admin/ai/connections/test",
-    "permissions": ["Permission.ManageAppSettings"],
+    "permissions": [
+      "Permission.ManageAppSettings"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -200,7 +235,9 @@
     "methodName": "testSaved",
     "httpMethod": "POST",
     "path": "/admin/ai/connections/:id/test",
-    "permissions": ["Permission.ManageAppSettings"],
+    "permissions": [
+      "Permission.ManageAppSettings"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -213,7 +250,9 @@
     "methodName": "listModels",
     "httpMethod": "GET",
     "path": "/admin/ai/connections/:id/models",
-    "permissions": ["Permission.ManageAppSettings"],
+    "permissions": [
+      "Permission.ManageAppSettings"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -226,7 +265,9 @@
     "methodName": "getSettings",
     "httpMethod": "GET",
     "path": "/admin/ai/settings",
-    "permissions": ["Permission.ManageAppSettings"],
+    "permissions": [
+      "Permission.ManageAppSettings"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -239,7 +280,9 @@
     "methodName": "updateSlots",
     "httpMethod": "PUT",
     "path": "/admin/ai/settings/slots",
-    "permissions": ["Permission.ManageAppSettings"],
+    "permissions": [
+      "Permission.ManageAppSettings"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -252,7 +295,9 @@
     "methodName": "updateFeature",
     "httpMethod": "PUT",
     "path": "/admin/ai/settings/features/:feature",
-    "permissions": ["Permission.ManageAppSettings"],
+    "permissions": [
+      "Permission.ManageAppSettings"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -265,7 +310,9 @@
     "methodName": "updateBudget",
     "httpMethod": "PUT",
     "path": "/admin/ai/settings/budget",
-    "permissions": ["Permission.ManageAppSettings"],
+    "permissions": [
+      "Permission.ManageAppSettings"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -278,7 +325,9 @@
     "methodName": "tryIt",
     "httpMethod": "POST",
     "path": "/admin/ai/try",
-    "permissions": ["Permission.ManageAppSettings"],
+    "permissions": [
+      "Permission.ManageAppSettings"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -291,7 +340,9 @@
     "methodName": "usage",
     "httpMethod": "GET",
     "path": "/admin/ai/usage",
-    "permissions": ["Permission.ManageAppSettings"],
+    "permissions": [
+      "Permission.ManageAppSettings"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,
@@ -304,7 +355,9 @@
     "methodName": "usageCsv",
     "httpMethod": "GET",
     "path": "/admin/ai/usage.csv",
-    "permissions": ["Permission.ManageAppSettings"],
+    "permissions": [
+      "Permission.ManageAppSettings"
+    ],
     "libraryAccess": [],
     "isPublic": false,
     "allowDefault": false,

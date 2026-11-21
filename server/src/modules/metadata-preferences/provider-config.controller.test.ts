@@ -1,3 +1,4 @@
+import type { RequestUser } from '../../common/types/request-user';
 import { BadRequestException } from '@nestjs/common';
 import { MetadataProviderKey } from '@bookorbit/types';
 import { ProviderConfigController } from './provider-config.controller';
@@ -7,11 +8,12 @@ import { ProviderConfigService } from './provider-config.service';
 describe('ProviderConfigController', () => {
   let service: Mocked<ProviderConfigService>;
   let controller: ProviderConfigController;
+  const user = { id: 7, permissions: [] } as unknown as RequestUser;
 
   beforeEach(() => {
     service = {
-      getConfig: vi.fn(),
-      getProviderStatuses: vi.fn(),
+      getSettingsView: vi.fn(),
+      runForAccount: vi.fn((_id, run) => Promise.resolve(run())),
       updateConfig: vi.fn(),
       testProvider: vi.fn(),
     } as unknown as Mocked<ProviderConfigService>;
@@ -21,7 +23,7 @@ describe('ProviderConfigController', () => {
 
   it('returns both provider config and computed statuses', async () => {
     const config = {
-      google: { enabled: true, apiKey: 'key' },
+      google: { enabled: true, apiKey: '' },
       amazon: { enabled: true, domain: 'amazon.com', cookie: '' },
       goodreads: { enabled: true },
       hardcover: { enabled: false, apiKey: '' },
@@ -29,13 +31,9 @@ describe('ProviderConfigController', () => {
     };
     const statuses = [{ key: 'google', enabled: true, configured: true, label: 'Google Books' }];
 
-    service.getConfig.mockResolvedValue(config as never);
-    service.getProviderStatuses.mockResolvedValue(statuses as never);
-
-    const result = await controller.getConfig();
-
-    expect(service.getConfig).toHaveBeenCalledTimes(1);
-    expect(service.getProviderStatuses).toHaveBeenCalledWith(config);
+    service.getSettingsView.mockResolvedValue({ config, statuses } as never);
+    const result = await controller.getConfig(user);
+    expect(service.getSettingsView).toHaveBeenCalledWith(7);
     expect(result).toEqual({ config, statuses });
   });
 
@@ -46,9 +44,9 @@ describe('ProviderConfigController', () => {
     };
     service.updateConfig.mockResolvedValue({} as never);
 
-    await controller.updateConfig(patch as never);
+    await controller.updateConfig(patch as never, user);
 
-    expect(service.updateConfig).toHaveBeenCalledWith(patch);
+    expect(service.updateConfig).toHaveBeenCalledWith(patch, 7);
   });
 
   it('delegates provider test requests', async () => {
@@ -58,12 +56,12 @@ describe('ProviderConfigController', () => {
     const result = { key: MetadataProviderKey.HARDCOVER, ok: true, status: 'success', message: 'Connected as reader.' };
     service.testProvider.mockResolvedValue(result as never);
 
-    await expect(controller.testProvider('hardcover', patch as never)).resolves.toEqual(result);
+    await expect(controller.testProvider('hardcover', patch as never, user)).resolves.toEqual(result);
     expect(service.testProvider).toHaveBeenCalledWith(MetadataProviderKey.HARDCOVER, patch);
   });
 
-  it('rejects unknown provider keys for test requests', () => {
-    expect(() => controller.testProvider('unknown-provider', {} as never)).toThrow(BadRequestException);
+  it('rejects unknown provider keys for test requests', async () => {
+    await expect(controller.testProvider('unknown-provider', {} as never, user)).rejects.toThrow(BadRequestException);
     expect(service.testProvider).not.toHaveBeenCalled();
   });
 });

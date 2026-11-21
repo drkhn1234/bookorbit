@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Loader2 } from '@lucide/vue'
 import ToggleSwitch from '@/components/ui/ToggleSwitch.vue'
+import { useLibrarySettingsMode } from '@/features/settings/composables/useLibrarySettingsMode'
 import { usePermissions } from '@/features/auth/composables/usePermissions'
 import SettingsPageHeader from './SettingsPageHeader.vue'
 import NamingRuleRail, { type RailGroup, type RailItem } from './file-naming/components/NamingRuleRail.vue'
@@ -27,6 +28,7 @@ const props = withDefaults(defineProps<{ embedded?: boolean }>(), { embedded: fa
 
 const { t } = useI18n()
 const { hasPermission } = usePermissions()
+const administratorMode = useLibrarySettingsMode()
 
 const {
   libraries,
@@ -144,7 +146,7 @@ const renamingLibraries = computed<string[]>(() => {
     .map((library) => library.name)
 })
 
-const canBulkRename = computed(() => hasPermission('manage_libraries'))
+const canBulkRename = computed(() => administratorMode.value && hasPermission('manage_libraries'))
 
 function handleCompleting(value: boolean) {
   completingToken.value = value
@@ -223,6 +225,7 @@ function handleSanitize(value: boolean) {
     </div>
 
     <template v-else>
+      <p class="text-sm text-muted-foreground">{{ administratorMode ? 'Instance naming defaults' : 'Personal naming defaults' }}</p>
       <div class="rounded-lg border border-border bg-card shadow-xs">
         <div class="overflow-clip rounded-lg @2xl/naming:grid @2xl/naming:grid-cols-[15.5rem_minmax(0,1fr)] @2xl/naming:items-stretch">
           <NamingRuleRail
@@ -283,6 +286,7 @@ function handleSanitize(value: boolean) {
           <p class="settings-hint">{{ t('settings.reader.fileNaming.crossPlatformHint') }}</p>
         </div>
         <ToggleSwitch
+          v-if="administratorMode"
           :model-value="crossPlatformSanitizationEnabled"
           :disabled="savingCrossPlatformSanitization"
           :aria-label="t('settings.reader.fileNaming.crossPlatform')"

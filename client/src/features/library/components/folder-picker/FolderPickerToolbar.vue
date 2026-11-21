@@ -1,25 +1,28 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, inject, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { DropdownMenuCheckboxItem, DropdownMenuRadioGroup, DropdownMenuRadioItem } from 'reka-ui'
 import { Check, FolderPlus, SlidersHorizontal } from '@lucide/vue'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { isAtOrInside, leafName } from '../../composables/folder-picker/folder-picker-rules'
 import { useFolderPickerContext } from '../../composables/folder-picker/folder-picker-context'
+import { ADMINISTRATIVE_STORAGE } from '../../composables/useLibraryPathApi'
 import type { TreeSort } from '../../composables/folder-picker/useFolderPickerTree'
 import FolderPickerField from './FolderPickerField.vue'
 
 const { t } = useI18n()
 const picker = useFolderPickerContext()
 const tree = picker.tree
+const administrative = inject(ADMINISTRATIVE_STORAGE, null)
+const showSystemOption = computed(() => administrative?.value !== false)
 const field = ref<InstanceType<typeof FolderPickerField> | null>(null)
 
 const viewChanged = computed(() => tree.sort.value !== 'name' || tree.hideEmpty.value || tree.showSystem.value)
 /** New folders go in the folder in focus, or the first mount that is not BookOrbit's data before anything is focused. */
 const target = computed(() => {
-  const focus = tree.focus.value
-  if (focus && !['denied', 'appData'].includes(picker.selection.status(focus)?.kind ?? '')) return focus
   const places = picker.data.places.value
+  const focus = tree.focus.value
+  if (focus && picker.selection.status(focus)?.kind !== 'denied' && (!places?.appDataPath || !isAtOrInside(focus, places.appDataPath))) return focus
   return places?.mounts.find((mount) => !places.appDataPath || !isAtOrInside(mount, places.appDataPath)) ?? tree.root.value
 })
 
@@ -79,7 +82,7 @@ defineExpose({ focusField: (prefill?: string) => field.value?.focus(prefill) })
         <DropdownMenuCheckboxItem :model-value="!tree.hideEmpty.value" :class="item" @update:model-value="onShowEmpty">
           <Check v-if="!tree.hideEmpty.value" :size="15" /><span v-else class="size-[15px]" />{{ t('library.folderBrowser.view.showEmpty') }}
         </DropdownMenuCheckboxItem>
-        <DropdownMenuCheckboxItem :model-value="tree.showSystem.value" :class="item" @update:model-value="onShowSystem">
+        <DropdownMenuCheckboxItem v-if="showSystemOption" :model-value="tree.showSystem.value" :class="item" @update:model-value="onShowSystem">
           <Check v-if="tree.showSystem.value" :size="15" /><span v-else class="size-[15px]" />{{ t('library.folderBrowser.view.showSystem') }}
         </DropdownMenuCheckboxItem>
       </DropdownMenuContent>

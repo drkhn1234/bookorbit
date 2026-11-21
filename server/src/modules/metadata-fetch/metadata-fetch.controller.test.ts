@@ -68,13 +68,15 @@ describe('MetadataFetchController', () => {
 
     providerConfig = {
       getConfig: vi.fn().mockResolvedValue(makeProviderConfig()),
+      runForAccount: vi.fn((_id, run) => Promise.resolve(run())),
+      runForLibrary: vi.fn((_id, run) => Promise.resolve(run())),
       getProviderStatuses: vi.fn(),
     } as unknown as Mocked<ProviderConfigService>;
 
     const resolver = new MetadataPreferenceResolver();
     const defaultPreferences = resolver.getDefaultPreferences();
     metadataPreferences = {
-      getGlobal: vi.fn().mockResolvedValue(defaultPreferences),
+      getDefaults: vi.fn().mockResolvedValue(defaultPreferences),
       getForLibrary: vi.fn().mockResolvedValue({ libraryId: 9, overrides: null, effective: defaultPreferences }),
     } as unknown as Mocked<MetadataPreferencesService>;
 
@@ -177,7 +179,7 @@ describe('MetadataFetchController', () => {
     const preferences = resolver.getDefaultPreferences();
     preferences.fields.cover.providers = [MetadataProviderKey.OPEN_LIBRARY, MetadataProviderKey.GOOGLE];
     preferences.fields.audioCover.providers = [MetadataProviderKey.GOOGLE];
-    metadataPreferences.getGlobal.mockResolvedValue(preferences);
+    metadataPreferences.getDefaults.mockResolvedValue(preferences);
     registry.all.mockReturnValue([
       { key: MetadataProviderKey.GOOGLE, label: 'Google Books', identifiable: true },
       { key: MetadataProviderKey.OPEN_LIBRARY, label: 'OpenLibrary', identifiable: false },
@@ -253,7 +255,7 @@ describe('MetadataFetchController', () => {
     const preferences = resolver.getDefaultPreferences();
     preferences.options!.genres.blocklist = ['Audiobook'];
     preferences.options!.genres.maxCount = 2;
-    metadataPreferences.getGlobal.mockResolvedValue(preferences);
+    metadataPreferences.getDefaults.mockResolvedValue(preferences);
     service.search.mockReturnValue(
       of(
         candidateEvent({
@@ -754,7 +756,7 @@ describe('MetadataFetchController', () => {
     const preferences = resolver.getDefaultPreferences();
     preferences.options!.genres.blocklist = ['Adult'];
     preferences.options!.genres.maxCount = 1;
-    metadataPreferences.getGlobal.mockResolvedValue(preferences);
+    metadataPreferences.getDefaults.mockResolvedValue(preferences);
     service.lookupById.mockResolvedValue({
       candidate: {
         provider: MetadataProviderKey.AMAZON,
@@ -765,7 +767,7 @@ describe('MetadataFetchController', () => {
     });
 
     const dto: LookupMetadataDto = { provider: MetadataProviderKey.AMAZON, id: 'B123' };
-    const result = await controller.lookup(dto);
+    const result = await controller.lookup(dto, user);
 
     expect(service.lookupById).toHaveBeenCalledWith(MetadataProviderKey.AMAZON, 'B123', DEFAULT_SEARCH_OPTIONS);
     expect(result).toEqual({ provider: MetadataProviderKey.AMAZON, providerId: 'B123', title: 'Amazon Title', genres: ['Mystery'] });
@@ -778,7 +780,7 @@ describe('MetadataFetchController', () => {
       }),
     );
 
-    const result = await controller.lookup({ provider: MetadataProviderKey.AMAZON, id: 'B123' });
+    const result = await controller.lookup({ provider: MetadataProviderKey.AMAZON, id: 'B123' }, user);
 
     expect(result).toBeNull();
     expect(service.lookupById).not.toHaveBeenCalled();
@@ -811,7 +813,7 @@ describe('MetadataFetchController', () => {
     };
     throttleTracker.snapshot.mockReturnValue(runtime);
 
-    const result = await controller.listProviderRuntime();
+    const result = await controller.listProviderRuntime({ ...user, isSuperuser: true }, 'admin');
 
     expect(providerConfig.getConfig).toHaveBeenCalledTimes(1);
     expect(providerConfig.getProviderStatuses).toHaveBeenCalledWith(config);

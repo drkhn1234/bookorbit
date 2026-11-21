@@ -1,3 +1,4 @@
+import type { RequestUser } from '../../common/types/request-user';
 import type { Mocked } from 'vitest';
 
 import { BookMetadataFetchController } from './book-metadata-fetch.controller';
@@ -14,6 +15,7 @@ describe('BookMetadataFetchController', () => {
   let session: Mocked<BookMetadataFetchSessionService>;
   let preview: Mocked<BookMetadataFetchPreviewService>;
   let controller: BookMetadataFetchController;
+  const user = { id: 7, permissions: [], isSuperuser: true } as unknown as RequestUser;
 
   beforeEach(() => {
     configService = {
@@ -50,7 +52,7 @@ describe('BookMetadataFetchController', () => {
       previewBooks: vi.fn(),
     } as unknown as Mocked<BookMetadataFetchPreviewService>;
 
-    controller = new BookMetadataFetchController(configService, orchestrator, queueRepo, session, preview);
+    controller = new BookMetadataFetchController(configService, orchestrator, queueRepo, session, preview, {} as never);
   });
 
   it('lists library configs and proxies the preview endpoints with their scope', async () => {
@@ -63,7 +65,7 @@ describe('BookMetadataFetchController', () => {
     preview.breakdown.mockResolvedValueOnce({ total: 3 } as never);
     preview.previewBooks.mockResolvedValueOnce({ items: [], total: 0 });
 
-    await expect(controller.listLibraryConfigs()).resolves.toEqual([]);
+    await expect(controller.listLibraryConfigs(user, 'admin')).resolves.toEqual([]);
     await expect(controller.previewBreakdown({ conditions, libraryIds: [2, 6] })).resolves.toEqual({ total: 3 });
     await expect(controller.previewBooks({ conditions, limit: 6 })).resolves.toEqual({ items: [], total: 0 });
 
@@ -119,7 +121,7 @@ describe('BookMetadataFetchController', () => {
     configService.getGlobalConfig.mockResolvedValueOnce({ enabled: false }).mockResolvedValueOnce({ enabled: true });
     configService.setGlobalConfig.mockResolvedValue(undefined);
 
-    await expect(controller.getConfig()).resolves.toEqual({ enabled: false });
+    await expect(controller.getConfig(user, 'admin')).resolves.toEqual({ enabled: false });
     await expect(controller.updateConfig({ enabled: true } as never)).resolves.toEqual({ enabled: true });
     expect(configService.setGlobalConfig).toHaveBeenCalledWith({ enabled: true });
   });
@@ -128,8 +130,8 @@ describe('BookMetadataFetchController', () => {
     configService.getLibraryConfigWithLastRun.mockResolvedValueOnce({ enabled: true }).mockResolvedValueOnce({ enabled: false });
     configService.setLibraryOverride.mockResolvedValue(undefined);
 
-    await expect(controller.getLibraryConfig(22)).resolves.toEqual({ enabled: true });
-    await expect(controller.updateLibraryConfig(22, {} as never)).resolves.toEqual({ enabled: false });
+    await expect(controller.getLibraryConfig(22, user, 'admin')).resolves.toEqual({ enabled: true });
+    await expect(controller.updateLibraryConfig(22, {} as never, user, 'admin')).resolves.toEqual({ enabled: false });
     expect(configService.setLibraryOverride).toHaveBeenCalledWith(22, null);
     expect(configService.getLibraryConfigWithLastRun).toHaveBeenCalledWith(22);
   });
@@ -160,7 +162,7 @@ describe('BookMetadataFetchController', () => {
     orchestrator.cancelPending.mockResolvedValue(undefined);
 
     await expect(controller.triggerGlobal()).resolves.toEqual({ queued: 5 });
-    await expect(controller.triggerForLibrary(9)).resolves.toEqual({ queued: 2 });
+    await expect(controller.triggerForLibrary(9, {}, user, 'admin')).resolves.toEqual({ queued: 2 });
     await expect(controller.pause()).resolves.toEqual({ paused: true });
     await expect(controller.resume()).resolves.toEqual({ paused: false });
     await expect(controller.cancel()).resolves.toEqual({ cancelled: true });

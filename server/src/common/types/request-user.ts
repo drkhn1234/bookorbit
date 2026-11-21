@@ -20,8 +20,8 @@ export interface ApiKeyCredential {
   /** The only libraries the key may reach, or null for every library its owner can see. */
   libraryIds: readonly number[] | null;
   /**
-   * The owner's own superuser flag. Library visibility follows it, because a superuser's key without
-   * administrator access is no longer `isSuperuser` yet must still see every library.
+   * The owner's administrator flag, retained for credential/cache identity. Content access still
+   * requires explicit library grants, regardless of this flag or the key's administrator access.
    */
   ownerIsSuperuser: boolean;
 }

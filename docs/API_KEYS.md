@@ -47,6 +47,8 @@ Every key is created with these settings. Only the name can be changed afterward
 
 **Administrator** gives the key the owner's superuser access. It is the only way a key gets superuser power, and it cannot be combined with a library limit. A superuser's key without it behaves like a regular user's key.
 
+Ordinary content access always requires an explicit library grant for the key owner, including with **Administrator** enabled. A read key acts at viewer level within the libraries it can access. Raw storage endpoints refuse keys with a library limit. A write key with access to all its owner's libraries can create personal libraries under the applicable storage policy. Administrative storage also requires **Administrator** and an explicit `scope=admin` request. See [library capabilities](PERSONAL_LIBRARIES.md#capabilities-api) for the eligibility check and its response contract.
+
 Keys survive password changes and signing out of other sessions. Revoke a key to stop it.
 
 ## Routes a key cannot use
@@ -65,7 +67,7 @@ Sign-in, registration, and the other public routes do not need a credential, and
 
 - A person can have at most **25** active keys. Creating another answers `409` with `API_KEY_LIMIT_REACHED`.
 - An address that presents more than 30 unknown or invalid keys within a minute gets `429` for the rest of that minute.
-- The last-used time and address are recorded at most once a minute per key.
+- The last-used time and address are recorded at most once a minute per key. `GET /api/v1/libraries/capabilities` skips usage tracking so capability discovery stays read-only.
 - Revoked and expired keys stay visible for 90 days, then they are removed.
 - A bulk action started with a key, such as a metadata refresh for many books, keeps running after the request ends, counts toward the owner's 10 unfinished bulk actions, and stops once the key is revoked or expires; a running action checks its key again at least every 30 seconds. See [Jobs](JOBS.md#bulk-actions).
 

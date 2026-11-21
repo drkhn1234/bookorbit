@@ -99,7 +99,9 @@ export class BulkRunJobSource implements JobSource<BulkRunJobRow>, OnModuleInit 
 
   access(user: RequestUser): JobAccess {
     return {
-      own: user.active && (user.isSuperuser || user.permissions.includes(Permission.LibraryEditMetadata)),
+      // Owners can start scoped runs without any account-wide edit permission. Jobs are
+      // filtered by requester, and the worker rechecks authorization before each item.
+      own: user.active && !user.permissions.includes(Permission.DemoRestricted),
       all: user.active && (user.isSuperuser || user.permissions.includes(Permission.ManageAppSettings)),
     };
   }

@@ -50,6 +50,7 @@ function makeService() {
   };
   const libraryService = {
     verifyAccess: vi.fn().mockResolvedValue(undefined),
+    verifyPermission: vi.fn().mockResolvedValue(undefined),
   };
   const appSettings = {
     getAutoFinalizeSettings: vi.fn(),
@@ -732,8 +733,9 @@ describe('BookDockFinalizeService', () => {
 
     describe('the uploader (D24)', () => {
       it('waits for a manager when the uploader may not upload books', async () => {
-        const { service, repo, users, file } = setup();
+        const { service, repo, users, libraryService, file } = setup();
         users.findByIdWithPermissions.mockResolvedValue(makeUploader({ permissions: [] }));
+        libraryService.verifyPermission.mockRejectedValue(new ForbiddenException());
 
         await service.triggerAutoFinalize(1);
 
@@ -744,7 +746,7 @@ describe('BookDockFinalizeService', () => {
 
       it('waits for a manager when the uploader cannot see the library', async () => {
         const { service, repo, libraryService, file } = setup();
-        libraryService.verifyAccess.mockRejectedValue(new ForbiddenException());
+        libraryService.verifyPermission.mockRejectedValue(new ForbiddenException());
 
         await service.triggerAutoFinalize(1);
 

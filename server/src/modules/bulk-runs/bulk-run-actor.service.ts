@@ -4,6 +4,7 @@ import { Permission } from '@bookorbit/types';
 import type { RequestUser } from '../../common/types/request-user';
 import { apiKeyCredentialOf } from '../../common/types/request-user';
 import type { BulkRunRow } from '../../db/schema';
+import { LibraryScopeService } from '../../common/library-scope/library-scope.service';
 import { ApiKeyAuthenticator } from '../api-key/api-key.authenticator';
 import { runAsApiKey } from '../audit/api-key-audit-context';
 import { AuthService } from '../auth/auth.service';
@@ -16,12 +17,6 @@ export class BulkRunStopped extends Error {
   }
 }
 
-/** Every bulk route asks for this, and none lets a demo account in. */
-function mayRunBulk(user: RequestUser): boolean {
-  if (user.permissions.includes(Permission.DemoRestricted)) return false;
-  return user.isSuperuser || user.permissions.includes(Permission.LibraryEditMetadata);
-}
-
 /**
  * The account a run acts as, checked again as the run goes so that revoking a key, a permission
  * or the account stops it. A key run acts as the owner cut down to the key, and its audit events
@@ -32,6 +27,7 @@ export class BulkRunActorService {
   constructor(
     private readonly auth: AuthService,
     private readonly apiKeys: ApiKeyAuthenticator,
+    private readonly libraries: LibraryScopeService,
   ) {}
 
   async resolve(run: Pick<BulkRunRow, 'requestedBy' | 'credentialKind' | 'apiKeyId'>): Promise<RequestUser> {
@@ -39,12 +35,18 @@ export class BulkRunActorService {
     if (run.credentialKind === 'api_key') {
       if (run.apiKeyId === null) throw new BulkRunStopped('credential-revoked');
       const actor = await this.apiKeys.actorForStoredKey(run.apiKeyId, run.requestedBy);
-      if (!actor || !mayRunBulk(actor)) throw new BulkRunStopped('credential-revoked');
+      if (!actor || !(await this.mayRunBulk(actor))) throw new BulkRunStopped('credential-revoked');
       return actor;
     }
     const user = await this.auth.findActingUser(run.requestedBy);
-    if (!user || !mayRunBulk(user)) throw new BulkRunStopped('access-revoked');
+    if (!user || !(await this.mayRunBulk(user))) throw new BulkRunStopped('access-revoked');
     return user;
+  }
+
+  private async mayRunBulk(user: RequestUser): Promise<boolean> {
+    if (user.permissions.includes(Permission.DemoRestricted)) return false;
+    if (user.isSuperuser || user.permissions.includes(Permission.LibraryEditMetadata)) return true;
+    return (await this.libraries.permittedIds(user, Permission.LibraryEditMetadata)).length > 0;
   }
 
   /** Runs `work` so that audit events it causes name the key the run acts with, if any. */

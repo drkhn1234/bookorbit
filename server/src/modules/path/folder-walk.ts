@@ -62,6 +62,8 @@ export function isListableDirectory(entry: Dirent, fullPath: string): boolean {
 }
 
 export interface WalkLimits {
+  canVisit?: (path: string) => Promise<boolean>;
+  visible?: (path: string) => boolean;
   /** Directory entries to read before stopping; the result is then a lower bound. */
   maxEntries: number;
   /** Epoch milliseconds after which the walk stops. */
@@ -146,6 +148,7 @@ export async function walkFolder(root: string, limits: WalkLimits): Promise<Walk
 
   while (stack.length > 0) {
     const dir = stack.pop()!;
+    if (limits.canVisit && !(await limits.canVisit(dir))) continue;
     if (entries >= limits.maxEntries || Date.now() > limits.deadline) {
       outcome.truncated = true;
       break;
@@ -153,7 +156,7 @@ export async function walkFolder(root: string, limits: WalkLimits): Promise<Walk
 
     let read: { entries: Dirent[]; cut: boolean };
     try {
-      read = await readEntries(dir, limits.maxEntries - entries);
+      read = await readEntries(dir, limits.maxEntries - entries, limits.visible);
     } catch (error) {
       if (dir === root) {
         outcome.state = stateForError(error);
@@ -229,9 +232,16 @@ export async function walkFolder(root: string, limits: WalkLimits): Promise<Walk
 }
 
 /** Whether `dir` holds at least one listable folder. */
-export async function hasListableChild(dir: string): Promise<boolean> {
+export async function hasListableChild(
+  dir: string,
+  canVisit?: (path: string) => Promise<boolean>,
+  visible?: (path: string) => boolean,
+): Promise<boolean> {
   try {
-    return (await readdir(dir, { withFileTypes: true })).some((entry) => isListableDirectory(entry, join(dir, entry.name)));
+    if (canVisit && !(await canVisit(dir))) return false;
+    return (await readdir(dir, { withFileTypes: true })).some(
+      (entry) => isListableDirectory(entry, join(dir, entry.name)) && (!visible || visible(join(dir, entry.name))),
+    );
   } catch {
     return false;
   }
@@ -242,8 +252,8 @@ export async function hasListableChild(dir: string): Promise<boolean> {
  * filesystems that do not report entry types (some NFS and FUSE mounts) `opendir` falls back to a
  * synchronous lstat per entry, which would stall the server for every user.
  */
-async function readEntries(dir: string, budget: number): Promise<{ entries: Dirent[]; cut: boolean }> {
-  const entries = await readdir(dir, { withFileTypes: true });
+async function readEntries(dir: string, budget: number, visible?: (path: string) => boolean): Promise<{ entries: Dirent[]; cut: boolean }> {
+  const entries = (await readdir(dir, { withFileTypes: true })).filter((entry) => !visible || visible(join(dir, entry.name)));
   const limit = Math.max(0, budget);
   if (entries.length <= limit) return { entries, cut: false };
   return { entries: entries.sort(byName).slice(0, limit), cut: true };

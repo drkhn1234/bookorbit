@@ -56,6 +56,7 @@ function provider(overrides: Partial<MetadataHttpProviderView['info']> = {}): Me
 const requests: { url: string; method: string; body: unknown }[] = []
 
 vi.mock('@/lib/api', () => ({
+  setOnAuthFailure: vi.fn(),
   api: vi.fn<(url: string, init?: RequestInit) => Promise<unknown>>((url, init) => {
     const method = init?.method ?? 'GET'
     requests.push({ url, method, body: init?.body ? JSON.parse(String(init.body)) : undefined })

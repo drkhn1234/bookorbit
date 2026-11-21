@@ -21,6 +21,7 @@ import { MetadataFetchService, MetadataSearchEvent } from './metadata-fetch.serv
 import { MetadataFetchPipeline } from './metadata-fetch-pipeline';
 import { ProviderRegistry } from './provider-registry';
 import { MetadataSearchParams } from './providers/metadata-search-params';
+import { requireLibraryAdministrator } from '../../common/library-scope/library-settings-scope';
 import { ProviderConfigService } from '../metadata-preferences/provider-config.service';
 import { MetadataPreferencesService } from '../metadata-preferences/metadata-preferences.service';
 import { applyGenreFetchOptionsToCandidate, createGenreBlocklistTokenSet } from '../../common/utils/genre-fetch-options.utils';
@@ -59,26 +60,34 @@ export class MetadataFetchController {
     private readonly metadataPreferences: MetadataPreferencesService,
   ) {}
 
+  private inProviderScope<T>(user: RequestUser, libraryId: number | undefined, run: () => T): Promise<T> {
+    return libraryId === undefined ? this.providerConfig.runForAccount(user.id, run) : this.providerConfig.runForLibrary(libraryId, run);
+  }
+
   @Get('providers')
   async listProviders(@Query() dto: ListMetadataProvidersDto, @CurrentUser() user: RequestUser): Promise<MetadataProviderInfo[]> {
-    if (dto.bookId) {
-      const { libraryId, coverMedia } = await this.metadataFetchService.getStoredProviderContext(dto.bookId, user);
-      const [enabledProviderKeys, fieldRuleProviderKeys, libraryPreferences] = await Promise.all([
-        this.resolveEnabledProviderKeys(),
-        this.resolveFieldRuleProviderKeys(undefined, libraryId, coverMedia),
-        this.metadataPreferences.getForLibrary(libraryId),
-      ]);
-      const { fields } = libraryPreferences.effective;
-      return this.providerInfosForKeys(enabledProviderKeys, new Set(fieldRuleProviderKeys), fields.cover.providers, fields.audioCover.providers);
-    }
+    const stored = dto.bookId ? await this.metadataFetchService.getStoredProviderContext(dto.bookId, user) : null;
+    return this.inProviderScope(user, stored?.libraryId, async () => {
+      if (stored) {
+        const { libraryId, coverMedia } = stored;
+        const [enabledProviderKeys, fieldRuleProviderKeys, libraryPreferences] = await Promise.all([
+          this.resolveEnabledProviderKeys(),
+          this.resolveFieldRuleProviderKeys(undefined, libraryId, coverMedia),
+          this.metadataPreferences.getForLibrary(libraryId),
+        ]);
+        const { fields } = libraryPreferences.effective;
+        return this.providerInfosForKeys(enabledProviderKeys, new Set(fieldRuleProviderKeys), fields.cover.providers, fields.audioCover.providers);
+      }
 
-    const [providerKeys, preferences] = await Promise.all([this.resolveEnabledProviderKeys(), this.metadataPreferences.getGlobal()]);
-    return this.providerInfosForKeys(providerKeys, undefined, preferences.fields.cover.providers, preferences.fields.audioCover.providers);
+      const [providerKeys, preferences] = await Promise.all([this.resolveEnabledProviderKeys(), this.metadataPreferences.getDefaults(user.id)]);
+      return this.providerInfosForKeys(providerKeys, undefined, preferences.fields.cover.providers, preferences.fields.audioCover.providers);
+    });
   }
 
   @Get('providers/runtime')
   @RequirePermission(Permission.ManageMetadataConfig)
-  async listProviderRuntime(): Promise<ProviderThrottleRuntimeSnapshot> {
+  async listProviderRuntime(@CurrentUser() user: RequestUser, @Query('scope') scope?: string): Promise<ProviderThrottleRuntimeSnapshot> {
+    requireLibraryAdministrator(user, scope);
     const config = await this.providerConfig.getConfig();
     const statuses = await this.providerConfig.getProviderStatuses(config);
     const registered = new Set(this.registry.all().map((p) => p.key));
@@ -89,74 +98,83 @@ export class MetadataFetchController {
   @Sse('stream')
   async stream(@Query() dto: MetadataSearchDto, @CurrentUser() user: RequestUser): Promise<Observable<MessageEvent>> {
     const storedContext = dto.bookId ? await this.metadataFetchService.getStoredProviderContext(dto.bookId, user) : null;
-    const existingProviderIds = storedContext?.providerIds ?? {};
-    const [preferences, enabledProviderKeys] = await Promise.all([
-      this.metadataPreferences.getGlobal(),
-      this.resolveSearchProviderKeys(dto.providers, storedContext?.libraryId, storedContext?.coverMedia),
-    ]);
-    // A stated medium describes the book, so it settles which providers can answer at all. It
-    // narrows the caller's provider list rather than widening it, and never adds a disabled one.
-    const media = [...new Set([...(dto.mediaKind ? [dto.mediaKind] : []), ...(dto.mediaKinds ?? [])])];
-    const providerKeys = media.length
-      ? [...new Set(media.flatMap((mediaKind) => this.registry.keysForMediaKind(enabledProviderKeys, mediaKind)))]
-      : enabledProviderKeys;
-    const leadMediaKind = media[0];
-    const servesOnlyAudiobooks = (providerKey: MetadataProviderKey) => this.registry.servesOnlyAudiobooks(providerKey);
-    const requestedAudiobookProvider = (dto.providers ?? []).some(servesOnlyAudiobooks);
-    const onlyAudiobookProviders = providerKeys.length > 0 && providerKeys.every(servesOnlyAudiobooks);
-    const inferredIsAudiobook =
-      requestedAudiobookProvider ||
-      onlyAudiobookProviders ||
-      Boolean(existingProviderIds[MetadataProviderKey.AUDIBLE] || existingProviderIds[MetadataProviderKey.LIBROFM]);
-    const isAudiobook = dto.isAudiobook ?? (leadMediaKind ? leadMediaKind === 'audiobook' : inferredIsAudiobook);
-    // The medium ranking prefers: a stated one, else the side of the book being searched.
-    const mediaKind = leadMediaKind ?? (isAudiobook ? 'audiobook' : storedContext?.textMediaKind);
+    return this.inProviderScope(user, storedContext?.libraryId, async () => {
+      const existingProviderIds = storedContext?.providerIds ?? {};
+      const [preferences, enabledProviderKeys] = await Promise.all([
+        storedContext
+          ? this.metadataPreferences.getForLibrary(storedContext.libraryId).then((result) => result.effective)
+          : this.metadataPreferences.getDefaults(user.id),
+        this.resolveSearchProviderKeys(dto.providers, storedContext?.libraryId, storedContext?.coverMedia),
+      ]);
+      // A stated medium describes the book, so it settles which providers can answer at all. It
+      // narrows the caller's provider list rather than widening it, and never adds a disabled one.
+      const media = [...new Set([...(dto.mediaKind ? [dto.mediaKind] : []), ...(dto.mediaKinds ?? [])])];
+      const providerKeys = media.length
+        ? [...new Set(media.flatMap((mediaKind) => this.registry.keysForMediaKind(enabledProviderKeys, mediaKind)))]
+        : enabledProviderKeys;
+      const leadMediaKind = media[0];
+      const servesOnlyAudiobooks = (providerKey: MetadataProviderKey) => this.registry.servesOnlyAudiobooks(providerKey);
+      const requestedAudiobookProvider = (dto.providers ?? []).some(servesOnlyAudiobooks);
+      const onlyAudiobookProviders = providerKeys.length > 0 && providerKeys.every(servesOnlyAudiobooks);
+      const inferredIsAudiobook =
+        requestedAudiobookProvider ||
+        onlyAudiobookProviders ||
+        Boolean(existingProviderIds[MetadataProviderKey.AUDIBLE] || existingProviderIds[MetadataProviderKey.LIBROFM]);
+      const isAudiobook = dto.isAudiobook ?? (leadMediaKind ? leadMediaKind === 'audiobook' : inferredIsAudiobook);
+      // The medium ranking prefers: a stated one, else the side of the book being searched.
+      const mediaKind = leadMediaKind ?? (isAudiobook ? 'audiobook' : storedContext?.textMediaKind);
 
-    const searchTitle = normalizeSearchTitle(dto.title);
-    const params: MetadataSearchParams = {
-      title: searchTitle,
-      author: dto.author,
-      isbn: dto.isbn,
-      seriesName: storedContext?.seriesName ?? undefined,
-      seriesIndex: storedContext?.seriesIndex ?? undefined,
-      titleIsExplicitQuery: isExplicitQuery(searchTitle, storedContext?.title),
-      existingProviderIds,
-      isAudiobook,
-      mediaKind,
-      includeAudiobookProviders: isAudiobook || providerKeys.some(servesOnlyAudiobooks),
-      validateCoverPlaceholders: true,
-      resultsPerProvider: dto.resultsPerProvider,
-    };
+      const searchTitle = normalizeSearchTitle(dto.title);
+      const params: MetadataSearchParams = {
+        title: searchTitle,
+        author: dto.author,
+        isbn: dto.isbn,
+        seriesName: storedContext?.seriesName ?? undefined,
+        seriesIndex: storedContext?.seriesIndex ?? undefined,
+        titleIsExplicitQuery: isExplicitQuery(searchTitle, storedContext?.title),
+        existingProviderIds,
+        isAudiobook,
+        mediaKind,
+        includeAudiobookProviders: isAudiobook || providerKeys.some(servesOnlyAudiobooks),
+        validateCoverPlaceholders: true,
+        resultsPerProvider: dto.resultsPerProvider,
+      };
 
-    const genreOptions = preferences.options?.genres;
-    const blockedGenreTokens = createGenreBlocklistTokenSet(genreOptions?.blocklist);
+      const genreOptions = preferences.options?.genres;
+      const blockedGenreTokens = createGenreBlocklistTokenSet(genreOptions?.blocklist);
 
-    return this.metadataFetchService.search(params, providerKeys, { directive: requestDirective(dto.cache) }).pipe(
-      // Run summaries are for internal callers; the stream carries only candidates and statuses.
-      filter((event): event is Exclude<MetadataSearchEvent, { kind: 'run' }> => event.kind !== 'run'),
-      map((event): MessageEvent => {
-        if (event.kind === 'status') return { type: METADATA_PROVIDER_STATUS_EVENT, data: event.status };
-        const candidate = applyGenreFetchOptionsToCandidate(event.candidate, blockedGenreTokens, genreOptions?.maxCount);
-        const data: MetadataSearchCandidateEvent = event.cache ? { ...candidate, cache: event.cache } : candidate;
-        return { data };
-      }),
-    );
+      return this.metadataFetchService.search(params, providerKeys, { directive: requestDirective(dto.cache) }).pipe(
+        // Run summaries are for internal callers; the stream carries only candidates and statuses.
+        filter((event): event is Exclude<MetadataSearchEvent, { kind: 'run' }> => event.kind !== 'run'),
+        map((event): MessageEvent => {
+          if (event.kind === 'status') return { type: METADATA_PROVIDER_STATUS_EVENT, data: event.status };
+          const candidate = applyGenreFetchOptionsToCandidate(event.candidate, blockedGenreTokens, genreOptions?.maxCount);
+          const data: MetadataSearchCandidateEvent = event.cache ? { ...candidate, cache: event.cache } : candidate;
+          return { data };
+        }),
+      );
+    });
   }
 
   @Get('lookup')
-  async lookup(@Query() dto: LookupMetadataDto): Promise<MetadataSearchCandidateEvent | null> {
-    const [enabledProvider] = await this.resolveEnabledProviderKeys([dto.provider]);
-    if (!enabledProvider) return null;
+  async lookup(@Query() dto: LookupMetadataDto, @CurrentUser() user: RequestUser): Promise<MetadataSearchCandidateEvent | null> {
+    const stored = dto.bookId ? await this.metadataFetchService.getStoredProviderContext(dto.bookId, user) : null;
+    return this.inProviderScope(user, stored?.libraryId, async () => {
+      const [enabledProvider] = await this.resolveEnabledProviderKeys([dto.provider]);
+      if (!enabledProvider) return null;
 
-    const [result, preferences] = await Promise.all([
-      this.metadataFetchService.lookupById(enabledProvider, dto.id, { directive: requestDirective(dto.cache) }),
-      this.metadataPreferences.getGlobal(),
-    ]);
-    if (!result) return null;
-    const genreOptions = preferences.options?.genres;
-    const blockedGenreTokens = createGenreBlocklistTokenSet(genreOptions?.blocklist);
-    const candidate = applyGenreFetchOptionsToCandidate(result.candidate, blockedGenreTokens, genreOptions?.maxCount);
-    return result.cache ? { ...candidate, cache: result.cache } : candidate;
+      const [result, preferences] = await Promise.all([
+        this.metadataFetchService.lookupById(enabledProvider, dto.id, { directive: requestDirective(dto.cache) }),
+        stored
+          ? this.metadataPreferences.getForLibrary(stored.libraryId).then((result) => result.effective)
+          : this.metadataPreferences.getDefaults(user.id),
+      ]);
+      if (!result) return null;
+      const genreOptions = preferences.options?.genres;
+      const blockedGenreTokens = createGenreBlocklistTokenSet(genreOptions?.blocklist);
+      const candidate = applyGenreFetchOptionsToCandidate(result.candidate, blockedGenreTokens, genreOptions?.maxCount);
+      return result.cache ? { ...candidate, cache: result.cache } : candidate;
+    });
   }
 
   private async resolveEnabledProviderKeys(requestedProviders?: MetadataProviderKey[]): Promise<MetadataProviderKey[]> {

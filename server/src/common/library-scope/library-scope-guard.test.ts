@@ -10,6 +10,7 @@ import { describe, expect, it } from 'vitest';
  */
 const ALLOWED: Record<string, string> = {
   'common/library-scope/library-scope.repository.ts': 'the scope data source',
+  'common/library-scope/library-defaults.service.ts': 'checks whether the library’s stable configuration owner still owns it',
   'modules/library/library.repository.ts':
     'grant management, member lists, and the per-user library list that LibraryService filters through the scope',
   'modules/user/user.repository.ts': 'administrator user management',

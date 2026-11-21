@@ -116,6 +116,9 @@ describe('Duplicate books (e2e)', () => {
     'resolves fifty groups of mixed actions under one gate, skipping a stale group and reporting a failing one',
     async () => {
       const library = await createLibraryWithFolder(ctx, { name: `dupes-${randomUUID()}`, mode: 'book_per_folder' });
+      const me = await ctx.app.inject({ method: 'GET', url: '/api/v1/auth/me', headers: authHeader(ctx.adminToken) });
+      expect(me.statusCode).toBe(200);
+      await grantLibraryAccess(ctx, me.json<{ id: number }>().id, library.libraryId, 'editor');
       const pairs: Array<{ a: string; b: string }> = [];
       for (let index = 0; index < 50; index++) {
         const title = `Resolve ${randomUUID()}`;
@@ -396,6 +399,9 @@ describe('Duplicate books (e2e)', () => {
     'removes only a byte-identical copy when merging, and keeps one whose sampled hash matches but bytes differ (H13)',
     async () => {
       const library = await createLibraryWithFolder(ctx, { name: `dupes-h13-${randomUUID()}`, mode: 'book_per_folder' });
+      const me = await ctx.app.inject({ method: 'GET', url: '/api/v1/auth/me', headers: authHeader(ctx.adminToken) });
+      expect(me.statusCode).toBe(200);
+      await grantLibraryAccess(ctx, me.json<{ id: number }>().id, library.libraryId, 'editor');
       const original = await createEpubFixture(library.folderPath, join('kept', 'book.epub'), {
         title: `Twin ${randomUUID()}`,
         paddingBytes: 100_000,

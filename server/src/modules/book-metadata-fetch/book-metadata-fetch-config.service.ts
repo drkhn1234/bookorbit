@@ -5,7 +5,7 @@ import type {
   BookMetadataFetchLibraryConfig,
   BookMetadataFetchLibraryConfigEntry,
 } from '@bookorbit/types';
-import { asc, eq } from 'drizzle-orm';
+import { asc, inArray, eq } from 'drizzle-orm';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 
 import { DB } from '../../db';
@@ -83,7 +83,8 @@ export class BookMetadataFetchConfigService {
   }
 
   /** Every books library with its effective config, its stored override and its last run. */
-  async listLibraryConfigs(): Promise<BookMetadataFetchLibraryConfigEntry[]> {
+  async listLibraryConfigs(libraryIds?: number[]): Promise<BookMetadataFetchLibraryConfigEntry[]> {
+    if (libraryIds?.length === 0) return [];
     const [global, rows] = await Promise.all([
       this.getGlobalConfig(),
       this.db
@@ -95,6 +96,7 @@ export class BookMetadataFetchConfigService {
           lastQueuedCount: libraries.bookMetadataFetchLastQueuedCount,
         })
         .from(libraries)
+        .where(libraryIds ? inArray(libraries.id, libraryIds) : undefined)
         // The sidebar's order, so the tabs read the same way as Field Rules'.
         .orderBy(asc(libraries.displayOrder), asc(libraries.name)),
     ]);

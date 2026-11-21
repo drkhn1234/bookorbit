@@ -471,7 +471,7 @@ describe('AchievementRepository', () => {
   });
 
   describe('countAccessibleBooks', () => {
-    it('counts all present books for superuser without join', async () => {
+    it('counts only explicitly granted books for superusers', async () => {
       const chain = makeSelectChain([{ value: 100 }]);
       const db = { select: vi.fn().mockReturnValue(chain) };
       const repo = makeRepo(db);
@@ -479,7 +479,7 @@ describe('AchievementRepository', () => {
       const result = await repo.countAccessibleBooks(1, true);
 
       expect(result).toBe(100);
-      expect(chain.innerJoin).not.toHaveBeenCalled();
+      expect(chain.innerJoin).toHaveBeenCalled();
     });
 
     it('counts books via library access join for regular user', async () => {
@@ -495,7 +495,7 @@ describe('AchievementRepository', () => {
   });
 
   describe('countDistinctFormats', () => {
-    it('counts formats without join for superuser', async () => {
+    it('counts formats through explicit grants for superusers', async () => {
       const chain = makeSelectChain([{ value: 3 }]);
       const db = { select: vi.fn().mockReturnValue(chain) };
       const repo = makeRepo(db);
@@ -503,7 +503,7 @@ describe('AchievementRepository', () => {
       const result = await repo.countDistinctFormats(1, true);
 
       expect(result).toBe(3);
-      expect(chain.innerJoin).not.toHaveBeenCalled();
+      expect(chain.innerJoin).toHaveBeenCalled();
     });
 
     it('counts formats via library join for regular user', async () => {

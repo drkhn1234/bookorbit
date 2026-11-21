@@ -1,3 +1,4 @@
+import { Permission } from '@bookorbit/types';
 import { BadRequestException, ConflictException, HttpException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { lstat, mkdir, readdir, realpath, rename, rmdir } from 'fs/promises';
@@ -135,7 +136,7 @@ export class LibraryDockService implements OnModuleInit, LibraryLifecycleListene
 
   /** The docks this user may upload into: turned on, in a library they can see (D26, D27). */
   async listUploadTargets(user: RequestUser): Promise<BookDockUploadTargets> {
-    const libraryIds = await this.libraryService.findAccessibleLibraryIds(user);
+    const libraryIds = await this.libraryService.findLibrariesWithPermission(user, Permission.LibraryUpload);
     return { docks: await this.dockRepo.listUploadTargets(libraryIds) };
   }
 
@@ -144,8 +145,8 @@ export class LibraryDockService implements OnModuleInit, LibraryLifecycleListene
    * library, its dock is on, and the library takes this format. Book Dock access is the caller's
    * guard. Throws a coded upload error otherwise.
    */
-  async resolveUploadDock(user: RequestUser, libraryId: number, filename: string): Promise<BookDockUploadDock> {
-    await this.libraryService.verifyAccess(user, libraryId);
+  async resolveUploadDock(user: RequestUser, libraryId: number, filename: string, scope?: string): Promise<BookDockUploadDock> {
+    await this.libraryService.verifyPermission(user, libraryId, Permission.LibraryUpload, scope);
     const dock = (await this.registry.all()).find((candidate) => candidate.libraryId === libraryId && candidate.enabled);
     if (!dock) throw uploadError.invalidTarget('This library has no Library Dock turned on');
     const library = await this.fileRepo.findLibraryFormats(libraryId);

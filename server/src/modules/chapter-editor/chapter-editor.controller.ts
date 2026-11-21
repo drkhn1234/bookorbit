@@ -5,7 +5,7 @@ import { AuditAction, AuditResource, Permission } from '@bookorbit/types';
 
 import { Auditable } from '../../common/decorators/auditable.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { RequirePermission } from '../../common/decorators/require-permission.decorator';
+import { RequireScopedPermission } from '../../common/decorators/require-scoped-permission.decorator';
 import type { RequestUser } from '../../common/types/request-user';
 import { ChapterJobService } from './chapter-job.service';
 import { ChapterEditorService } from './chapter-editor.service';
@@ -26,7 +26,7 @@ export class ChapterEditorController {
   ) {}
 
   @Post('jobs/write')
-  @RequirePermission(Permission.LibraryEditMetadata)
+  @RequireScopedPermission(Permission.LibraryEditMetadata, 'book', 'bookId')
   @Auditable({
     action: AuditAction.BookWriteAndRename,
     resource: AuditResource.Book,
@@ -38,13 +38,13 @@ export class ChapterEditorController {
   }
 
   @Post('jobs/read')
-  @RequirePermission(Permission.LibraryEditMetadata)
+  @RequireScopedPermission(Permission.LibraryEditMetadata, 'book', 'bookId')
   startRead(@Param('bookId', ParseIntPipe) bookId: number, @Body() dto: StartChapterJobDto, @CurrentUser() user: RequestUser) {
     return this.jobs.start(bookId, 'read', dto.baseRevision, user, dto.retry);
   }
 
   @Post('jobs/revert')
-  @RequirePermission(Permission.LibraryEditMetadata)
+  @RequireScopedPermission(Permission.LibraryEditMetadata, 'book', 'bookId')
   @Auditable({
     action: AuditAction.BookMetadataUpdate,
     resource: AuditResource.Book,
@@ -56,13 +56,13 @@ export class ChapterEditorController {
   }
 
   @Get('jobs')
-  @RequirePermission(Permission.LibraryEditMetadata)
+  @RequireScopedPermission(Permission.LibraryEditMetadata, 'book', 'bookId')
   latestJob(@Param('bookId', ParseIntPipe) bookId: number, @CurrentUser() user: RequestUser) {
     return this.jobs.latest(bookId, user);
   }
 
   @Get('jobs/:jobId')
-  @RequirePermission(Permission.LibraryEditMetadata)
+  @RequireScopedPermission(Permission.LibraryEditMetadata, 'book', 'bookId')
   jobStatus(@Param('bookId', ParseIntPipe) bookId: number, @Param('jobId', ParseUUIDPipe) jobId: string, @CurrentUser() user: RequestUser) {
     return this.jobs.status(bookId, jobId, user);
   }
@@ -73,7 +73,7 @@ export class ChapterEditorController {
   }
 
   @Put()
-  @RequirePermission(Permission.LibraryEditMetadata)
+  @RequireScopedPermission(Permission.LibraryEditMetadata, 'book', 'bookId')
   @Auditable({
     action: AuditAction.BookMetadataUpdate,
     resource: AuditResource.Book,
@@ -86,7 +86,7 @@ export class ChapterEditorController {
 
   @Post('revert')
   @HttpCode(HttpStatus.OK)
-  @RequirePermission(Permission.LibraryEditMetadata)
+  @RequireScopedPermission(Permission.LibraryEditMetadata, 'book', 'bookId')
   @Auditable({
     action: AuditAction.BookMetadataUpdate,
     resource: AuditResource.Book,
@@ -99,7 +99,7 @@ export class ChapterEditorController {
 
   @Post('write')
   @HttpCode(HttpStatus.OK)
-  @RequirePermission(Permission.LibraryEditMetadata)
+  @RequireScopedPermission(Permission.LibraryEditMetadata, 'book', 'bookId')
   @Auditable({
     action: AuditAction.BookWriteAndRename,
     resource: AuditResource.Book,
@@ -111,26 +111,26 @@ export class ChapterEditorController {
   }
 
   @Get('embedded')
-  @RequirePermission(Permission.LibraryEditMetadata)
+  @RequireScopedPermission(Permission.LibraryEditMetadata, 'book', 'bookId')
   readEmbedded(@Param('bookId', ParseIntPipe) bookId: number, @CurrentUser() user: RequestUser) {
     return this.service.readEmbedded(bookId, user);
   }
 
   @Get('lookup')
-  @RequirePermission(Permission.LibraryEditMetadata)
+  @RequireScopedPermission(Permission.LibraryEditMetadata, 'book', 'bookId')
   lookup(@Param('bookId', ParseIntPipe) bookId: number, @Query() dto: LookupBookChaptersDto, @CurrentUser() user: RequestUser) {
     return this.service.lookup(bookId, dto, user);
   }
 
   @Get('ebook')
-  @RequirePermission(Permission.LibraryEditMetadata)
+  @RequireScopedPermission(Permission.LibraryEditMetadata, 'book', 'bookId')
   readEbook(@Param('bookId', ParseIntPipe) bookId: number, @Query() dto: EbookBookChaptersDto, @CurrentUser() user: RequestUser) {
     return this.service.readEbook(bookId, dto.source, user);
   }
 
   @Post('analyze')
   @HttpCode(HttpStatus.OK)
-  @RequirePermission(Permission.LibraryEditMetadata)
+  @RequireScopedPermission(Permission.LibraryEditMetadata, 'book', 'bookId')
   analyze(
     @Param('bookId', ParseIntPipe) bookId: number,
     @Body() dto: AnalyzeBookChaptersDto,
@@ -142,7 +142,7 @@ export class ChapterEditorController {
   }
 
   @Get('waveform')
-  @RequirePermission(Permission.LibraryEditMetadata)
+  @RequireScopedPermission(Permission.LibraryEditMetadata, 'book', 'bookId')
   waveform(
     @Param('bookId', ParseIntPipe) bookId: number,
     @Query() dto: WaveformBookChaptersDto,
@@ -154,13 +154,13 @@ export class ChapterEditorController {
   }
 
   @Get('versions')
-  @RequirePermission(Permission.LibraryEditMetadata)
+  @RequireScopedPermission(Permission.LibraryEditMetadata, 'book', 'bookId')
   listVersions(@Param('bookId', ParseIntPipe) bookId: number, @CurrentUser() user: RequestUser) {
     return this.service.listVersions(bookId, user);
   }
 
   @Get('versions/:versionId')
-  @RequirePermission(Permission.LibraryEditMetadata)
+  @RequireScopedPermission(Permission.LibraryEditMetadata, 'book', 'bookId')
   getVersion(@Param('bookId', ParseIntPipe) bookId: number, @Param('versionId', ParseIntPipe) versionId: number, @CurrentUser() user: RequestUser) {
     return this.service.getVersion(bookId, versionId, user);
   }

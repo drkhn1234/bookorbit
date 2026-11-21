@@ -1,8 +1,9 @@
 import { ref, watch, type Ref } from 'vue'
 import type { AuthorEnrichmentConditions } from '@bookorbit/types'
-import { api } from '@/lib/api'
+import { useLibrarySettingsApi } from '@/features/settings/composables/useLibrarySettingsMode'
 
 export function useAuthorEligibleCountPreview(conditions: Ref<AuthorEnrichmentConditions | null>) {
+  const api = useLibrarySettingsApi()
   const count = ref<number | null>(null)
   const loading = ref(false)
   let debounceTimer: ReturnType<typeof setTimeout> | null = null

@@ -1,3 +1,5 @@
+import { UseGuards } from '@nestjs/common';
+import { LibraryAdministratorModeGuard } from '../../common/library-scope/library-settings-scope';
 import {
   BadRequestException,
   Body,
@@ -115,6 +117,7 @@ export class AuthorsController {
 
   @Get('enrichment/config')
   @RequirePermission(Permission.ManageMetadataConfig)
+  @UseGuards(LibraryAdministratorModeGuard)
   getEnrichmentConfig() {
     return this.enrichmentConfig.getConfig();
   }
@@ -122,6 +125,7 @@ export class AuthorsController {
   @Put('enrichment/config')
   @HttpCode(HttpStatus.OK)
   @RequirePermission(Permission.ManageMetadataConfig)
+  @UseGuards(LibraryAdministratorModeGuard)
   @Auditable({ action: AuditAction.AuthorEnrichmentConfigUpdate, description: 'Updated author enrichment configuration' })
   async setEnrichmentConfig(@Body() config: AuthorAutoEnrichmentConfigDto) {
     await this.enrichmentConfig.setConfig(config);
@@ -130,6 +134,7 @@ export class AuthorsController {
 
   @Get('metadata/preferences')
   @RequirePermission(Permission.ManageMetadataConfig)
+  @UseGuards(LibraryAdministratorModeGuard)
   getMetadataPreferences() {
     return this.metadataPreferences.getPreferences();
   }
@@ -137,6 +142,7 @@ export class AuthorsController {
   @Put('metadata/preferences')
   @HttpCode(HttpStatus.OK)
   @RequirePermission(Permission.ManageMetadataConfig)
+  @UseGuards(LibraryAdministratorModeGuard)
   @Auditable({ action: AuditAction.AuthorEnrichmentConfigUpdate, description: 'Updated author metadata preferences' })
   setMetadataPreferences(@Body() preferences: UpdateAuthorMetadataPreferencesDto) {
     return this.metadataPreferences.setPreferences(preferences);
@@ -145,6 +151,7 @@ export class AuthorsController {
   @Post('enrichment/preview-count')
   @KeyReadSafe()
   @RequirePermission(Permission.ManageMetadataConfig)
+  @UseGuards(LibraryAdministratorModeGuard)
   async previewCount(@Body() body: PreviewAuthorEnrichmentCountDto) {
     const count = await this.queueRepo.countEligibleLinkedAuthors(body.conditions);
     return { count };
@@ -152,6 +159,7 @@ export class AuthorsController {
 
   @Post('enrichment/backfill')
   @RequirePermission(Permission.ManageMetadataConfig)
+  @UseGuards(LibraryAdministratorModeGuard)
   async enqueueBackfill(@Body() dto?: AuthorEnrichmentBackfillDto) {
     const queued = await this.enrichmentOrchestrator.backfillLinkedAuthors({ ignoreCache: dto?.ignoreCache === true });
     return { queued };
@@ -159,6 +167,7 @@ export class AuthorsController {
 
   @Post('enrichment/backfill-all')
   @RequirePermission(Permission.ManageMetadataConfig)
+  @UseGuards(LibraryAdministratorModeGuard)
   async enqueueBackfillAll(@Body() dto?: AuthorEnrichmentBackfillDto) {
     const queued = await this.enrichmentOrchestrator.backfillAllLinkedAuthors({ ignoreCache: dto?.ignoreCache === true });
     return { queued };
@@ -166,6 +175,7 @@ export class AuthorsController {
 
   @Post('enrichment/pause')
   @RequirePermission(Permission.ManageMetadataConfig)
+  @UseGuards(LibraryAdministratorModeGuard)
   @Auditable({ action: AuditAction.AuthorEnrichmentPause, description: 'Paused author enrichment' })
   async pauseEnrichment() {
     await this.enrichmentOrchestrator.pause();
@@ -174,6 +184,7 @@ export class AuthorsController {
 
   @Post('enrichment/resume')
   @RequirePermission(Permission.ManageMetadataConfig)
+  @UseGuards(LibraryAdministratorModeGuard)
   @Auditable({ action: AuditAction.AuthorEnrichmentResume, description: 'Resumed author enrichment' })
   async resumeEnrichment() {
     await this.enrichmentOrchestrator.resume();
@@ -182,6 +193,7 @@ export class AuthorsController {
 
   @Post('enrichment/cancel')
   @RequirePermission(Permission.ManageMetadataConfig)
+  @UseGuards(LibraryAdministratorModeGuard)
   @Auditable({ action: AuditAction.AuthorEnrichmentCancel, description: 'Cancelled pending author enrichment jobs' })
   async cancelEnrichment() {
     await this.enrichmentOrchestrator.cancelPending();
@@ -190,6 +202,7 @@ export class AuthorsController {
 
   @Post('enrichment/retry-failed')
   @RequirePermission(Permission.ManageMetadataConfig)
+  @UseGuards(LibraryAdministratorModeGuard)
   async retryFailedEnrichment() {
     const requeued = await this.enrichmentOrchestrator.requeueFailed();
     return { requeued };
@@ -197,6 +210,7 @@ export class AuthorsController {
 
   @Get('enrichment/failed')
   @RequirePermission(Permission.ManageMetadataConfig)
+  @UseGuards(LibraryAdministratorModeGuard)
   getFailedEnrichment(
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,

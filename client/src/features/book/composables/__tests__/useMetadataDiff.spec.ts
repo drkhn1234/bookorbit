@@ -435,6 +435,42 @@ describe('useMetadataDiff', () => {
     expect(diff.buildPatch().formPatch.title).toBeUndefined()
   })
 
+  it('applies an external edition without picking its locked title', () => {
+    const candidate: MetadataCandidate = {
+      provider: 'fake-provider',
+      providerId: 'fp/edition 2',
+      sourceUrl: 'https://fake.example/books/revised?from=selection',
+      title: 'Revised title',
+      authors: ['Edition Author'],
+      publisher: 'Selected Editions',
+      publishedDate: '2024-03-14',
+      publishedYear: 2024,
+      pageCount: 287,
+      communityRating: 4.2,
+      communityRatingCount: 321,
+    }
+    const diff = setup(candidate, {
+      lockedFields: ['title'],
+      providers: [{ key: candidate.provider, label: 'Fake Provider', identifiable: true, source: 'external' }],
+    })
+    diff.toggleField('title')
+    diff.takeAll()
+
+    expect(field(diff, 'title')).toMatchObject({ isLocked: true, isPicked: false })
+    const { formPatch } = diff.buildPatch()
+    expect(formPatch).not.toHaveProperty('title')
+    expect(formPatch).toMatchObject({
+      authors: ['Edition Author'],
+      publisher: 'Selected Editions',
+      publishedDate: '2024-03-14',
+      publishedYear: 2024,
+      pageCount: 287,
+      externalProviderIds: { 'fake-provider': 'fp/edition 2' },
+      externalProviderLinks: { 'fake-provider': 'https://fake.example/books/revised?from=selection' },
+      communityRatings: [{ provider: 'fake-provider', rating: 4.2, ratingCount: 321 }],
+    })
+  })
+
   it('proxies external cover URLs for display and preserves the raw cover URL in the patch', () => {
     const externalCover = 'https://m.media-amazon.com/images/I/41ZaIFRkWyL.jpg'
     const diff = setup({ ...google, coverUrl: externalCover })

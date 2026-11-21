@@ -1,16 +1,16 @@
-import { IsBoolean, IsIn, IsOptional, IsString, ValidateNested } from 'class-validator';
+import { IsBoolean, IsIn, IsOptional, IsString, MaxLength, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ITUNES_COVER_RESOLUTIONS } from '@bookorbit/types';
 
 export class GoogleProviderConfigDto {
   @IsOptional() @IsBoolean() enabled?: boolean;
-  @IsOptional() @IsString() apiKey?: string;
+  @IsOptional() @IsString() @MaxLength(8192) apiKey?: string;
 }
 
 export class AmazonProviderConfigDto {
   @IsOptional() @IsBoolean() enabled?: boolean;
   @IsOptional() @IsString() domain?: string;
-  @IsOptional() @IsString() cookie?: string;
+  @IsOptional() @IsString() @MaxLength(16384) cookie?: string;
 }
 
 export class SimpleProviderConfigDto {
@@ -24,7 +24,7 @@ export class ITunesProviderConfigDto {
 
 export class HardcoverProviderConfigDto {
   @IsOptional() @IsBoolean() enabled?: boolean;
-  @IsOptional() @IsString() apiKey?: string;
+  @IsOptional() @IsString() @MaxLength(8192) apiKey?: string;
 }
 
 export class AudibleProviderConfigDto {
@@ -34,7 +34,7 @@ export class AudibleProviderConfigDto {
 
 export class ComicVineProviderConfigDto {
   @IsOptional() @IsBoolean() enabled?: boolean;
-  @IsOptional() @IsString() apiKey?: string;
+  @IsOptional() @IsString() @MaxLength(8192) apiKey?: string;
 }
 
 export class KoboProviderConfigDto {

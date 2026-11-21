@@ -1,3 +1,5 @@
+import { UseGuards } from '@nestjs/common';
+import { LibraryAdministratorModeGuard } from '../../common/library-scope/library-settings-scope';
 import { Body, Controller, Delete, Get, Put, Query } from '@nestjs/common';
 import { Permission, type MetadataCacheClearResponse, type MetadataCacheConfigResponse, type MetadataCacheStats } from '@bookorbit/types';
 
@@ -8,6 +10,7 @@ import { ClearMetadataCacheQueryDto, UpdateMetadataCacheConfigDto } from './dto/
 import { MetadataCacheAdminService } from './metadata-cache-admin.service';
 
 @Controller('metadata-cache')
+@UseGuards(LibraryAdministratorModeGuard)
 export class MetadataCacheController {
   constructor(private readonly admin: MetadataCacheAdminService) {}
 

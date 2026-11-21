@@ -1,3 +1,6 @@
+vi.mock('@/features/library/composables/useLibraryCapabilities', () => ({
+  useLibraryCapabilities: () => ({ canCreate: ref(true), canUseAdministrativeStorage: ref(true) }),
+}))
 import { afterEach, describe, expect, it, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
@@ -8,6 +11,7 @@ import type { Library, LibraryAccessEntry, LibraryLastScan, LibraryOverviewEntry
 vi.mock('@/features/library/composables/useLibraries', () => ({
   useLibraries: () => ({
     libraries: librariesRef,
+    error: ref(null),
     fetchLibraries: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
     refreshLibraries: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
   }),
@@ -35,7 +39,11 @@ vi.mock('@/features/scanner/composables/useScanProgress', () => ({
 }))
 
 vi.mock('@/features/auth/composables/usePermissions', () => ({
-  usePermissions: () => ({ hasPermission: vi.fn<() => boolean>().mockReturnValue(true) }),
+  usePermissions: () => ({ hasPermission: vi.fn<() => boolean>().mockReturnValue(true), isSuperuser: ref(true) }),
+}))
+
+vi.mock('../composables/useLibrarySettingsMode', () => ({
+  useLibrarySettingsMode: () => administratorModeRef,
 }))
 
 vi.mock('@/lib/api', () => ({
@@ -59,6 +67,7 @@ vi.mock('@/features/library/components/LibraryCreatorModal.vue', () => ({
 import { ref } from 'vue'
 import type { ScanProgressEvent } from '@bookorbit/types'
 
+const administratorModeRef = ref(false)
 const librariesRef = ref<Library[]>([])
 const progressRef = ref<Map<number, ScanProgressEvent>>(new Map())
 const overviewRef = ref<LibraryOverviewEntry[]>([])
@@ -194,6 +203,7 @@ describe('LibrariesSettings ledger', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    administratorModeRef.value = false
     librariesRef.value = []
     progressRef.value = new Map()
     overviewRef.value = []
@@ -205,6 +215,67 @@ describe('LibrariesSettings ledger', () => {
       if (url.includes('/scan-history')) return { ok: true, json: async () => historyRef.value }
       if (url.endsWith('/access')) return { ok: true, json: async () => accessRef.value }
       return { ok: true, json: async () => ({}) }
+    })
+  })
+
+  describe('administrative inventory', () => {
+    const path = '/api/v1/libraries/settings-inventory?scope=admin'
+    const section = '[aria-labelledby="other-libraries-heading"]'
+
+    it('only requests the inventory in Administrator Mode and keeps shared libraries in the regular list', async () => {
+      librariesRef.value = [makeLibrary({ name: 'Shared library' })]
+      const wrapper = await mountLoaded()
+      const normalApi = apiMock.getMockImplementation()!
+      apiMock.mockImplementation(async (url, init) =>
+        url === path
+          ? {
+              ok: true,
+              json: async () => [
+                { id: 1, name: 'Shared library', owners: ['Owner'] },
+                { id: 2, name: 'Unshared library', owners: ['Other owner'] },
+              ],
+            }
+          : normalApi(url, init),
+      )
+
+      expect(wrapper.find(section).exists()).toBe(false)
+      expect(apiMock.mock.calls.some(([url]) => url === path)).toBe(false)
+      administratorModeRef.value = true
+      await flushPromises()
+      expect(apiMock).toHaveBeenCalledWith(path, { signal: expect.any(AbortSignal) })
+      const inventory = wrapper.get(section)
+      expect(inventory.text()).toContain('Unshared library')
+      expect(inventory.text()).toContain('Other owner')
+      expect(inventory.text()).not.toContain('Shared library')
+      expect(tableText(wrapper)).toContain('Shared library')
+
+      administratorModeRef.value = false
+      await wrapper.vm.$nextTick()
+      expect(wrapper.find(section).exists()).toBe(false)
+    })
+
+    it('aborts a pending request and ignores its late response when Administrator Mode ends', async () => {
+      const wrapper = await mountLoaded()
+      let finish: (() => void) | undefined
+      apiMock.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finish = () => resolve({ ok: true, json: async () => [{ id: 2, name: 'Late result', owners: [] }] })
+          }),
+      )
+      administratorModeRef.value = true
+      await wrapper.vm.$nextTick()
+      expect(wrapper.get(section).text()).toContain('Loading other libraries')
+      const request = apiMock.mock.calls.find(([url]) => url === path)
+      expect(request).toBeDefined()
+      const signal = (request![1] as RequestInit).signal!
+      administratorModeRef.value = false
+      await wrapper.vm.$nextTick()
+      expect(signal.aborted).toBe(true)
+      expect(wrapper.find(section).exists()).toBe(false)
+      finish!()
+      await flushPromises()
+      expect(wrapper.text()).not.toContain('Late result')
     })
   })
 
@@ -894,7 +965,7 @@ describe('LibrariesSettings ledger', () => {
       librariesRef.value = [makeLibrary({ id: 5, name: 'Novels' })]
       const fallback = apiMock.getMockImplementation()!
       apiMock.mockImplementation(async (path: unknown, init?: unknown) => {
-        if (String(path).endsWith('/libraries/5') && (init as RequestInit | undefined)?.method === 'DELETE') {
+        if (String(path).split('?')[0]!.endsWith('/libraries/5') && (init as RequestInit | undefined)?.method === 'DELETE') {
           return { ok: false, status: 409, json: async () => ({ statusCode: 409, message: 'Busy', errorCode: 'LIBRARY_BUSY' }) }
         }
         return fallback(path, init)

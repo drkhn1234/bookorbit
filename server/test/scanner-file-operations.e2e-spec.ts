@@ -1850,13 +1850,15 @@ describe('Scanner file operations (e2e)', () => {
             const rows = await ctx.db
               .select({ folderPath: schema.books.folderPath, libraryFolderId: schema.books.libraryFolderId, status: schema.books.status })
               .from(schema.books)
-              .where(eq(schema.books.libraryId, outerId))
-              .orderBy(schema.books.folderPath);
-            expect(rows).toEqual([
-              { folderPath: join(innerRoot, 'Dune'), libraryFolderId: innerFolder.id, status: 'present' },
-              { folderPath: join(outerRoot, 'Loose'), libraryFolderId: expect.any(Number), status: 'present' },
-            ]);
-            expect(rows[1].libraryFolderId).not.toBe(innerFolder.id);
+              .where(eq(schema.books.libraryId, outerId));
+            expect(rows).toHaveLength(2);
+            expect(rows.find(({ folderPath }) => folderPath === join(innerRoot, 'Dune'))).toMatchObject({
+              libraryFolderId: innerFolder.id,
+              status: 'present',
+            });
+            const loose = rows.find(({ folderPath }) => folderPath === join(outerRoot, 'Loose'));
+            expect(loose).toMatchObject({ libraryFolderId: expect.any(Number), status: 'present' });
+            expect(loose?.libraryFolderId).not.toBe(innerFolder.id);
           },
           { seedInner: false },
         );

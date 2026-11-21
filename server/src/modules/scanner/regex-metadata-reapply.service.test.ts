@@ -148,7 +148,7 @@ describe('RegexMetadataReapplyService', () => {
     expect(scanner.applyLibraryRulesToBook.mock.calls[2][0]).toEqual(books[0]);
   });
 
-  it('shows a run only to the person who started it or a superuser', async () => {
+  it('shows a run to its requester or a superuser using administrator mode', async () => {
     const scanner = { applyLibraryRulesToBook: vi.fn().mockResolvedValue('unchanged') };
     const service = new RegexMetadataReapplyService(makeRepo([{ id: 1, primaryFileId: 10 }]) as never, scanner as never);
 
@@ -156,6 +156,8 @@ describe('RegexMetadataReapplyService', () => {
     await finished(service, 1);
 
     expect(service.get(1, otherUser)).toBeNull();
-    expect(service.get(1, { id: 9, isSuperuser: true } as never)).not.toBeNull();
+    const admin = { id: 9, isSuperuser: true, permissions: [] } as never;
+    expect(service.get(1, admin)).toBeNull();
+    expect(service.get(1, admin, 'admin')).not.toBeNull();
   });
 });

@@ -407,7 +407,7 @@ describe('Book Dock ingest + finalize (e2e)', () => {
     await mkdir(overlapPath);
     const overlap = await context.app.inject({
       method: 'POST',
-      url: '/api/v1/libraries',
+      url: '/api/v1/libraries?scope=admin',
       headers: admin,
       payload: { name: `Inside ${suffix}`, icon: 'BookOpen', folders: [overlapPath] },
     });
@@ -542,7 +542,7 @@ describe('Book Dock ingest + finalize (e2e)', () => {
     const dock = await realpath(context.fixture.bookDockPath);
     const member = await createUserAndLogin(context, { permissions: [Permission.BookDockAccess] });
     const memberAuth = authHeader(member.accessToken);
-    await grantLibraryAccess(context, member.userId, library.libraryId);
+    await grantLibraryAccess(context, member.userId, library.libraryId, 'owner');
     const listDocks = async () =>
       (await context.app.inject({ method: 'GET', url: '/api/v1/book-dock/docks', headers: memberAuth })).json() as BookDockUploadTargets;
 
@@ -1228,7 +1228,7 @@ describe('Book Dock ingest + finalize (e2e)', () => {
       const viewerFile = await dockPdf(folderLibrary, 'join-viewer', original, uploader.userId);
 
       const viewerOffer = await post<BookDockFinalizePreviewResult>('finalize/preview', uploader.accessToken, { fileIds: [viewerFile.id] });
-      expect(viewerOffer.items[0]).toMatchObject({ status: 'ready', canJoinBook: false });
+      expect(viewerOffer.items[0]).toMatchObject({ status: 'access_denied' });
       expect(viewerOffer.items[0]).not.toHaveProperty('suggestedJoinBook');
 
       const asViewer = (target: number) => ({ fileIds: [viewerFile.id], overrides: [{ fileId: viewerFile.id, joinBook: { bookId: target } }] });
@@ -1844,8 +1844,8 @@ describe('Book Dock ingest + finalize (e2e)', () => {
         defaultFolderId: destination.libraryFolderId,
       },
     });
-    expect(missingUploadPermission.statusCode).toBe(403);
-    expect(missingUploadPermission.json()).toMatchObject({ message: `Missing permission: ${Permission.LibraryUpload}` });
+    expect(missingUploadPermission.statusCode).toBe(201);
+    expect(missingUploadPermission.json()).toMatchObject({ succeeded: 0, failed: 1 });
 
     const noAccessFinalize = await context.app.inject({
       method: 'POST',
@@ -1861,10 +1861,10 @@ describe('Book Dock ingest + finalize (e2e)', () => {
     expect(noAccessFinalize.statusCode).toBe(201);
     const noAccessBody = noAccessFinalize.json() as BookDockFinalizeResult;
     expect(noAccessBody).toMatchObject({ total: 1, succeeded: 0, failed: 1 });
-    expect(noAccessBody.results[0]?.message).toContain('No access to this library');
+    expect(noAccessBody.results[0]?.message).toContain('Insufficient library access for library_upload');
     expect(await getBookDockRow(context, bookDockRow.id)).toBeDefined();
 
-    await grantLibraryAccess(context, withPermissionUser.userId, destination.libraryId);
+    await grantLibraryAccess(context, withPermissionUser.userId, destination.libraryId, 'editor');
 
     const withAccessFinalize = await context.app.inject({
       method: 'POST',

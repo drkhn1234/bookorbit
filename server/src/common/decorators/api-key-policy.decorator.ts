@@ -19,3 +19,7 @@ export const AllowApiKey = () => applyDecorators(SetMetadata(ALLOW_API_KEY_KEY, 
  * read-only key may call it. Never put this on a route with a lasting side effect.
  */
 export const KeyReadSafe = () => applyDecorators(SetMetadata(KEY_READ_SAFE_KEY, true), ApiExtension('x-api-key-read-safe', true));
+
+export const NO_API_KEY_USAGE_TRACKING = 'apiKey:noUsageTracking';
+/** Preserve strictly read-only discovery by suppressing usage telemetry, never credential checks. */
+export const NoApiKeyUsageTracking = () => SetMetadata(NO_API_KEY_USAGE_TRACKING, true);

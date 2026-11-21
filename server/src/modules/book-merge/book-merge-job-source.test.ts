@@ -74,9 +74,9 @@ describe('BookMergeJobSource', () => {
   it("lets anyone who may merge see their own merges, and managers everyone's", () => {
     const { source } = makeSource();
     expect(source.access(merger)).toEqual({ own: true, all: false });
-    expect(source.access(manager)).toEqual({ own: false, all: true });
+    expect(source.access(manager)).toEqual({ own: true, all: true });
     expect(source.access(admin)).toEqual({ own: true, all: true });
-    expect(source.access(user(9))).toEqual({ own: false, all: false });
+    expect(source.access(user(9))).toEqual({ own: true, all: false });
     expect(source.access({ ...merger, active: false } as RequestUser)).toEqual({ own: false, all: false });
   });
 
@@ -127,7 +127,7 @@ describe('BookMergeJobSource', () => {
   it('names the book the others went into, and leaves out one the viewer no longer reaches', async () => {
     const { source, subjects } = makeSource();
     const found = await source.describe([rowOf()], viewerOf(merger));
-    expect(subjects.describe).toHaveBeenCalledWith([12], { user: merger, manages: false });
+    expect(subjects.describe).toHaveBeenCalledWith([12], merger);
     expect(found.get('31')).toMatchObject({ label: 'Dune', url: '/book/12' });
     subjects.describe.mockResolvedValue(new Map());
     expect((await source.describe([rowOf()], viewerOf(manager, true))).size).toBe(0);

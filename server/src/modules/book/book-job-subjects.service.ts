@@ -8,12 +8,6 @@ import { BookService } from './book.service';
 
 const REACH_CONCURRENCY = 4;
 
-export interface BookSubjectViewer {
-  user: RequestUser;
-  /** Sees everyone's jobs of the type, so every subject is named, as the AI queue does for managers. */
-  manages: boolean;
-}
-
 /** A book's cover thumbnail, versioned so a new cover is fetched again. */
 export function bookThumbnailUrl(bookId: number, coverUpdatedAt: Date | null): string {
   const version = coverUpdatedAt ? `?t=${coverUpdatedAt.getTime()}` : '';
@@ -21,9 +15,8 @@ export function bookThumbnailUrl(bookId: number, coverUpdatedAt: Date | null): s
 }
 
 /**
- * Names the books a page of jobs is about. A viewer who does not manage the type sees a book only
- * while they can still reach it; a book they lost, or one since deleted, is left out and the row
- * falls back to neutral text.
+ * Job administration controls the job list. Book subjects still depend on the current
+ * viewer's content access, so inaccessible or deleted books fall back to neutral text.
  */
 @Injectable()
 export class BookJobSubjects {
@@ -32,12 +25,13 @@ export class BookJobSubjects {
     private readonly books: BookService,
   ) {}
 
-  async describe(bookIds: readonly number[], viewer: BookSubjectViewer): Promise<Map<number, JobSubject>> {
+  async describe(bookIds: readonly number[], user: RequestUser): Promise<Map<number, JobSubject>> {
     const distinct = [...new Set(bookIds.filter(Number.isSafeInteger))];
-    const [found, reachable] = await Promise.all([this.repository.find(distinct), viewer.manages ? null : this.reachable(distinct, viewer.user)]);
+    const reachable = await this.reachable(distinct, user);
+    if (reachable.size === 0) return new Map();
+    const found = await this.repository.find([...reachable]);
     const subjects = new Map<number, JobSubject>();
     for (const [bookId, book] of found) {
-      if (reachable && !reachable.has(bookId)) continue;
       subjects.set(bookId, {
         label: book.title,
         byline: book.authors.length > 0 ? book.authors.join(', ') : null,

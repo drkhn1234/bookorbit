@@ -1,4 +1,4 @@
-import { readdir } from 'fs/promises';
+import { readdir, stat } from 'fs/promises';
 import { join } from 'path';
 
 /**
@@ -26,6 +26,8 @@ export interface WalkedDirectory {
   filePaths: string[];
   /** Absolute paths of the subdirectories the walk is about to descend into. */
   subdirectoryPaths: string[];
+  /** Directory mtime in milliseconds when the enumeration agrees with both stat samples. */
+  mtimeMs: number | undefined;
 }
 
 export type WalkSkippedEntryReason = 'symlink' | 'path_too_long';
@@ -79,6 +81,7 @@ async function collectDirectory(dir: string, options: WalkDirectoryTreeOptions, 
   const concurrencyLimit = options.concurrencyLimit ?? WALK_DIR_CONCURRENCY_LIMIT;
   const shouldExclude = options.shouldExclude ?? (() => false);
 
+  const before = await stat(dir).catch(() => undefined);
   let entries;
   try {
     entries = await readdir(dir, { withFileTypes: true });
@@ -97,6 +100,12 @@ async function collectDirectory(dir: string, options: WalkDirectoryTreeOptions, 
     }
     throw err;
   }
+  const after = before && (await stat(dir).catch(() => undefined));
+  // A later timestamp alone could describe a file that arrived after readdir took its listing.
+  const mtimeMs =
+    before && after && before.mtimeMs === after.mtimeMs && before.ctimeMs === after.ctimeMs && before.dev === after.dev && before.ino === after.ino
+      ? before.mtimeMs
+      : undefined;
 
   const subdirectoryPaths: string[] = [];
   const filePaths: string[] = [];
@@ -125,7 +134,7 @@ async function collectDirectory(dir: string, options: WalkDirectoryTreeOptions, 
   }
 
   // Parents are visited before children so a caller can carry state down the tree.
-  await options.visit({ path: dir, filePaths, subdirectoryPaths });
+  await options.visit({ path: dir, filePaths, subdirectoryPaths, mtimeMs });
 
   for (let index = 0; index < subdirectoryPaths.length; index += concurrencyLimit) {
     const chunk = subdirectoryPaths.slice(index, index + concurrencyLimit);

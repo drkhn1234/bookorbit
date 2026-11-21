@@ -14,6 +14,7 @@ import { outlineButton } from './browse-header'
  */
 const props = defineProps<{
   library: Pick<Library, 'id' | 'name'>
+  administratorMode?: boolean
 }>()
 
 const { t } = useI18n()
@@ -40,7 +41,8 @@ async function handleScan() {
   if (scanning.value || starting.value) return
   starting.value = true
   try {
-    await scanLibrary(props.library)
+    if (props.administratorMode) await scanLibrary(props.library, true)
+    else await scanLibrary(props.library)
   } finally {
     starting.value = false
   }

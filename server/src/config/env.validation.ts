@@ -75,6 +75,10 @@ const envSchema = z.object({
     .string()
     .transform((val) => val.trim())
     .optional(),
+  PERSONAL_LIBRARY_ROOT: z
+    .string()
+    .transform((val) => val.trim())
+    .optional(),
   FILE_WRITE_DEBOUNCE_MS: z.coerce.number().int().positive().optional(),
   FILE_WRITE_MAX_CONCURRENT_WRITES: z.coerce.number().int().positive().optional(),
   BULK_RUNS_MAX_CONCURRENT: z.coerce.number().int().positive().max(20).optional(),

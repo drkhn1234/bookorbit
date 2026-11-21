@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 
-export const LIBRARY_OPERATION_KINDS = ['scan', 'book_move', 'bulk_rename', 'book_merge', 'library_delete'] as const;
+export const LIBRARY_OPERATION_KINDS = ['scan', 'book_move', 'bulk_rename', 'book_merge', 'library_delete', 'library_rebind'] as const;
 export type LibraryOperationKind = (typeof LIBRARY_OPERATION_KINDS)[number];
 
 export type LibraryOperationRelease = () => void;
@@ -31,6 +31,43 @@ interface GateHolder {
 export class LibraryOperationGate {
   private readonly logger = new Logger(LibraryOperationGate.name);
   private readonly holders = new Map<number, GateHolder>();
+  private registryReaders = 0;
+
+  get isRegistryRebinding(): boolean {
+    return this.hasHolder('library_rebind');
+  }
+
+  private hasHolder(kind: LibraryOperationKind): boolean {
+    for (const holder of this.holders.values()) {
+      if (holder.kind === kind) return true;
+    }
+    return false;
+  }
+
+  whenRegistryStable(): Promise<unknown> {
+    return Promise.all([...this.holders].filter(([, holder]) => holder.kind === 'library_rebind').map(([id]) => this.whenReleased(id)));
+  }
+
+  tryReadRegistry(): LibraryOperationRelease | null {
+    if (this.isRegistryRebinding) return null;
+    this.registryReaders++;
+    return () => {
+      this.registryReaders--;
+    };
+  }
+
+  async withStableRegistry<T>(work: () => Promise<T>): Promise<T> {
+    let release = this.tryReadRegistry();
+    while (!release) {
+      await this.whenRegistryStable();
+      release = this.tryReadRegistry();
+    }
+    try {
+      return await work();
+    } finally {
+      release();
+    }
+  }
 
   tryAcquire(libraryId: number, kind: LibraryOperationKind): LibraryOperationRelease | null {
     return this.tryAcquireAll([libraryId], kind);
@@ -40,6 +77,10 @@ export class LibraryOperationGate {
   tryAcquireAll(libraryIds: number[], kind: LibraryOperationKind): LibraryOperationRelease | null {
     const unique = [...new Set(libraryIds)];
     if (unique.some((libraryId) => this.holders.has(libraryId))) return null;
+    // Full scans read the shared registry for nested roots, and targeted scans and watcher work
+    // may carry a registry snapshot across awaits. Existing work must finish before rebinding.
+    if (kind === 'library_rebind' && (this.registryReaders > 0 || this.hasHolder('scan'))) return null;
+    if (kind === 'scan' && this.isRegistryRebinding) return null;
 
     const token = Symbol(kind);
     for (const libraryId of unique) {

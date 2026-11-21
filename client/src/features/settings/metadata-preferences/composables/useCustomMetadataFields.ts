@@ -2,7 +2,7 @@ import { computed, ref } from 'vue'
 import { toast } from 'vue-sonner'
 import type { CustomMetadataFieldDefinition, CustomMetadataFieldType } from '@bookorbit/types'
 import { i18n } from '@/i18n'
-import { api } from '@/lib/api'
+import { useLibrarySettingsApi } from '@/features/settings/composables/useLibrarySettingsMode'
 import { useActiveCustomFields } from '@/features/book/composables/useActiveCustomFields'
 
 type CreateFieldPayload = {
@@ -17,6 +17,7 @@ type UpdateFieldPayload = {
 }
 
 export function useCustomMetadataFields() {
+  const api = useLibrarySettingsApi()
   const { refresh: refreshActiveFields } = useActiveCustomFields()
   const fields = ref<CustomMetadataFieldDefinition[]>([])
   const loading = ref(false)

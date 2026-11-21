@@ -2,7 +2,7 @@ import { computed, ref, shallowRef } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { toast } from 'vue-sonner'
 import type { MetadataCacheConfig, MetadataCacheConfigResponse, MetadataCacheProviderInfo } from '@bookorbit/types'
-import { api } from '@/lib/api'
+import { useLibrarySettingsApi } from '@/features/settings/composables/useLibrarySettingsMode'
 import {
   buildCacheConfig,
   cacheSettingsSnapshot,
@@ -22,6 +22,7 @@ type GlobalDurationField = 'resultsTtl' | 'emptyTtl' | 'staleGrace'
 
 /** The admin form for the metadata search cache: load, edit, validate and save its config. */
 export function useMetadataCacheSettings() {
+  const api = useLibrarySettingsApi()
   const { t } = useI18n()
 
   const providers = shallowRef<MetadataCacheProviderInfo[]>([])
