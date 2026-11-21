@@ -3,6 +3,7 @@ import { readdir, stat } from 'fs/promises';
 import type { BigIntStats } from 'fs';
 import { dirname, join, relative } from 'path';
 import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
+import { matchesStoredFileFingerprint } from './lib/file-identity';
 import { pathsReferToSameEntry } from '../../common/utils/path-identity.utils';
 import { selectPrimaryFile } from '../../common/utils/primary-file-selection.utils';
 
@@ -431,6 +432,8 @@ export class FileEventProcessorService {
       );
       return { type: 'noop' };
     }
+
+    if (!(await matchesStoredFileFingerprint(newAbsolutePath, Number(fileStat.size), file))) return { type: 'noop' };
 
     const settings = await this.scannerRepo.findLibrarySettings(rowLibraryId);
     const newFolderPath =

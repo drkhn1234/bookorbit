@@ -41,6 +41,7 @@ import { basename, dirname, join, relative, sep } from 'path';
 import { realpath, readdir, stat } from 'fs/promises';
 
 import { classifyFile, DEFAULT_FORMAT_PRIORITY, FileRole, isAudioFormat } from './lib/classify';
+import { matchesStoredFileFingerprint } from './lib/file-identity';
 import { computeFileHash } from './lib/hash';
 import { waitForStability } from '../../common/utils/fs-stability.utils';
 import {
@@ -2731,17 +2732,21 @@ export class ScannerService implements OnApplicationBootstrap {
     addedAtSource: AddedAtSource,
   ): Promise<UpsertBookResult> {
     const existing = bookByFolderPath.get(candidate.folderPath);
-    const candidateOwnedBookIds = new Set<number>();
-    for (const file of candidate.files) {
-      const byPath = fileByPath.get(file.absolutePath);
-      if (byPath) candidateOwnedBookIds.add(byPath.bookId);
-      if (file.ino !== 0n) {
-        const byIno = fileByIno.get(file.ino);
-        if (byIno) candidateOwnedBookIds.add(byIno.bookId);
-      }
-    }
-
     if (!existing) {
+      const candidateOwnedBookIds = new Set<number>();
+      for (const file of candidate.files) {
+        const byPath = fileByPath.get(file.absolutePath);
+        if (byPath) {
+          candidateOwnedBookIds.add(byPath.bookId);
+        } else if (file.ino !== 0n) {
+          const byIno = fileByIno.get(file.ino);
+          const stored = byIno && fileByPath.get(byIno.absolutePath);
+          if (stored && stored.id === byIno.id && (await matchesStoredFileFingerprint(file.absolutePath, file.sizeBytes, stored))) {
+            candidateOwnedBookIds.add(stored.bookId);
+          }
+        }
+      }
+
       // Detect series-to-single-book merge: files were renamed so all stems match,
       // turning what was a virtual multi-book folder into one real-directory book.
       // Find any known books whose folderPaths are virtual children of this directory
@@ -2877,6 +2882,8 @@ export class ScannerService implements OnApplicationBootstrap {
       if (file.ino === 0n) continue;
       const byIno = fileByIno.get(file.ino);
       if (!byIno || byIno.absolutePath === file.absolutePath) continue;
+      const stored = fileByPath.get(byIno.absolutePath);
+      if (stored?.id !== byIno.id || !(await matchesStoredFileFingerprint(file.absolutePath, file.sizeBytes, stored))) continue;
       sourceBookId = byIno.bookId;
       break;
     }
@@ -3033,6 +3040,7 @@ export class ScannerService implements OnApplicationBootstrap {
       if (file.ino === 0n) continue;
       const byIno = await this.scannerRepo.findMissingBookFileWithContextByIno(file.ino);
       if (!byIno || (await this.pathExistsAsDistinctEntry(byIno.file.absolutePath, file.absolutePath))) continue;
+      if (!(await matchesStoredFileFingerprint(file.absolutePath, file.sizeBytes, byIno.file))) continue;
       sourceBookId = byIno.file.bookId;
       sourceLibraryId = byIno.libraryId;
       break;
@@ -3044,6 +3052,7 @@ export class ScannerService implements OnApplicationBootstrap {
         const byIno = await this.scannerRepo.findBookFileWithContextByIno(file.ino);
         if (!byIno || byIno.file.absolutePath === file.absolutePath) continue;
         if (await this.fileExistsAsDistinctEntry(byIno.file.absolutePath, file.absolutePath)) continue;
+        if (!(await matchesStoredFileFingerprint(file.absolutePath, file.sizeBytes, byIno.file))) continue;
         sourceBookId = byIno.file.bookId;
         sourceLibraryId = byIno.libraryId;
         break;
@@ -3268,11 +3277,12 @@ export class ScannerService implements OnApplicationBootstrap {
     counts: ScanCounts,
   ): Promise<(ProcessedFileResult & { fileId: number }) | null> {
     const byIno = fileByIno.get(fileStat.ino);
-    if (!byIno) return null;
+    if (!byIno || byIno.sizeBytes !== fileStat.sizeBytes) return null;
 
     const oldAbsolutePath = byIno.absolutePath;
-    if (await this.pathExistsAsDistinctEntry(oldAbsolutePath, fileStat.absolutePath)) return null;
-    const sizeUnchanged = fileStat.sizeBytes === byIno.sizeBytes;
+    const oldPathEntry = fileByPath.get(oldAbsolutePath);
+    if (oldPathEntry?.id !== byIno.id || (await this.pathExistsAsDistinctEntry(oldAbsolutePath, fileStat.absolutePath))) return null;
+    if (!(await matchesStoredFileFingerprint(fileStat.absolutePath, fileStat.sizeBytes, oldPathEntry))) return null;
     const mtimeUnchanged = fileStat.mtime.getTime() === byIno.mtime?.getTime();
     const mediaOverlayFields = await this.inspectMediaOverlayFields(fileStat.absolutePath, format);
     await this.scannerRepo.updateBookFile(byIno.id, {
@@ -3288,10 +3298,7 @@ export class ScannerService implements OnApplicationBootstrap {
       ...mediaOverlayFields,
     });
     counts.updatedCount++;
-    const oldPathEntry = fileByPath.get(oldAbsolutePath);
-    if (oldPathEntry?.id === byIno.id) {
-      fileByPath.delete(oldAbsolutePath);
-    }
+    fileByPath.delete(oldAbsolutePath);
     fileByPath.set(fileStat.absolutePath, {
       id: byIno.id,
       bookId,
@@ -3299,7 +3306,7 @@ export class ScannerService implements OnApplicationBootstrap {
       ino: fileStat.ino,
       sizeBytes: fileStat.sizeBytes,
       mtime: fileStat.mtime,
-      fileHash: oldPathEntry?.fileHash ?? null,
+      fileHash: oldPathEntry.fileHash,
       sortOrder,
       mediaOverlayAvailable: mediaOverlayFields.mediaOverlayAvailable,
       mediaOverlayCheckedAt: mediaOverlayFields.mediaOverlayCheckedAt,
@@ -3308,8 +3315,8 @@ export class ScannerService implements OnApplicationBootstrap {
     return {
       isNew: false,
       reassigned: byIno.bookId !== bookId,
-      changed: !sizeUnchanged || !mtimeUnchanged,
-      pathChanged: oldPathEntry?.relPath !== fileStat.relPath,
+      changed: !mtimeUnchanged,
+      pathChanged: oldPathEntry.relPath !== fileStat.relPath,
       fileId: byIno.id,
       previousBookId: byIno.bookId !== bookId ? byIno.bookId : undefined,
     };
@@ -3343,9 +3350,9 @@ export class ScannerService implements OnApplicationBootstrap {
       return null;
     }
     if (await this.pathExistsAsDistinctEntry(globalByIno.file.absolutePath, fileStat.absolutePath)) return null;
+    if (!(await matchesStoredFileFingerprint(fileStat.absolutePath, fileStat.sizeBytes, globalByIno.file))) return null;
 
     const oldAbsolutePath = globalByIno.file.absolutePath;
-    const sizeUnchanged = fileStat.sizeBytes === globalByIno.file.sizeBytes;
     const mtimeUnchanged = fileStat.mtime.getTime() === globalByIno.file.mtime?.getTime();
     const mediaOverlayFields = await this.inspectMediaOverlayFields(fileStat.absolutePath, format);
     await this.scannerRepo.updateBookFile(globalByIno.file.id, {
@@ -3392,7 +3399,7 @@ export class ScannerService implements OnApplicationBootstrap {
     return {
       isNew: false,
       reassigned: globalByIno.file.bookId !== bookId,
-      changed: !sizeUnchanged || !mtimeUnchanged,
+      changed: !mtimeUnchanged,
       pathChanged: globalByIno.file.relPath !== fileStat.relPath,
       fileId: globalByIno.file.id,
       previousBookId: globalByIno.file.bookId !== bookId ? globalByIno.file.bookId : undefined,
